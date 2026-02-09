@@ -24,13 +24,13 @@ All theme and color templates are **unchanged**. Only layout templates were redu
 After verifying everything works, tag this restore point:
 
 ```bash
-git tag clean-start-2026
+git tag restore-cockpit-arena-clean
 ```
 
 This is your **clean starting point** before adding new features. If things get messy later, you can always come back here with:
 
 ```bash
-git checkout clean-start-2026
+git checkout restore-cockpit-arena-clean
 ```
 
 Then future work can start from this known-good state.
