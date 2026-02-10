@@ -128,6 +128,44 @@ html { --metrics-axis: #d4d4d4; --metrics-grid: #e5e5e5; }
   appearance: textfield;
 }
 
+/* Cockpit panel tabs: protruded arrow midway, bounce on toggle */
+.panel-tab {
+  position: absolute;
+  width: 20px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--ui-border);
+  background: var(--ui-bg-sidebar);
+  color: var(--ui-text-secondary);
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s, box-shadow 0.15s;
+  z-index: 10;
+}
+.panel-tab:hover {
+  background: color-mix(in srgb, var(--ui-accent) 12%, var(--ui-bg-sidebar));
+  color: var(--ui-text-primary);
+}
+.panel-tab:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ui-bg-main), 0 0 0 4px var(--ui-accent);
+}
+.panel-tab svg {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+@keyframes panel-tab-bounce {
+  0% { transform: var(--panel-tab-transform) scale(1); }
+  40% { transform: var(--panel-tab-transform) scale(1.15); }
+  70% { transform: var(--panel-tab-transform) scale(0.97); }
+  100% { transform: var(--panel-tab-transform) scale(1); }
+}
+.panel-tab-bounce {
+  animation: panel-tab-bounce 0.4s ease-out;
+}
+
 /* Micro-animations (subtle system feedback) */
 @keyframes ui-input-breathe {
   0%, 100% { transform: scale(1); box-shadow: 0 0 0 rgba(0,0,0,0); }

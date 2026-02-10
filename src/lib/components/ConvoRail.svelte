@@ -73,22 +73,31 @@
     if (!(await confirm({ title: 'Bulk erase', message: `Delete all ${n} conversation${n === 1 ? '' : 's'}? This cannot be undone.`, confirmLabel: 'Delete all', danger: true }))) return;
     await bulkEraseChats();
   }
+
+  let tabBounce = $state(false);
+  function toggleExpanded() {
+    expanded = !expanded;
+    tabBounce = true;
+    const t = setTimeout(() => (tabBounce = false), 420);
+    return () => clearTimeout(t);
+  }
 </script>
 
 <div
-  class="convo-rail flex flex-col shrink-0 border-r overflow-hidden transition-[width] duration-200"
+  class="convo-rail flex flex-col shrink-0 border-r overflow-visible transition-[width] duration-200 relative"
   style="width: {expanded ? '200px' : '44px'}; background-color: var(--ui-bg-sidebar); border-color: var(--ui-border);">
+  <!-- Protruded arrow tab midway on right edge: out = expand, in = retract -->
   <button
     type="button"
-    class="shrink-0 flex items-center justify-center py-2 px-1 min-h-[40px] hover:opacity-90 transition-opacity"
-    style="color: var(--ui-text-secondary);"
-    onclick={() => (expanded = !expanded)}
+    class="panel-tab {tabBounce ? 'panel-tab-bounce' : ''}"
+    style="--panel-tab-transform: translate(100%, -50%); top: 50%; right: 0; border-left: none; border-radius: 0 6px 6px 0;"
     title={expanded ? 'Collapse ([)' : 'Expand ([)'}
-    aria-label={expanded ? 'Collapse' : 'Expand'}>
+    aria-label={expanded ? 'Collapse rail' : 'Expand rail'}
+    onclick={toggleExpanded}>
     {#if expanded}
-      <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 19l-7-7 7-7" /></svg>
     {:else}
-      <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7" /></svg>
     {/if}
   </button>
   <button

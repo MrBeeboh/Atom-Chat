@@ -19,7 +19,6 @@
   import ConvoRail from '$lib/components/ConvoRail.svelte';
   import IntelPanel from '$lib/components/IntelPanel.svelte';
   import DashboardArena from '$lib/components/DashboardArena.svelte';
-  import DashboardNexus from '$lib/components/DashboardNexus.svelte';
   import FloatingMetricsDashboard from '$lib/components/FloatingMetricsDashboard.svelte';
   import ConfirmModal from '$lib/components/ConfirmModal.svelte';
   import ShortcutsModal from '$lib/components/ShortcutsModal.svelte';
@@ -28,7 +27,6 @@
   const LAYOUT_OPTS = [
     { value: 'cockpit', label: 'Cockpit' },
     { value: 'arena', label: 'Arena' },
-    { value: 'nexus', label: 'Nexus' },
   ];
   const HEADER_MODEL_MIN = 'min-width: 13rem;';
   const HEADER_PRESET_MIN = 'min-width: 7rem;';
@@ -98,6 +96,13 @@
     await refreshConversations();
     activeConversationId.set(id);
   }
+
+  let intelTabBounce = false;
+  function toggleIntel() {
+    cockpitIntelOpen.update((v) => !v);
+    intelTabBounce = true;
+    setTimeout(() => (intelTabBounce = false), 420);
+  }
 </script>
 
 <div class="h-screen overflow-hidden" style="background-color: var(--ui-bg-main);">
@@ -128,26 +133,45 @@
         </span>
         <button type="button" class="flex items-center gap-1.5 px-3 py-2 rounded-lg shrink-0 min-h-[44px] text-base transition-colors hover:opacity-90" style="color: var(--ui-text-secondary); background: color-mix(in srgb, var(--ui-border) 30%, transparent);" onclick={() => settingsOpen.set(true)} aria-label="Settings" title="Settings"><span class="text-lg leading-none" aria-hidden="true">⚙</span><span class="text-xs font-medium hidden sm:inline">Settings</span></button>
       </header>
-      <div class="flex flex-1 min-h-0 min-w-0">
+      <div class="flex flex-1 min-h-0 min-w-0 relative">
         <ConvoRail />
         <main class="flex-1 flex flex-col min-w-0 min-h-0" style="background-color: var(--ui-bg-main);">
           <ChatView />
         </main>
         {#if $cockpitIntelOpen}
           <aside
-            class="w-[280px] shrink-0 border-l overflow-hidden flex flex-col"
+            class="w-[280px] shrink-0 border-l overflow-visible flex flex-col relative"
             style="border-color: var(--ui-border);"
             in:fly={{ x: 280, duration: 400, easing: backOut }}
             out:fly={{ x: 280, duration: 300, easing: quintOut }}
           >
-            <div class="shrink-0 flex items-center justify-between px-3 py-2 border-b" style="border-color: var(--ui-border); background-color: var(--ui-bg-sidebar);">
-              <span class="text-xs font-medium uppercase tracking-wide" style="color: var(--ui-text-secondary);">Intel</span>
-              <button type="button" class="p-1 rounded text-xs hover:opacity-80" style="color: var(--ui-text-secondary);" onclick={() => cockpitIntelOpen.set(false)} title="Close panel" aria-label="Close Intel panel">✕</button>
+            <button
+              type="button"
+              class="panel-tab {intelTabBounce ? 'panel-tab-bounce' : ''}"
+              style="--panel-tab-transform: translate(-100%, -50%); left: 0; top: 50%; border-right: none; border-radius: 6px 0 0 6px;"
+              title="Close Intel panel"
+              aria-label="Close Intel panel"
+              onclick={toggleIntel}
+            >
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7" /></svg>
+            </button>
+            <div class="flex-1 overflow-hidden flex flex-col min-h-0">
+              <IntelPanel />
             </div>
-            <IntelPanel />
           </aside>
         {:else}
-          <button type="button" class="shrink-0 w-8 border-l flex items-center justify-center text-base" style="border-color: var(--ui-border); background-color: var(--ui-bg-sidebar); color: var(--ui-text-secondary);" onclick={() => cockpitIntelOpen.set(true)} title="Open Intel panel" aria-label="Open Intel panel">📡</button>
+          <div class="shrink-0 w-0 overflow-visible relative min-h-0">
+            <button
+              type="button"
+              class="panel-tab {intelTabBounce ? 'panel-tab-bounce' : ''}"
+              style="--panel-tab-transform: translate(-100%, -50%); left: 0; top: 50%; border-right: none; border-radius: 6px 0 0 6px;"
+              title="Open Intel panel"
+              aria-label="Open Intel panel"
+              onclick={toggleIntel}
+            >
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 19l-7-7 7-7" /></svg>
+            </button>
+          </div>
         {/if}
       </div>
     </div>
@@ -230,41 +254,6 @@
       </div>
     </div>
 
-  {:else if $layout === 'nexus'}
-    <div class="flex h-full flex-col">
-      <header class="shrink-0 flex items-center flex-wrap px-3 py-2 border-b text-sm" style="border-color: var(--ui-border); background-color: var(--ui-bg-sidebar); color: var(--ui-text-secondary); {HEADER_GAP}">
-        <div class="flex items-center gap-2 shrink-0">
-          <button type="button" class="md:hidden p-2 rounded min-h-[44px] min-w-[44px] flex items-center justify-center" style="color: var(--ui-text-secondary);" onclick={() => sidebarOpen.set(true)} aria-label="Open menu">☰</button>
-          <span class="font-semibold shrink-0" style="color: var(--ui-accent);">ATOM Nexus</span>
-        </div>
-        <nav class="flex items-center gap-0.5 shrink-0" aria-label="Layout">
-          {#each LAYOUT_OPTS as opt}
-            <button type="button" class="px-2 py-1 rounded text-xs {$layout === opt.value ? 'font-medium' : ''}" style="color: {$layout === opt.value ? 'var(--ui-accent)' : 'var(--ui-text-secondary)'}; background: {$layout === opt.value ? 'color-mix(in srgb, var(--ui-accent) 15%, transparent)' : 'transparent'};" onclick={() => layout.set(opt.value)}>{opt.label}</button>
-          {/each}
-        </nav>
-        <div class="shrink-0 overflow-hidden" style="{HEADER_MODEL_MIN}"><ModelSelector /></div>
-        <div class="shrink-0" style="{HEADER_PRESET_MIN}"><PresetSelect compact={true} /></div>
-        <div class="flex items-center gap-1.5 shrink-0 pl-2 ml-2 border-l" style="border-color: var(--ui-border); {HEADER_THEME_MIN}" role="group" aria-label="Theme">
-          <UiThemeSelect compact={true} />
-          <ThemeToggle />
-        </div>
-        <span class="flex items-center gap-1.5 shrink-0 text-xs" style="color: var(--ui-text-secondary);" title={$lmStudioConnected === true ? 'LM Studio connected' : $lmStudioConnected === false ? 'LM Studio not reachable' : 'Checking...'} aria-label={$lmStudioConnected === true ? 'LM Studio connected' : $lmStudioConnected === false ? 'LM Studio not reachable' : 'Checking connection'}>
-          <span class="w-2 h-2 rounded-full shrink-0" style="background-color: {$lmStudioConnected === true ? '#22c55e' : $lmStudioConnected === false ? '#ef4444' : '#94a3b8'};" aria-hidden="true"></span>
-          <span class="hidden sm:inline">LM Studio</span>
-        </span>
-        <button type="button" class="flex items-center gap-1.5 px-3 py-2 rounded-lg shrink-0 min-h-[44px] text-base transition-colors hover:opacity-90" style="color: var(--ui-text-secondary); background: color-mix(in srgb, var(--ui-border) 30%, transparent);" onclick={() => settingsOpen.set(true)} aria-label="Settings" title="Settings"><span class="text-lg leading-none" aria-hidden="true">⚙</span><span class="text-xs font-medium hidden sm:inline">Settings</span></button>
-      </header>
-      <div class="flex flex-1 min-h-0 min-w-0 relative">
-        <aside class="w-52 shrink-0 border-r overflow-auto hidden md:block" style="background-color: var(--ui-bg-sidebar); border-color: var(--ui-border);"><Sidebar /></aside>
-        {#if $sidebarOpen}
-          <div class="fixed inset-0 z-40 md:hidden" role="dialog" aria-modal="true" aria-label="Sidebar">
-            <div class="absolute inset-0 bg-black/40" onclick={() => sidebarOpen.set(false)}></div>
-            <aside class="absolute left-0 top-0 bottom-0 w-64 bg-white dark:bg-zinc-900 border-r shadow-xl" style="background-color: var(--ui-bg-sidebar); border-color: var(--ui-border);"><Sidebar /></aside>
-          </div>
-        {/if}
-        <div class="flex-1 min-h-0 min-w-0"><DashboardNexus /></div>
-      </div>
-    </div>
   {/if}
 
   {#if $settingsOpen}
