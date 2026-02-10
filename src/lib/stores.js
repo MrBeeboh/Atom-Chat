@@ -116,6 +116,12 @@ export const dashboardModelA = writable(getStored('dashboardModelA'));
 export const dashboardModelB = writable(getStored('dashboardModelB'));
 export const dashboardModelC = writable(getStored('dashboardModelC'));
 export const dashboardModelD = writable(getStored('dashboardModelD'));
+if (typeof localStorage !== 'undefined') {
+  dashboardModelA.subscribe((v) => localStorage.setItem('dashboardModelA', v ?? ''));
+  dashboardModelB.subscribe((v) => localStorage.setItem('dashboardModelB', v ?? ''));
+  dashboardModelC.subscribe((v) => localStorage.setItem('dashboardModelC', v ?? ''));
+  dashboardModelD.subscribe((v) => localStorage.setItem('dashboardModelD', v ?? ''));
+}
 
 /** Default model per system-prompt preset (General, Code, Research, Creative). Keys = preset name. */
 const getPresetDefaultModels = () => {
