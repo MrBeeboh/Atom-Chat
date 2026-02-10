@@ -1,4 +1,6 @@
 <script>
+  import { fly } from 'svelte/transition';
+  import { backOut, quintOut } from 'svelte/easing';
   import {
     floatingMetricsOpen,
     floatingMetricsMinimized,
@@ -73,6 +75,19 @@
   }
 </script>
 
+{#if !$floatingMetricsOpen}
+  <button
+    type="button"
+    class="fixed z-40 bottom-6 right-6 rounded-lg border-2 p-3 text-xl shadow-lg transition-opacity hover:opacity-90"
+    style="border-color: var(--ui-border); background-color: var(--ui-bg-sidebar); color: var(--ui-text-secondary);"
+    onclick={() => floatingMetricsOpen.set(true)}
+    title="Open Metrics"
+    aria-label="Open Metrics panel"
+  >
+    📊
+  </button>
+{/if}
+
 {#if $floatingMetricsOpen}
   <div
     class="fixed z-40 rounded-xl border shadow-lg flex flex-col overflow-hidden atom-layout-transition select-none"
@@ -87,6 +102,8 @@
     "
     role="region"
     aria-label="Metrics dashboard"
+    in:fly={{ x: 220, duration: 400, easing: backOut }}
+    out:fly={{ x: 220, duration: 300, easing: quintOut }}
   >
     <div
       class="flex items-center justify-between gap-2 px-2 py-1.5 cursor-grab active:cursor-grabbing border-b shrink-0"
@@ -108,11 +125,12 @@
         </button>
         <button
           type="button"
-          class="p-1 rounded hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+          class="p-1 rounded hover:bg-black/10 dark:hover:bg-white/10 transition-colors text-base leading-none"
           onclick={(e) => { e.stopPropagation(); closePanel(); }}
           aria-label="Close"
+          title="Close"
         >
-          ×
+          ✕
         </button>
       </div>
     </div>

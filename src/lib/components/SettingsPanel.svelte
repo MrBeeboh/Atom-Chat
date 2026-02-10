@@ -1,4 +1,6 @@
 <script>
+  import { fly } from 'svelte/transition';
+  import { backOut, quintOut } from 'svelte/easing';
   import { settings, layout, updateSettings, selectedModelId, hardware, models, presetDefaultModels, lmStudioBaseUrl } from '$lib/stores.js';
   import { loadModel } from '$lib/api.js';
   import { getDefaultsForModel, BATCH_SIZE_MIN, BATCH_SIZE_MAX } from '$lib/modelDefaults.js';
@@ -237,12 +239,17 @@
   class="fixed inset-0 z-30 flex items-center justify-center bg-black/40 p-4"
   role="dialog"
   aria-modal="true"
-  aria-label="Model parameters">
+  aria-label="Settings">
   <div
-    class="bg-white dark:bg-zinc-800 rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-hidden border border-zinc-200 dark:border-zinc-700 flex flex-col">
-    <div class="shrink-0 px-6 pt-5 pb-2 border-b border-zinc-200 dark:border-zinc-700">
-      <h2 class="text-lg font-semibold text-zinc-900 dark:text-zinc-100">Model parameters</h2>
-      <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">Control temperature, sampling, and system prompt (LM Studio–compatible). Settings are per layout.</p>
+    class="bg-white dark:bg-zinc-800 rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-hidden border border-zinc-200 dark:border-zinc-700 flex flex-col"
+    in:fly={{ x: 300, duration: 400, easing: backOut }}
+    out:fly={{ x: 300, duration: 300, easing: quintOut }}>
+    <div class="shrink-0 px-6 pt-5 pb-2 border-b border-zinc-200 dark:border-zinc-700 flex items-start justify-between gap-2">
+      <div>
+        <h2 class="text-lg font-semibold text-zinc-900 dark:text-zinc-100">Settings</h2>
+        <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">Control temperature, sampling, and system prompt (LM Studio–compatible). Settings are per layout.</p>
+      </div>
+      <button type="button" class="shrink-0 p-1.5 rounded text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-700 dark:hover:text-zinc-200 text-xl leading-none" onclick={() => onclose?.()} title="Close" aria-label="Close">✕</button>
     </div>
     <div class="flex-1 overflow-y-auto px-6 py-4 space-y-4">
       <!-- LM Studio server URL -->

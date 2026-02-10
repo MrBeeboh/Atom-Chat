@@ -1,6 +1,8 @@
 <script>
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
+  import { fly } from 'svelte/transition';
+  import { backOut, quintOut } from 'svelte/easing';
   import { theme, sidebarOpen, settingsOpen, layout, dashboardModelA, dashboardModelB, dashboardModelC, dashboardModelD, activeConversationId, conversations, selectedModelId, uiTheme, sidebarCollapsed, cockpitIntelOpen, arenaPanelCount } from '$lib/stores.js';
   import { createConversation, listConversations, getMessageCount, getMessages } from '$lib/db.js';
   import Sidebar from '$lib/components/Sidebar.svelte';
@@ -105,15 +107,20 @@
           <ChatView />
         </main>
         {#if $cockpitIntelOpen}
-          <aside class="w-[280px] shrink-0 border-l overflow-hidden flex flex-col" style="border-color: var(--ui-border);">
+          <aside
+            class="w-[280px] shrink-0 border-l overflow-hidden flex flex-col"
+            style="border-color: var(--ui-border);"
+            in:fly={{ x: 280, duration: 400, easing: backOut }}
+            out:fly={{ x: 280, duration: 300, easing: quintOut }}
+          >
             <div class="shrink-0 flex items-center justify-between px-3 py-2 border-b" style="border-color: var(--ui-border); background-color: var(--ui-bg-sidebar);">
               <span class="text-xs font-medium uppercase tracking-wide" style="color: var(--ui-text-secondary);">Intel</span>
-              <button type="button" class="p-1 rounded text-xs" style="color: var(--ui-text-secondary);" onclick={() => cockpitIntelOpen.set(false)} title="Close panel (])" aria-label="Close Intel panel">×</button>
+              <button type="button" class="p-1 rounded text-xs hover:opacity-80" style="color: var(--ui-text-secondary);" onclick={() => cockpitIntelOpen.set(false)} title="Close panel" aria-label="Close Intel panel">✕</button>
             </div>
             <IntelPanel />
           </aside>
         {:else}
-          <button type="button" class="shrink-0 w-8 border-l flex items-center justify-center text-xs" style="border-color: var(--ui-border); background-color: var(--ui-bg-sidebar); color: var(--ui-text-secondary);" onclick={() => cockpitIntelOpen.set(true)} title="Open Intel panel (])" aria-label="Open Intel panel">]</button>
+          <button type="button" class="shrink-0 w-8 border-l flex items-center justify-center text-base" style="border-color: var(--ui-border); background-color: var(--ui-bg-sidebar); color: var(--ui-text-secondary);" onclick={() => cockpitIntelOpen.set(true)} title="Open Intel panel" aria-label="Open Intel panel">📡</button>
         {/if}
       </div>
     </div>
