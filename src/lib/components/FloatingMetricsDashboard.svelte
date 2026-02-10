@@ -113,7 +113,9 @@
 
   const w = 200;
   const h = 72;
-  /** Unified 0–100% series: each point { tok, vram, gpu, ram, cpu }. Length depends on panel width (more width = more time). */
+  /** Fixed time window: always show this many samples (e.g. 60 = last 60 seconds at 1 sample/s). X-axis scrolls; no compression. */
+  const TIME_WINDOW_SAMPLES = 60;
+  /** Unified 0–100% series: each point { tok, vram, gpu, ram, cpu }. Kept to 2× window so we have scroll headroom. */
   let unifiedSeries = $state([]);
 
   $effect(() => {
@@ -121,9 +123,6 @@
     function tick() {
       if (cancelled) return;
       if (!get(floatingMetricsOpen) || get(floatingMetricsMinimized)) return;
-      const sz = get(floatingMetricsSize);
-      const panelW = sz && sz.width ? sz.width : 220;
-      const maxSamples = Math.max(60, Math.min(400, Math.round(60 + (panelW - 200) * 0.8)));
       const tok = get(liveTokPerSec) ?? get(lastResponseTokPerSec) ?? 0;
       fetchHardwareMetrics().then((m) => {
         if (cancelled) return;
@@ -131,7 +130,7 @@
         const vramPct = m && m.vram_total_gb > 0 ? (m.vram_used_gb / m.vram_total_gb) * 100 : 0;
         const ramPct = m && m.ram_total_gb > 0 ? (m.ram_used_gb / m.ram_total_gb) * 100 : 0;
         unifiedSeries = [
-          ...unifiedSeries.slice(-(maxSamples - 1)),
+          ...unifiedSeries.slice(-(TIME_WINDOW_SAMPLES * 2 - 1)),
           {
             tok: Math.min(100, Number(tok)),
             vram: vramPct,
@@ -150,11 +149,10 @@
     };
   });
 
-  /** Number of points drawn on X: fixed window so graph scrolls instead of compressing. Wider panel = more points (more time). */
-  const visiblePoints = $derived(Math.max(60, Math.min(300, Math.round(60 + (size.width - 200) * 0.6))));
-  /** Only the last visiblePoints are plotted, so horizontal spacing stays constant and old data scrolls off. */
-  const seriesToPlot = $derived(unifiedSeries.length ? unifiedSeries.slice(-visiblePoints) : []);
+  /** Always plot last TIME_WINDOW_SAMPLES so x-scale is fixed and the line scrolls (newest right, oldest drops off left). */
+  const seriesToPlot = $derived(unifiedSeries.length ? unifiedSeries.slice(-TIME_WINDOW_SAMPLES) : []);
 
+  /** Map last N points to 0..w so oldest is left, newest right; spacing is constant so line stays lean and scrolls. */
   const pathFor = (key) => {
     if (!seriesToPlot.length) return '';
     const n = seriesToPlot.length;
@@ -273,15 +271,15 @@
             {#each xGridPcts as pct}
               <line x1={200 * pct / 100} y1="0" x2={200 * pct / 100} y2="72" class="metrics-grid" />
             {/each}
-            <!-- Data lines (on top of grid) -->
-            <polyline fill="none" stroke="var(--atom-teal)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" points={pathTok} />
-            <polyline fill="none" stroke="var(--atom-amber, #f59e0b)" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" points={pathVram} />
-            <polyline fill="none" stroke="#ef4444" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" points={pathGpu} />
-            <polyline fill="none" stroke="#3b82f6" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" points={pathRam} />
-            <polyline fill="none" stroke="#22c55e" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" points={pathCpu} />
+            <!-- Data lines: thin strokes so the graph stays lean; x-axis is fixed window (scrolls, no compression) -->
+            <polyline fill="none" stroke="var(--atom-teal)" stroke-width="0.7" stroke-linecap="round" stroke-linejoin="round" points={pathTok} />
+            <polyline fill="none" stroke="var(--atom-amber, #f59e0b)" stroke-width="0.55" stroke-linecap="round" stroke-linejoin="round" points={pathVram} />
+            <polyline fill="none" stroke="#ef4444" stroke-width="0.55" stroke-linecap="round" stroke-linejoin="round" points={pathGpu} />
+            <polyline fill="none" stroke="#3b82f6" stroke-width="0.55" stroke-linecap="round" stroke-linejoin="round" points={pathRam} />
+            <polyline fill="none" stroke="#22c55e" stroke-width="0.55" stroke-linecap="round" stroke-linejoin="round" points={pathCpu} />
           </svg>
         </div>
-        <p class="text-[9px] text-zinc-400 dark:text-zinc-500 shrink-0">Y: 0–100% · X: time (newest right)</p>
+        <p class="text-[9px] text-zinc-400 dark:text-zinc-500 shrink-0">Y: 0–100% · X: last {TIME_WINDOW_SAMPLES}s (scrolls, newest right)</p>
         <div class="flex items-center gap-2 shrink-0">
           <span class="text-[10px] uppercase text-zinc-500 dark:text-zinc-400">Tokens/s</span>
           <span class="text-sm font-mono font-semibold" style="color: var(--atom-teal);">
