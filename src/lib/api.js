@@ -227,3 +227,30 @@ export async function streamChatCompletion({ model, messages, options = {}, onCh
     throw err;
   }
 }
+
+/** Default URL for hardware bridge (scripts/hardware_server.py). Override with localStorage 'hardwareMetricsUrl'. */
+const DEFAULT_HARDWARE_URL = 'http://localhost:5000';
+
+/**
+ * Fetch hardware metrics from Python bridge (CPU, RAM, GPU util, VRAM). For floating metrics panel.
+ * @returns {Promise<{ cpu_percent: number, ram_used_gb: number, ram_total_gb: number, gpu_util: number, vram_used_gb: number, vram_total_gb: number }|null>}
+ */
+export async function fetchHardwareMetrics() {
+  let base = DEFAULT_HARDWARE_URL;
+  if (typeof localStorage !== 'undefined') {
+    const custom = localStorage.getItem('hardwareMetricsUrl');
+    if (custom != null && String(custom).trim() !== '') base = String(custom).trim().replace(/\/$/, '');
+  }
+  const url = `${base}/metrics`;
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 3000);
+  try {
+    const res = await fetch(url, { signal: ctrl.signal });
+    clearTimeout(t);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    clearTimeout(t);
+    return null;
+  }
+}

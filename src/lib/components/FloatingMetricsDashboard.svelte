@@ -8,7 +8,10 @@
     tokSeries,
     liveTokPerSec,
     lastResponseTokPerSec,
+    hardwareMetrics,
   } from '$lib/stores.js';
+  import { get } from 'svelte/store';
+  import { fetchHardwareMetrics } from '$lib/api.js';
 
   let pos = $state({ x: 24, y: 24 });
   let dragStart = $state(null);
@@ -27,7 +30,7 @@
   function onMove(e) {
     if (!dragStart) return;
     const panelW = $floatingMetricsMinimized ? 200 : 220;
-    const panelH = $floatingMetricsMinimized ? 36 : 140;
+    const panelH = $floatingMetricsMinimized ? 36 : 220;
     const x = Math.max(0, Math.min(e.clientX - dragStart.x, window.innerWidth - panelW));
     const y = Math.max(0, Math.min(e.clientY - dragStart.y, window.innerHeight - panelH));
     floatingMetricsPosition.set({ x, y });
@@ -52,6 +55,23 @@
   $effect(() => {
     const unsub = tokSeries.subscribe((v) => (seriesArr = Array.isArray(v) ? v : []));
     return () => unsub();
+  });
+
+  $effect(() => {
+    let cancelled = false;
+    function tick() {
+      if (cancelled) return;
+      if (!get(floatingMetricsOpen) || get(floatingMetricsMinimized)) return;
+      fetchHardwareMetrics().then((m) => {
+        if (!cancelled) hardwareMetrics.set(m);
+      });
+    }
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
   });
   const maxVal = $derived(Math.max(1, ...seriesArr));
   const w = 180;
@@ -135,9 +155,9 @@
       </div>
     </div>
     {#if !$floatingMetricsMinimized}
-      <div class="p-2 border-t border-zinc-200/60 dark:border-zinc-700/60" style="border-color: var(--ui-border);">
-        <div class="flex items-center gap-2 mb-1">
-          <span class="text-[10px] uppercase text-zinc-500 dark:text-zinc-400">tok/s</span>
+      <div class="p-2 border-t border-zinc-200/60 dark:border-zinc-700/60 space-y-1.5" style="border-color: var(--ui-border);">
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-[10px] uppercase text-zinc-500 dark:text-zinc-400">Tokens/s</span>
           <span class="text-sm font-mono font-semibold" style="color: var(--atom-teal);">
             {$liveTokPerSec != null ? $liveTokPerSec.toFixed(1) : $lastResponseTokPerSec != null ? $lastResponseTokPerSec.toFixed(1) : '—'}
           </span>
@@ -178,6 +198,20 @@
             </div>
           {/if}
         </div>
+        {#if $hardwareMetrics}
+          <div class="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-[10px] font-mono pt-1 border-t" style="border-color: var(--ui-border);">
+            <span class="uppercase text-zinc-500 dark:text-zinc-400">VRAM</span>
+            <span class="truncate" style="color: var(--atom-amber, #f59e0b);">{$hardwareMetrics.vram_used_gb} / {$hardwareMetrics.vram_total_gb} GB</span>
+            <span class="uppercase text-zinc-500 dark:text-zinc-400">GPU</span>
+            <span class="truncate" style="color: var(--atom-amber, #f59e0b);">{$hardwareMetrics.gpu_util}%</span>
+            <span class="uppercase text-zinc-500 dark:text-zinc-400">Sys RAM</span>
+            <span class="truncate" style="color: var(--atom-blue, #3b82f6);">{$hardwareMetrics.ram_used_gb} / {$hardwareMetrics.ram_total_gb} GB</span>
+            <span class="uppercase text-zinc-500 dark:text-zinc-400">CPU</span>
+            <span class="truncate" style="color: var(--atom-teal);">{$hardwareMetrics.cpu_percent}%</span>
+          </div>
+        {:else}
+          <p class="text-[10px] text-zinc-500 dark:text-zinc-400 pt-1 border-t" style="border-color: var(--ui-border);">Run <code class="px-0.5 rounded bg-zinc-200 dark:bg-zinc-700">python scripts/hardware_server.py</code> for GPU/RAM/CPU</p>
+        {/if}
       </div>
     {/if}
   </div>

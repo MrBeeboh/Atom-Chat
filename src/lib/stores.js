@@ -256,6 +256,9 @@ export const liveTokPerSec = writable(null);
 /** Rolling 60s sparkline of tokens/sec */
 export const tokSeries = writable([]);
 
+/** Hardware metrics from Python bridge (localhost:5000): cpu_percent, ram_*, gpu_util, vram_*. Null when bridge offline. */
+export const hardwareMetrics = writable(null);
+
 /** Dynamic UI: Performance mode disables gradient bg and heavy animations. */
 export const performanceMode = writable(readBool('performanceMode', false));
 if (typeof localStorage !== 'undefined') {
