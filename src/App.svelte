@@ -123,7 +123,7 @@
           <ThemeToggle />
         </div>
         <span class="w-2 h-2 rounded-full shrink-0" title={$lmStudioConnected === true ? 'LM Studio connected' : $lmStudioConnected === false ? 'LM Studio not reachable' : 'Checking...'} style="background-color: {$lmStudioConnected === true ? '#22c55e' : $lmStudioConnected === false ? '#ef4444' : '#94a3b8'};" aria-label={$lmStudioConnected === true ? 'Connected' : $lmStudioConnected === false ? 'Disconnected' : 'Checking'}></span>
-        <button type="button" class="p-2 rounded text-xs shrink-0 min-h-[44px] min-w-[44px] flex items-center justify-center" style="color: var(--ui-text-secondary);" onclick={() => settingsOpen.set(true)} aria-label="Settings" title="Settings">⚙</button>
+        <button type="button" class="flex items-center gap-1.5 px-3 py-2 rounded-lg shrink-0 min-h-[44px] text-base transition-colors hover:opacity-90" style="color: var(--ui-text-secondary); background: color-mix(in srgb, var(--ui-border) 30%, transparent);" onclick={() => settingsOpen.set(true)} aria-label="Settings" title="Settings"><span class="text-lg leading-none" aria-hidden="true">⚙</span><span class="text-xs font-medium hidden sm:inline">Settings</span></button>
       </header>
       <div class="flex flex-1 min-h-0 min-w-0">
         <ConvoRail />
@@ -176,7 +176,7 @@
           <ThemeToggle />
         </div>
         <span class="w-2 h-2 rounded-full shrink-0" title={$lmStudioConnected === true ? 'LM Studio connected' : $lmStudioConnected === false ? 'LM Studio not reachable' : 'Checking...'} style="background-color: {$lmStudioConnected === true ? '#22c55e' : $lmStudioConnected === false ? '#ef4444' : '#94a3b8'};" aria-label={$lmStudioConnected === true ? 'Connected' : $lmStudioConnected === false ? 'Disconnected' : 'Checking'}></span>
-        <button type="button" class="p-2 rounded-lg shrink-0 min-h-[44px] min-w-[44px] flex items-center justify-center" style="color: var(--ui-text-secondary);" onclick={() => settingsOpen.set(true)} aria-label="Settings" title="Settings">⚙</button>
+        <button type="button" class="flex items-center gap-1.5 px-3 py-2 rounded-lg shrink-0 min-h-[44px] text-base transition-colors hover:opacity-90" style="color: var(--ui-text-secondary); background: color-mix(in srgb, var(--ui-border) 30%, transparent);" onclick={() => settingsOpen.set(true)} aria-label="Settings" title="Settings"><span class="text-lg leading-none" aria-hidden="true">⚙</span><span class="text-xs font-medium hidden sm:inline">Settings</span></button>
       </header>
       <div class="flex flex-1 min-h-0 relative">
         <aside class="w-52 shrink-0 border-r overflow-auto hidden md:block" style="background-color: var(--ui-bg-sidebar); border-color: var(--ui-border);"><Sidebar /></aside>
@@ -237,7 +237,7 @@
           <ThemeToggle />
         </div>
         <span class="w-2 h-2 rounded-full shrink-0" title={$lmStudioConnected === true ? 'LM Studio connected' : $lmStudioConnected === false ? 'LM Studio not reachable' : 'Checking...'} style="background-color: {$lmStudioConnected === true ? '#22c55e' : $lmStudioConnected === false ? '#ef4444' : '#94a3b8'};" aria-label={$lmStudioConnected === true ? 'Connected' : $lmStudioConnected === false ? 'Disconnected' : 'Checking'}></span>
-        <button type="button" class="p-2 rounded text-xs shrink-0 min-h-[44px] min-w-[44px] flex items-center justify-center" style="color: var(--ui-text-secondary);" onclick={() => settingsOpen.set(true)} aria-label="Settings" title="Settings">⚙</button>
+        <button type="button" class="flex items-center gap-1.5 px-3 py-2 rounded-lg shrink-0 min-h-[44px] text-base transition-colors hover:opacity-90" style="color: var(--ui-text-secondary); background: color-mix(in srgb, var(--ui-border) 30%, transparent);" onclick={() => settingsOpen.set(true)} aria-label="Settings" title="Settings"><span class="text-lg leading-none" aria-hidden="true">⚙</span><span class="text-xs font-medium hidden sm:inline">Settings</span></button>
       </header>
       <div class="flex flex-1 min-h-0 min-w-0 relative">
         <aside class="w-52 shrink-0 border-r overflow-auto hidden md:block" style="background-color: var(--ui-bg-sidebar); border-color: var(--ui-border);"><Sidebar /></aside>
