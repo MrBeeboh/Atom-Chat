@@ -283,43 +283,44 @@ if (typeof localStorage !== 'undefined') {
   arenaSlotAIsJudge.subscribe((v) => localStorage.setItem('arenaSlotAIsJudge', v ? '1' : '0'));
 }
 
-/** Floating metrics dashboard: open, minimized, position { x, y }. */
+/** Floating metrics dashboard: open, minimized, position { x, y }, size { width, height }. */
 function getFloatingMetricsState() {
-  if (typeof localStorage === 'undefined') return { open: true, minimized: false, x: 24, y: 24 };
+  if (typeof localStorage === 'undefined') return { open: true, minimized: false, x: 24, y: 24, width: 220, height: 260 };
   try {
     const raw = localStorage.getItem('floatingMetrics');
-    if (!raw) return { open: true, minimized: false, x: 24, y: 24 };
+    if (!raw) return { open: true, minimized: false, x: 24, y: 24, width: 220, height: 260 };
     const p = JSON.parse(raw);
+    const w = Number(p.width);
+    const h = Number(p.height);
     return {
       open: p.open !== false,
       minimized: !!p.minimized,
       x: Number(p.x) || 24,
       y: Number(p.y) || 24,
+      width: (w >= 200 && w <= 500) ? w : 220,
+      height: (h >= 160 && h <= 420) ? h : 260,
     };
   } catch {
-    return { open: true, minimized: false, x: 24, y: 24 };
+    return { open: true, minimized: false, x: 24, y: 24, width: 220, height: 260 };
   }
 }
 const floatingInit = getFloatingMetricsState();
 export const floatingMetricsOpen = writable(floatingInit.open);
 export const floatingMetricsMinimized = writable(floatingInit.minimized);
 export const floatingMetricsPosition = writable({ x: floatingInit.x, y: floatingInit.y });
+export const floatingMetricsSize = writable({ width: floatingInit.width, height: floatingInit.height });
 if (typeof localStorage !== 'undefined') {
-  floatingMetricsOpen.subscribe((open) => {
-    const min = get(floatingMetricsMinimized);
-    const pos = get(floatingMetricsPosition);
-    localStorage.setItem('floatingMetrics', JSON.stringify({ open, minimized: min, x: pos.x, y: pos.y }));
-  });
-  floatingMetricsMinimized.subscribe((minimized) => {
-    const open = get(floatingMetricsOpen);
-    const pos = get(floatingMetricsPosition);
-    localStorage.setItem('floatingMetrics', JSON.stringify({ open, minimized, x: pos.x, y: pos.y }));
-  });
-  floatingMetricsPosition.subscribe((pos) => {
+  function saveFloatingMetrics() {
     const open = get(floatingMetricsOpen);
     const min = get(floatingMetricsMinimized);
-    localStorage.setItem('floatingMetrics', JSON.stringify({ open, minimized: min, x: pos.x, y: pos.y }));
-  });
+    const pos = get(floatingMetricsPosition);
+    const sz = get(floatingMetricsSize);
+    localStorage.setItem('floatingMetrics', JSON.stringify({ open, minimized: min, x: pos.x, y: pos.y, width: sz.width, height: sz.height }));
+  }
+  floatingMetricsOpen.subscribe(saveFloatingMetrics);
+  floatingMetricsMinimized.subscribe(saveFloatingMetrics);
+  floatingMetricsPosition.subscribe(saveFloatingMetrics);
+  floatingMetricsSize.subscribe(saveFloatingMetrics);
 }
 
 /** Brief flash when a response completes (green). Set by ChatView, cleared after 400ms. */
