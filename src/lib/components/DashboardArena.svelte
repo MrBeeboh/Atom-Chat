@@ -20,6 +20,8 @@
       ? (localStorage.getItem('arenaSequential') ?? '1') !== '0'
       : true
   );
+  /** Optional feedback/correction sent to the judge (e.g. correct NFPA 72 definition). */
+  let judgeFeedback = $state('');
   let runId = 0;
   let lastSampleAt = 0;
   let lastSampleTokens = 0;
@@ -267,7 +269,11 @@
     }
     const lastUserMsg = slotsWithResponses[0].msgs.filter((m) => m.role === 'user').pop();
     const promptText = lastUserMsg ? contentToText(lastUserMsg.content) : '';
+    const feedbackBlock = judgeFeedback.trim()
+      ? `User correction or feedback (use this to correct your evaluation):\n${judgeFeedback.trim()}\n\n`
+      : '';
     const parts = [
+      feedbackBlock,
       'You are a judge. For each model response below, give a score from 1 to 10 (10 = best) and one short comment.',
       '',
       'Output format: write one line per model, exactly like this:',
@@ -285,7 +291,7 @@
       const text = lastAssistant ? contentToText(lastAssistant.content) : '';
       parts.push(`--- MODEL ${slot} ---`, text.trim() || '(no response)', '');
     }
-    const judgePrompt = parts.join('\n');
+    const judgePrompt = parts.filter(Boolean).join('\n');
     chatError.set(null);
     setRunning('A', true);
     setSlotError('A', '');
@@ -612,15 +618,27 @@
         </label>
         <span class="text-xs">Parallel runs all models at once and uses more resources.</span>
         {#if $arenaSlotAIsJudge}
-          <button
-            type="button"
-            class="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-50"
-            style="background-color: var(--ui-accent); color: var(--ui-bg-main);"
-            disabled={!canRunJudgment}
-            onclick={() => { if (canRunJudgment) runJudgment(); }}
-          >
-            Judgment time
-          </button>
+          <div class="flex flex-wrap items-center gap-2">
+            <label class="flex flex-col gap-1 text-xs" style="color: var(--ui-text-secondary);">
+              Feedback to judge (optional):
+              <textarea
+                class="px-2 py-1 rounded border text-xs min-w-[16rem] max-w-md resize-y"
+                style="border-color: var(--ui-border); background-color: var(--ui-input-bg); color: var(--ui-text-primary);"
+                placeholder="Paste correction (e.g. correct NFPA 72 definition). Judge will use this to re-evaluate."
+                rows="2"
+                bind:value={judgeFeedback}
+             ></textarea>
+            </label>
+            <button
+              type="button"
+              class="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-50"
+              style="background-color: var(--ui-accent); color: var(--ui-bg-main);"
+              disabled={!canRunJudgment}
+              onclick={() => { if (canRunJudgment) runJudgment(); }}
+            >
+              Judgment time
+            </button>
+          </div>
         {/if}
       </div>
       <ChatInput
