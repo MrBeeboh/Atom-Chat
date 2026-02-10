@@ -6,17 +6,19 @@ import { resolveHfRepoForIcon, fetchReadmeFirstImageUrl } from './huggingface.js
  * Icons are in public/model-icons/ (e.g. qwen-color.svg).
  */
 const MODEL_ICON_MAP = [
+  [/meta[-_]?llama|llama|meta\b/i, 'meta-llama-color.svg'],
+  [/microsoft|phi\s*3|phi3|\bphi\b/i, 'microsoft-phi-color.svg'],
+  [/baidu|ernie/i, 'baidu-ernie-color.svg'],
+  [/zai[-_]?org|zai\b/i, 'zai-color.svg'],
   [/dasd|thinking/i, 'dasd-thinking-color.svg'],
   [/deepseek/i, 'deepseek-color.svg'],
   [/dolphin/i, 'dolphin-color.svg'],
-  [/gemma/i, 'gemma-color.svg'],
+  [/gemma|google/i, 'gemma-color.svg'],
   [/glm|glmv/i, 'glmv-color.svg'],
-  [/mistral|minstral/i, 'mistral-color.svg'],
-  [/qwen/i, 'qwen-color.svg'],
+  [/mistral|minstral|ministral/i, 'mistral-color.svg'],
+  [/qwen|qwq/i, 'qwen-color.svg'],
   [/falcon/i, 'tii-falcon-color.svg'],
-  [/llama/i, 'gemma-color.svg'],
-  [/phi\s*3|phi3/i, 'deepseek-color.svg'],
-  [/codellama|code.?llama/i, 'gemma-color.svg'],
+  [/codellama|code.?llama/i, 'meta-llama-color.svg'],
 ];
 
 /** Fallback when no pattern matches and not in cache. Never show a model without an icon. */
