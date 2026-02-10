@@ -3,7 +3,7 @@
   import { get } from 'svelte/store';
   import { fly } from 'svelte/transition';
   import { backOut, quintOut } from 'svelte/easing';
-  import { theme, sidebarOpen, settingsOpen, layout, dashboardModelA, dashboardModelB, dashboardModelC, dashboardModelD, activeConversationId, conversations, selectedModelId, uiTheme, sidebarCollapsed, cockpitIntelOpen, arenaPanelCount, models, lmStudioConnected } from '$lib/stores.js';
+  import { theme, sidebarOpen, settingsOpen, layout, dashboardModelA, dashboardModelB, dashboardModelC, dashboardModelD, activeConversationId, conversations, selectedModelId, uiTheme, sidebarCollapsed, cockpitIntelOpen, arenaPanelCount, arenaSlotAIsJudge, models, lmStudioConnected } from '$lib/stores.js';
   import { createConversation, listConversations, getMessageCount, getMessages } from '$lib/db.js';
   import { getModels } from '$lib/api.js';
   import Sidebar from '$lib/components/Sidebar.svelte';
@@ -190,7 +190,13 @@
           <div class="grid gap-2 p-2 border-b" style="border-color: var(--ui-border); grid-template-columns: repeat({$arenaPanelCount}, minmax(0, 1fr));">
             {#if $arenaPanelCount >= 1}
               <div class="rounded-lg border p-2 flex flex-col gap-1.5" style="border-color: var(--ui-border); background-color: var(--ui-input-bg);">
-                <span class="text-xs font-medium" style="color: var(--ui-text-secondary);">Model A</span>
+                <div class="flex items-center justify-between gap-2">
+                  <span class="text-xs font-medium" style="color: var(--ui-text-secondary);">Model A</span>
+                  <label class="flex items-center gap-1.5 cursor-pointer" title="Use Slot A as judge: it won't answer the prompt; click Judgment time to rate B/C/D">
+                    <input type="checkbox" bind:checked={$arenaSlotAIsJudge} class="rounded border-zinc-300 dark:border-zinc-600" style="accent-color: var(--ui-accent);" />
+                    <span class="text-[10px]" style="color: var(--ui-text-secondary);">Use as judge</span>
+                  </label>
+                </div>
                 <ModelSelectorSlot slot="A" />
               </div>
             {/if}

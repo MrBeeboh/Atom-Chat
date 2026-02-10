@@ -1,6 +1,6 @@
 <script>
   import { get } from 'svelte/store';
-  import { chatError, dashboardModelA, dashboardModelB, dashboardModelC, dashboardModelD, isStreaming, settings, liveTokens, pushTokSample, liveTokPerSec, arenaPanelCount } from '$lib/stores.js';
+  import { chatError, dashboardModelA, dashboardModelB, dashboardModelC, dashboardModelD, isStreaming, settings, liveTokens, pushTokSample, liveTokPerSec, arenaPanelCount, arenaSlotAIsJudge } from '$lib/stores.js';
   import { playClick, playComplete } from '$lib/audio.js';
   import { streamChatCompletion } from '$lib/api.js';
   import ChatInput from '$lib/components/ChatInput.svelte';
@@ -179,15 +179,17 @@
 
     const n = get(arenaPanelCount);
     const slotsActive = ['A', ...(n >= 2 ? ['B'] : []), ...(n >= 3 ? ['C'] : []), ...(n >= 4 ? ['D'] : [])];
-    const selected = [
+    const isJudge = get(arenaSlotAIsJudge);
+    let selected = [
       { slot: 'A', modelId: $dashboardModelA },
       { slot: 'B', modelId: $dashboardModelB },
       { slot: 'C', modelId: $dashboardModelC },
       { slot: 'D', modelId: $dashboardModelD },
     ].filter((s) => s.modelId && slotsActive.includes(s.slot));
+    if (isJudge) selected = selected.filter((s) => s.slot !== 'A');
 
     if (!selected.length) {
-      chatError.set('Select at least one model (A–D) before sending.');
+      chatError.set(isJudge ? 'Select at least one responder (B, C, or D) before sending.' : 'Select at least one model (A–D) before sending.');
       return;
     }
 
@@ -237,6 +239,101 @@
     liveTokens.set(null);
     liveTokPerSec.set(null);
   }
+
+  function contentToText(content) {
+    if (typeof content === 'string') return content;
+    if (Array.isArray(content)) {
+      return content.map((p) => (p?.type === 'text' ? p.text : '')).filter(Boolean).join('\n');
+    }
+    return '';
+  }
+
+  async function runJudgment() {
+    if ($arenaSlotAIsJudge && $isStreaming) return;
+    const judgeId = get(dashboardModelA);
+    if (!judgeId) {
+      chatError.set('Select a model in Slot A to use as judge.');
+      return;
+    }
+    const n = get(arenaPanelCount);
+    const slotsWithResponses = [
+      n >= 2 && messagesB.length ? { slot: 'B', msgs: messagesB } : null,
+      n >= 3 && messagesC.length ? { slot: 'C', msgs: messagesC } : null,
+      n >= 4 && messagesD.length ? { slot: 'D', msgs: messagesD } : null,
+    ].filter(Boolean);
+    if (!slotsWithResponses.length) {
+      chatError.set('Run a prompt with at least one responder (B, C, or D) first.');
+      return;
+    }
+    const lastUserMsg = slotsWithResponses[0].msgs.filter((m) => m.role === 'user').pop();
+    const promptText = lastUserMsg ? contentToText(lastUserMsg.content) : '';
+    const parts = [
+      'You are a judge. A prompt was sent to several models; below are their responses. Rate each response from 1 to 10 (10 = best) and give a brief comment.',
+      '',
+      'PROMPT:',
+      promptText || '(none)',
+    ];
+    for (const { slot, msgs } of slotsWithResponses) {
+      const lastAssistant = [...msgs].reverse().find((m) => m.role === 'assistant');
+      const text = lastAssistant ? contentToText(lastAssistant.content) : '';
+      parts.push('', `RESPONSE ${slot}:`, text || '(no response)');
+    }
+    const judgePrompt = parts.join('\n');
+    chatError.set(null);
+    setRunning('A', true);
+    setSlotError('A', '');
+    const assistantMsgId = generateId();
+    pushMessage('A', {
+      id: assistantMsgId,
+      role: 'assistant',
+      content: '',
+      stats: null,
+      modelId: judgeId,
+      createdAt: Date.now(),
+    });
+    const controller = new AbortController();
+    aborters['A'] = controller;
+    let fullContent = '';
+    try {
+      await streamChatCompletion({
+        model: judgeId,
+        messages: [{ role: 'user', content: judgePrompt }],
+        options: {
+          temperature: $settings.temperature,
+          max_tokens: $settings.max_tokens,
+          top_p: $settings.top_p,
+          top_k: $settings.top_k,
+          repeat_penalty: $settings.repeat_penalty,
+          stop: $settings.stop?.length ? $settings.stop : undefined,
+          ttl: $settings.model_ttl_seconds,
+        },
+        signal: controller.signal,
+        onChunk(chunk) {
+          fullContent += chunk;
+          updateMessage('A', assistantMsgId, { content: fullContent, modelId: judgeId });
+        },
+      });
+      const estimatedTokens = Math.max(1, Math.ceil(fullContent.length / 4));
+      updateMessage('A', assistantMsgId, { content: fullContent, stats: { completion_tokens: estimatedTokens, estimated: true }, modelId: judgeId });
+    } catch (err) {
+      if (err?.name !== 'AbortError') {
+        setSlotError('A', err?.message || 'Judge request failed.');
+      }
+      updateMessage('A', assistantMsgId, { content: fullContent || '', stats: null, modelId: judgeId });
+    } finally {
+      setRunning('A', false);
+      aborters['A'] = null;
+    }
+  }
+
+  const canRunJudgment = $derived(
+    $arenaSlotAIsJudge &&
+    $dashboardModelA &&
+    !$isStreaming &&
+    (($arenaPanelCount >= 2 && messagesB.length > 0) ||
+     ($arenaPanelCount >= 3 && messagesC.length > 0) ||
+     ($arenaPanelCount >= 4 && messagesD.length > 0))
+  );
 
   function lastTps(msgs) {
     const last = [...(msgs || [])].reverse().find((m) => m.role === 'assistant' && m.stats);
@@ -336,7 +433,7 @@
     <div class="flex flex-col min-h-0 h-full overflow-hidden rounded-xl border atom-panel-wrap" style="border-color: var(--ui-border); background-color: var(--ui-bg-main);" in:fly={{ x: 200, duration: 800, easing: quintOut }}>
       <div class="shrink-0 px-3 py-2 border-b" style="border-color: var(--ui-border);">
         <div class="flex items-center justify-between gap-2">
-          <span class="text-xs font-medium" style="color: var(--ui-text-secondary);">Model A</span>
+          <span class="text-xs font-medium" style="color: var(--ui-text-secondary);">Model A{$arenaSlotAIsJudge ? ' (Judge)' : ''}</span>
           <div class="flex items-center gap-1">
             {#if running.A}<span class="text-xs" style="color: var(--ui-accent);">Running…</span>{:else if tpsA}{@const c = Number(tpsA) >= 40 ? 'var(--atom-teal)' : Number(tpsA) >= 20 ? 'var(--atom-amber)' : 'var(--atom-accent)'}<span class="text-[10px] font-mono px-1.5 py-0.5 rounded" style="background: color-mix(in srgb, {c} 20%, transparent); color: {c};">{tpsA} t/s</span>{/if}
             {#if messagesA.length > 0}
@@ -350,6 +447,8 @@
       <div class="flex-1 min-h-0 h-full overflow-y-auto p-3 overscroll-contain">
         {#if !$dashboardModelA}
           <div class="text-sm" style="color: var(--ui-text-secondary);">Select a model to start.</div>
+        {:else if $arenaSlotAIsJudge && messagesA.length === 0}
+          <div class="text-sm" style="color: var(--ui-text-secondary);">Judge — run a prompt so B/C/D respond, then click <strong>Judgment time</strong> below.</div>
         {:else if messagesA.length === 0}
           <div class="text-sm" style="color: var(--ui-text-secondary);">No responses yet.</div>
         {:else}
@@ -505,6 +604,17 @@
           <span>Sequential (lower VRAM/CPU)</span>
         </label>
         <span class="text-xs">Parallel runs all models at once and uses more resources.</span>
+        {#if $arenaSlotAIsJudge}
+          <button
+            type="button"
+            class="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-50"
+            style="background-color: var(--ui-accent); color: var(--ui-bg-main);"
+            disabled={!canRunJudgment}
+            onclick={() => { if (canRunJudgment) runJudgment(); }}
+          >
+            Judgment time
+          </button>
+        {/if}
       </div>
       <ChatInput
         onSend={sendUserMessage}

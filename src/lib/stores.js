@@ -267,6 +267,13 @@ if (typeof localStorage !== 'undefined') {
   arenaPanelCount.subscribe((v) => localStorage.setItem('arenaPanelCount', String(v >= 1 && v <= 4 ? v : 3)));
 }
 
+/** Arena: when true, Slot A is the judge — it does not answer the prompt; use "Judgment time" to rate B/C/D. */
+const arenaSlotAIsJudgeStored = () => readBool('arenaSlotAIsJudge', false);
+export const arenaSlotAIsJudge = writable(arenaSlotAIsJudgeStored());
+if (typeof localStorage !== 'undefined') {
+  arenaSlotAIsJudge.subscribe((v) => localStorage.setItem('arenaSlotAIsJudge', v ? '1' : '0'));
+}
+
 /** Floating metrics dashboard: open, minimized, position { x, y }. */
 function getFloatingMetricsState() {
   if (typeof localStorage === 'undefined') return { open: true, minimized: false, x: 24, y: 24 };
