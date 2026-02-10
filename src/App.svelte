@@ -187,30 +187,18 @@
           </div>
         {/if}
         <div class="flex-1 flex flex-col min-w-0">
-          <div class="grid gap-2 p-2 border-b" style="border-color: var(--ui-border); grid-template-columns: repeat({$arenaPanelCount}, minmax(0, 1fr));">
+          <div class="grid gap-4 px-4 pt-3 pb-2" style="grid-template-columns: repeat({$arenaPanelCount}, minmax(0, 1fr));">
             {#if $arenaPanelCount >= 1}
-              <div class="rounded-lg border p-2 flex flex-col gap-1.5" style="border-color: var(--ui-border); background-color: var(--ui-input-bg);">
-                <span class="text-xs font-medium" style="color: var(--ui-text-secondary);">Model A</span>
-                <ModelSelectorSlot slot="A" />
-              </div>
+              <div class="min-w-0"><ModelSelectorSlot slot="A" /></div>
             {/if}
             {#if $arenaPanelCount >= 2}
-              <div class="rounded-lg border p-2 flex flex-col gap-1.5" style="border-color: var(--ui-border); background-color: var(--ui-input-bg);">
-                <span class="text-xs font-medium" style="color: var(--ui-text-secondary);">Model B</span>
-                <ModelSelectorSlot slot="B" />
-              </div>
+              <div class="min-w-0"><ModelSelectorSlot slot="B" /></div>
             {/if}
             {#if $arenaPanelCount >= 3}
-              <div class="rounded-lg border p-2 flex flex-col gap-1.5" style="border-color: var(--ui-border); background-color: var(--ui-input-bg);">
-                <span class="text-xs font-medium" style="color: var(--ui-text-secondary);">Model C</span>
-                <ModelSelectorSlot slot="C" />
-              </div>
+              <div class="min-w-0"><ModelSelectorSlot slot="C" /></div>
             {/if}
             {#if $arenaPanelCount >= 4}
-              <div class="rounded-lg border p-2 flex flex-col gap-1.5" style="border-color: var(--ui-border); background-color: var(--ui-input-bg);">
-                <span class="text-xs font-medium" style="color: var(--ui-text-secondary);">Model D</span>
-                <ModelSelectorSlot slot="D" />
-              </div>
+              <div class="min-w-0"><ModelSelectorSlot slot="D" /></div>
             {/if}
           </div>
           <div class="flex-1 min-h-0 h-full"><DashboardArena /></div>
