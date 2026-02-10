@@ -1,0 +1,13 @@
+# Voice-to-text server (insanely-fast-whisper stack: Transformers + Whisper)
+# Use a venv: python -m venv .venv && .venv\Scripts\activate (Windows) or source .venv/bin/activate (Unix)
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+python-multipart>=0.0.6
+# Whisper via Transformers (same stack as insanely-fast-whisper). Default model is smaller to avoid OOM.
+torch>=2.0.0
+transformers>=4.36.0
+optimum>=1.14.0
+accelerate>=0.25.0
+# Audio loading
+librosa>=0.10.0
+soundfile>=0.12.0

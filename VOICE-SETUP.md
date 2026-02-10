@@ -1,34 +1,35 @@
-# Voice Bridge – run from this folder
+# Voice-to-text (insanely-fast-whisper backend)
 
-The mic (Voice Bridge) only works if you run the app **from this project folder**.
+The **mic button** in the chat input sends recorded audio to a **local Python server** that uses the same stack as insanely-fast-whisper (Transformers + Whisper). No browser-based speech recognition.
 
-## 1. Use this folder
+## 1. Run the voice server
 
-- **Project path:** `c:\CURSOR\lm-studio-ui` (or wherever this repo lives).
-- Open this folder in Cursor and run commands in a terminal **inside this folder**.
-
-## 2. Install and run
+From the project folder:
 
 ```bash
-cd c:\CURSOR\lm-studio-ui
-npm install
-npm run dev
+cd voice-server
+python -m venv .venv
+.venv\Scripts\activate    # Windows
+pip install -r requirements.txt
+uvicorn app:app --host 0.0.0.0 --port 8765
 ```
 
-- `npm install` runs `postinstall`, which copies ONNX runtime files into `public/ort/`.
-- If you ever see "no available backend" or "ort-wasm-simd-threaded.mjs", run:
+See **voice-server/README.md** for details (smaller model, limits, options).
+
+## 2. Use the mic in ATOM UI
+
+- Start the frontend: `npm run dev` (or use `start_atom_ui.bat`).
+- Open **Settings** → **Voice-to-text server** should be `http://localhost:8765` (default).
+- In the chat input bar, click the **mic** (🎤). Click again to stop recording; the server will transcribe and insert text into the input.
+
+## 3. If something goes wrong
+
+- **Mic shows an error:** Make sure the voice server is running on port 8765 and the URL in Settings is correct.
+- **Server OOM / crash:** Use a smaller model: `set WHISPER_MODEL=openai/whisper-base` (see voice-server/README.md).
+- **Revert the whole voice feature:**  
+  Git was marked before adding voice. To go back:
   ```bash
-  npm run copy-ort
+  git log --oneline
+  git reset --hard <REVERT_POINT_COMMIT>
   ```
-
-## 3. Open the app in the browser
-
-- Go to **http://localhost:5173** (the URL printed by `npm run dev`).
-- Do **not** open the app from a different path (e.g. another clone on OneDrive or another drive). Use the same folder where you ran `npm run dev`.
-
-## 4. Use the mic
-
-- Click the **mic** in the chat input bar or the **mic icon** in the header.
-- The Voice Bridge modal opens. Wait for "Neural engine ready", then click the big mic and speak.
-
-If you run `npm run dev` from a **different** folder (e.g. a copy of the project elsewhere), that other folder may not have `public/ort/` or the latest code, and the Voice Bridge will keep failing with the same error.
+  The revert-point commit message is: **"REVERT POINT: before voice-to-text (insanely-fast-whisper). Revert to this if voice feature causes issues."**

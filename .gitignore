@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Voice server Python venv and cache
+voice-server/.venv
+voice-server/__pycache__/

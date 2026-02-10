@@ -81,6 +81,13 @@ if (typeof localStorage !== 'undefined') {
   lmStudioBaseUrl.subscribe((v) => localStorage.setItem('lmStudioBaseUrl', v ?? ''));
 }
 
+/** Voice-to-text server URL (e.g. http://localhost:8765). Empty = voice mic disabled. */
+const getStoredVoiceServerUrl = () => (typeof localStorage !== 'undefined' ? localStorage.getItem('voiceServerUrl') : null) ?? 'http://localhost:8765';
+export const voiceServerUrl = writable(getStoredVoiceServerUrl());
+if (typeof localStorage !== 'undefined') {
+  voiceServerUrl.subscribe((v) => localStorage.setItem('voiceServerUrl', v ?? ''));
+}
+
 /** Layout: cockpit | arena only (restore point). Old layouts migrate to cockpit. */
 const OLD_TO_NEW_LAYOUT = {
   default: 'cockpit',
