@@ -256,9 +256,6 @@ export const liveTokPerSec = writable(null);
 /** Rolling 60s sparkline of tokens/sec */
 export const tokSeries = writable([]);
 
-/** System metrics for floating panel: { vramUsedGb, vramTotalGb, dramUsedGb, dramTotalGb } or null. Set by metrics_server.py polling. */
-export const systemMetrics = writable(null);
-
 /** Dynamic UI: Performance mode disables gradient bg and heavy animations. */
 export const performanceMode = writable(readBool('performanceMode', false));
 if (typeof localStorage !== 'undefined') {
