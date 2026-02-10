@@ -141,14 +141,6 @@
     setTimeout(() => (copiedLabel = null), 2000);
   }
 
-  const lastEightMessages = $derived(($activeMessages || []).slice(-8));
-  const tokenEstimates = $derived(
-    lastEightMessages.map((m) => {
-      const text = typeof m.content === 'string' ? m.content : (m.content?.find?.((p) => p.type === 'text')?.text ?? '');
-      return Math.ceil((text?.length ?? 0) / 4);
-    })
-  );
-
   const responseTimeSec =
     $lastResponseTokens != null && $lastResponseTokPerSec != null && $lastResponseTokPerSec > 0
       ? ($lastResponseTokens / $lastResponseTokPerSec).toFixed(1)
@@ -193,7 +185,7 @@
     </section>
 
     <section
-      class="nexus-panel nexus-chat rounded-lg border-2 overflow-hidden flex flex-col min-h-0 md:col-span-1"
+      class="nexus-panel nexus-chat rounded-lg border-2 overflow-hidden flex flex-col min-h-0 md:col-span-1 md:row-span-2"
       style="border-color: var(--ui-border); background-color: var(--ui-bg-primary);"
       aria-label="Chat Panel"
     >
@@ -328,38 +320,6 @@
           {/each}
         </ul>
         <p class="text-[10px] mt-2" style="color: var(--ui-text-secondary);">Click to copy; paste into input below.</p>
-      </div>
-    </section>
-
-    <section
-      class="nexus-panel rounded-lg border-2 overflow-hidden flex flex-col min-h-0 md:col-span-1"
-      style="border-color: var(--ui-border); background-color: var(--ui-bg-primary);"
-      aria-label="Visualization"
-    >
-      <h3 class="shrink-0 px-3 py-2 text-xs font-medium uppercase tracking-wide border-b" style="border-color: var(--ui-border); color: var(--ui-text-secondary);">
-        Token usage (last 8 messages)
-      </h3>
-      <div class="p-3 overflow-auto">
-        {#if tokenEstimates.length === 0}
-          <p class="text-xs" style="color: var(--ui-text-secondary);">No messages yet.</p>
-        {:else}
-          <table class="w-full text-xs" style="color: var(--ui-text-primary);">
-            <thead>
-              <tr style="color: var(--ui-text-secondary);">
-                <th class="text-left py-0.5">#</th>
-                <th class="text-right py-0.5">Est. tokens</th>
-              </tr>
-            </thead>
-            <tbody>
-              {#each tokenEstimates as est, i}
-                <tr>
-                  <td class="py-0.5">{lastEightMessages.length - tokenEstimates.length + i + 1}</td>
-                  <td class="text-right font-mono py-0.5">{est}</td>
-                </tr>
-              {/each}
-            </tbody>
-          </table>
-        {/if}
       </div>
     </section>
 
