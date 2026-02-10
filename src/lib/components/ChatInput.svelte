@@ -3,7 +3,8 @@
   import { isStreaming, voiceServerUrl, pendingDroppedFiles } from '$lib/stores.js';
   import { pdfToImageDataUrls } from '$lib/pdfToImages.js';
 
-  let { onSend, onStop } = $props();
+  let { onSend, onStop, placeholder: placeholderOverride = undefined } = $props();
+  const placeholderText = $derived(placeholderOverride ?? 'Type your message or drop/paste images or PDFs... (Ctrl+Enter to send)');
   let text = $state('');
   let textareaEl = $state(null);
   let fileInputEl = $state(/** @type {HTMLInputElement | null} */ (null));
@@ -147,7 +148,10 @@
 
   $effect(() => {
     text;
-    if (textareaEl) return requestAnimationFrame(autoResize);
+    if (textareaEl) {
+      const id = requestAnimationFrame(autoResize);
+      return () => cancelAnimationFrame(id);
+    }
   });
 
   function stopRecording() {
@@ -314,7 +318,7 @@
       oninput={autoResize}
       onpaste={onPaste}
       disabled={$isStreaming ? true : null}
-      placeholder="Type your message or drop/paste images or PDFs... (Ctrl+Enter to send)"
+      placeholder={placeholderText}
       rows="1"
     ></textarea>
   </div>

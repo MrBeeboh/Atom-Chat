@@ -122,9 +122,10 @@
 >
   {#if convId}
     {#if $activeMessages.length === 0}
-      <div class="flex-1 flex flex-col items-center justify-center px-4 py-8">
-        <div class="w-full max-w-2xl mx-auto text-center">
-          <h1 class="text-2xl md:text-3xl font-semibold mb-6" style="color: var(--ui-text-primary);">What can I help with?</h1>
+      <!-- Perplexity-style: centered start-chat with input in the middle, generous width so placeholder fits -->
+      <div class="flex-1 flex flex-col items-center justify-center px-4 py-8 min-h-0">
+        <div class="w-full max-w-[min(700px,92%)] mx-auto flex flex-col items-center">
+          <h1 class="text-2xl md:text-3xl font-semibold mb-6 text-center" style="color: var(--ui-text-primary);">What can I help with?</h1>
           <div class="flex flex-wrap justify-center gap-2 mb-6">
             {#each ['Explain this concept simply', 'Write a short story', 'Help me debug code', 'Summarize in 3 bullet points'] as suggestion}
               <button
@@ -136,14 +137,22 @@
             {/each}
           </div>
           {#if $chatError}
-            <div class="mb-4 px-3 py-2 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-sm flex items-center justify-between gap-2">
+            <div class="mb-4 w-full px-3 py-2 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-sm flex items-center justify-between gap-2">
               <span>{$chatError}</span>
               <button type="button" class="shrink-0 p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/30" onclick={() => chatError.set(null)} aria-label="Dismiss">×</button>
             </div>
           {/if}
+          <div class="w-full min-w-0">
+            <ChatInput
+              onSend={sendUserMessage}
+              onStop={() => {}}
+              placeholder="Ask anything. Type or paste here... (Ctrl+Enter to send)"
+            />
+          </div>
         </div>
       </div>
     {:else}
+      <!-- After first message: messages above, input fixed at bottom -->
       <div class="shrink-0 flex items-center gap-2 px-4 py-2 border-b border-zinc-200/60 dark:border-zinc-800/80 bg-zinc-50/50 dark:bg-zinc-900/30">
         <div class="max-w-3xl mx-auto w-full flex flex-wrap items-center gap-2">
           <button type="button" class="text-xs px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-600 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-400 transition-colors" onclick={clearChat} title="Clear all messages">Clear</button>
@@ -152,18 +161,18 @@
       <div class="flex-1 overflow-y-auto">
         <MessageList />
       </div>
-    {/if}
-    <div class="shrink-0 border-t border-zinc-200/60 dark:border-zinc-800/80 p-4" style="background-color: var(--ui-bg-main);">
-      <div class="max-w-3xl mx-auto">
-        {#if $chatError && $activeMessages.length > 0}
-          <div class="mb-3 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-sm flex items-center justify-between gap-2">
-            <span>{$chatError}</span>
-            <button type="button" class="shrink-0 p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/30" onclick={() => chatError.set(null)} aria-label="Dismiss">×</button>
-          </div>
-        {/if}
-        <ChatInput onSend={sendUserMessage} />
+      <div class="shrink-0 border-t border-zinc-200/60 dark:border-zinc-800/80 p-4" style="background-color: var(--ui-bg-main);">
+        <div class="max-w-3xl mx-auto">
+          {#if $chatError}
+            <div class="mb-3 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-sm flex items-center justify-between gap-2">
+              <span>{$chatError}</span>
+              <button type="button" class="shrink-0 p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/30" onclick={() => chatError.set(null)} aria-label="Dismiss">×</button>
+            </div>
+          {/if}
+          <ChatInput onSend={sendUserMessage} onStop={() => {}} />
+        </div>
       </div>
-    </div>
+    {/if}
   {:else}
     <div class="flex-1 flex items-center justify-center p-8">
       <div class="text-center max-w-sm">
