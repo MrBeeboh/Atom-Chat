@@ -178,14 +178,34 @@
           <span class="text-[10px] uppercase text-zinc-500 dark:text-zinc-400">All 0–100%</span>
           <span class="text-[9px] text-zinc-400 dark:text-zinc-500">Tok · VRAM · GPU · RAM · CPU</span>
         </div>
-        <div class="relative" role="img" aria-label="Unified metrics sparkline">
+        <div class="relative" role="img" aria-label="Metrics graph (time vs 0–100%)">
           <svg width={w} height={h} class="block" style="overflow: visible;">
+            <defs>
+              <style>
+                .metrics-axis { stroke: var(--metrics-axis, #d4d4d4); stroke-width: 1; }
+                .metrics-grid { stroke: var(--metrics-grid, #e5e5e5); stroke-width: 0.5; }
+              </style>
+            </defs>
+            <!-- Y axis (left): 0–100% -->
+            <line x1="0" y1="0" x2="0" y2={h} class="metrics-axis" />
+            <!-- X axis (bottom): time -->
+            <line x1="0" y1={h} x2={w} y2={h} class="metrics-axis" />
+            <!-- Horizontal grid (25%, 50%, 75%) -->
+            <line x1="0" y1={h * 0.25} x2={w} y2={h * 0.25} class="metrics-grid" />
+            <line x1="0" y1={h * 0.5} x2={w} y2={h * 0.5} class="metrics-grid" />
+            <line x1="0" y1={h * 0.75} x2={w} y2={h * 0.75} class="metrics-grid" />
+            <!-- Vertical grid (25%, 50%, 75% of time) -->
+            <line x1={w * 0.25} y1="0" x2={w * 0.25} y2={h} class="metrics-grid" />
+            <line x1={w * 0.5} y1="0" x2={w * 0.5} y2={h} class="metrics-grid" />
+            <line x1={w * 0.75} y1="0" x2={w * 0.75} y2={h} class="metrics-grid" />
+            <!-- Data lines (on top of grid) -->
             <polyline fill="none" stroke="var(--atom-teal)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" points={pathTok} />
             <polyline fill="none" stroke="var(--atom-amber, #f59e0b)" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" points={pathVram} />
             <polyline fill="none" stroke="#ef4444" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" points={pathGpu} />
             <polyline fill="none" stroke="#3b82f6" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" points={pathRam} />
             <polyline fill="none" stroke="#22c55e" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" points={pathCpu} />
           </svg>
+          <p class="text-[9px] text-zinc-400 dark:text-zinc-500 mt-0.5">Y: 0–100% · X: time (newest right)</p>
         </div>
         <div class="flex items-center gap-2 mb-0.5">
           <span class="text-[10px] uppercase text-zinc-500 dark:text-zinc-400">Tokens/s</span>
