@@ -8,7 +8,10 @@
     tokSeries,
     liveTokPerSec,
     lastResponseTokPerSec,
+    systemMetrics,
   } from '$lib/stores.js';
+  import { get } from 'svelte/store';
+  import { fetchSystemMetrics } from '$lib/api.js';
 
   let pos = $state({ x: 24, y: 24 });
   let dragStart = $state(null);
@@ -26,8 +29,8 @@
   }
   function onMove(e) {
     if (!dragStart) return;
-    const panelW = $floatingMetricsMinimized ? 200 : 220;
-    const panelH = $floatingMetricsMinimized ? 36 : 140;
+    const panelW = $floatingMetricsMinimized ? 200 : 240;
+    const panelH = $floatingMetricsMinimized ? 36 : 180;
     const x = Math.max(0, Math.min(e.clientX - dragStart.x, window.innerWidth - panelW));
     const y = Math.max(0, Math.min(e.clientY - dragStart.y, window.innerHeight - panelH));
     floatingMetricsPosition.set({ x, y });
@@ -52,6 +55,23 @@
   $effect(() => {
     const unsub = tokSeries.subscribe((v) => (seriesArr = Array.isArray(v) ? v : []));
     return () => unsub();
+  });
+
+  $effect(() => {
+    let cancelled = false;
+    function tick() {
+      if (cancelled) return;
+      if (!get(floatingMetricsOpen) || get(floatingMetricsMinimized)) return;
+      fetchSystemMetrics().then((m) => {
+        if (!cancelled) systemMetrics.set(m);
+      });
+    }
+    tick();
+    const id = setInterval(tick, 2500);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
   });
   const maxVal = $derived(Math.max(1, ...seriesArr));
   const w = 180;
@@ -95,7 +115,7 @@
     style="
       left: {pos.x}px;
       top: {pos.y}px;
-      width: {$floatingMetricsMinimized ? '200px' : '220px'};
+      width: {$floatingMetricsMinimized ? '200px' : '240px'};
       height: {$floatingMetricsMinimized ? '36px' : 'auto'};
       background-color: var(--ui-bg-sidebar);
       border-color: var(--ui-border);
@@ -135,8 +155,8 @@
       </div>
     </div>
     {#if !$floatingMetricsMinimized}
-      <div class="p-2 border-t border-zinc-200/60 dark:border-zinc-700/60" style="border-color: var(--ui-border);">
-        <div class="flex items-center gap-2 mb-1">
+      <div class="p-2 border-t border-zinc-200/60 dark:border-zinc-700/60 space-y-2" style="border-color: var(--ui-border);">
+        <div class="flex items-center justify-between gap-2">
           <span class="text-[10px] uppercase text-zinc-500 dark:text-zinc-400">tok/s</span>
           <span class="text-sm font-mono font-semibold" style="color: var(--atom-teal);">
             {$liveTokPerSec != null ? $liveTokPerSec.toFixed(1) : $lastResponseTokPerSec != null ? $lastResponseTokPerSec.toFixed(1) : '—'}
@@ -177,6 +197,20 @@
               {Number(seriesArr[hoveredIdx]).toFixed(1)} t/s
             </div>
           {/if}
+        </div>
+        <div class="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-[10px] font-mono">
+          <span class="uppercase text-zinc-500 dark:text-zinc-400">VRAM</span>
+          <span class="truncate" style="color: var(--atom-amber, #f59e0b);" title="GPU memory. Set metricsEndpointUrl to supply.">
+            {$systemMetrics?.vramUsedGb != null || $systemMetrics?.vramTotalGb != null
+              ? [$systemMetrics?.vramUsedGb?.toFixed(1), $systemMetrics?.vramTotalGb?.toFixed(1)].filter(Boolean).join(' / ') + ' GB'
+              : '—'}
+          </span>
+          <span class="uppercase text-zinc-500 dark:text-zinc-400">DRAM</span>
+          <span class="truncate" style="color: var(--atom-blue, #3b82f6);" title="System RAM. Set metricsEndpointUrl to supply.">
+            {$systemMetrics?.dramUsedGb != null || $systemMetrics?.dramTotalGb != null
+              ? [$systemMetrics?.dramUsedGb?.toFixed(1), $systemMetrics?.dramTotalGb?.toFixed(1)].filter(Boolean).join(' / ') + ' GB'
+              : '—'}
+          </span>
         </div>
       </div>
     {/if}

@@ -227,3 +227,42 @@ export async function streamChatCompletion({ model, messages, options = {}, onCh
     throw err;
   }
 }
+
+/**
+ * Fetch system metrics (VRAM, DRAM) from an optional endpoint for the floating metrics panel.
+ * Set localStorage 'metricsEndpointUrl' to a full URL (e.g. http://localhost:8766/metrics) that returns
+ * JSON: { vram_used_gb?, vram_total_gb?, dram_used_gb?, dram_total_gb? }. If not set, tries base + '/api/v1/system'.
+ * @returns {Promise<{ vramUsedGb: number, vramTotalGb: number, dramUsedGb: number, dramTotalGb: number } | null>}
+ */
+export async function fetchSystemMetrics() {
+  let url;
+  if (typeof localStorage !== 'undefined') {
+    const custom = localStorage.getItem('metricsEndpointUrl');
+    if (custom != null && String(custom).trim() !== '') {
+      url = String(custom).trim();
+    }
+  }
+  if (!url) url = `${getLmStudioBase()}/api/v1/system`;
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 3000);
+  try {
+    const res = await fetch(url, { signal: ctrl.signal });
+    clearTimeout(t);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const vramUsed = Number(data.vram_used_gb ?? data.vramUsedGb);
+    const vramTotal = Number(data.vram_total_gb ?? data.vramTotalGb);
+    const dramUsed = Number(data.dram_used_gb ?? data.dramUsedGb);
+    const dramTotal = Number(data.dram_total_gb ?? data.dramTotalGb);
+    if (!Number.isFinite(vramUsed) && !Number.isFinite(vramTotal) && !Number.isFinite(dramUsed) && !Number.isFinite(dramTotal)) return null;
+    return {
+      vramUsedGb: Number.isFinite(vramUsed) ? vramUsed : null,
+      vramTotalGb: Number.isFinite(vramTotal) ? vramTotal : null,
+      dramUsedGb: Number.isFinite(dramUsed) ? dramUsed : null,
+      dramTotalGb: Number.isFinite(dramTotal) ? dramTotal : null,
+    };
+  } catch {
+    clearTimeout(t);
+    return null;
+  }
+}
