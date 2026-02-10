@@ -268,15 +268,16 @@
     const lastUserMsg = slotsWithResponses[0].msgs.filter((m) => m.role === 'user').pop();
     const promptText = lastUserMsg ? contentToText(lastUserMsg.content) : '';
     const parts = [
-      'You are a judge. A prompt was sent to several models; below are their responses. Rate each response from 1 to 10 (10 = best) and give a brief comment.',
+      'You are a judge. Rate each model response below from 1 to 10 (10 = best) and add one short comment. If a response is missing or says "(no response)", rate it 0 and say "No response."',
       '',
-      'PROMPT:',
+      '--- ORIGINAL PROMPT ---',
       promptText || '(none)',
+      '',
     ];
     for (const { slot, msgs } of slotsWithResponses) {
       const lastAssistant = [...msgs].reverse().find((m) => m.role === 'assistant');
       const text = lastAssistant ? contentToText(lastAssistant.content) : '';
-      parts.push('', `RESPONSE ${slot}:`, text || '(no response)');
+      parts.push(`--- MODEL ${slot} ---`, text.trim() || '(no response)', '');
     }
     const judgePrompt = parts.join('\n');
     chatError.set(null);
