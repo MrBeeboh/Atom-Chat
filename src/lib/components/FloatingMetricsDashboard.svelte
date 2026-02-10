@@ -24,8 +24,10 @@
   }
   function onMove(e) {
     if (!dragStart) return;
-    const x = Math.max(0, e.clientX - dragStart.x);
-    const y = Math.max(0, e.clientY - dragStart.y);
+    const panelW = $floatingMetricsMinimized ? 200 : 220;
+    const panelH = $floatingMetricsMinimized ? 36 : 140;
+    const x = Math.max(0, Math.min(e.clientX - dragStart.x, window.innerWidth - panelW));
+    const y = Math.max(0, Math.min(e.clientY - dragStart.y, window.innerHeight - panelH));
     floatingMetricsPosition.set({ x, y });
   }
   function endDrag() {
@@ -43,6 +45,7 @@
     };
   });
 
+  let hoveredIdx = $state(-1);
   let seriesArr = $state([]);
   $effect(() => {
     const unsub = tokSeries.subscribe((v) => (seriesArr = Array.isArray(v) ? v : []));
@@ -121,16 +124,42 @@
             {$liveTokPerSec != null ? $liveTokPerSec.toFixed(1) : $lastResponseTokPerSec != null ? $lastResponseTokPerSec.toFixed(1) : '—'}
           </span>
         </div>
-        <svg width={w} height={h} class="block" aria-hidden="true">
-          <polyline
-            fill="none"
-            stroke="var(--atom-teal)"
-            stroke-width="1.5"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            points={pathPoints}
-          />
-        </svg>
+        <div class="relative" role="img" aria-label="Tokens per second sparkline">
+          <svg
+            width={w}
+            height={h}
+            class="block"
+            role="img"
+            onmousemove={(e) => {
+              if (!seriesArr.length) { hoveredIdx = -1; return; }
+              const rect = e.currentTarget.getBoundingClientRect();
+              const xRatio = Math.max(0, Math.min(1, (e.clientX - rect.left) / w));
+              hoveredIdx = Math.round(xRatio * (seriesArr.length - 1));
+            }}
+            onmouseleave={() => (hoveredIdx = -1)}>
+            <polyline
+              fill="none"
+              stroke="var(--atom-teal)"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              points={pathPoints}
+            />
+            {#if hoveredIdx >= 0 && hoveredIdx < seriesArr.length}
+              {@const hx = (hoveredIdx / Math.max(1, seriesArr.length - 1)) * w}
+              {@const hy = h - (Number(seriesArr[hoveredIdx]) / maxVal) * h}
+              <circle cx={hx} cy={hy} r="3" fill="var(--atom-teal)" />
+            {/if}
+          </svg>
+          {#if hoveredIdx >= 0 && hoveredIdx < seriesArr.length}
+            {@const hx = (hoveredIdx / Math.max(1, seriesArr.length - 1)) * w}
+            <div
+              class="absolute pointer-events-none rounded px-1.5 py-0.5 text-[10px] font-mono whitespace-nowrap shadow"
+              style="left: {Math.min(hx, w - 50)}px; bottom: {h + 4}px; background: var(--ui-bg-main); color: var(--atom-teal); border: 1px solid var(--ui-border);">
+              {Number(seriesArr[hoveredIdx]).toFixed(1)} t/s
+            </div>
+          {/if}
+        </div>
       </div>
     {/if}
   </div>

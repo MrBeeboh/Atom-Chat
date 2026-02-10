@@ -1,6 +1,6 @@
 <script>
-  import { onMount, tick } from 'svelte';
-  import { models, dashboardModelA, dashboardModelB, dashboardModelC, dashboardModelD, updateSettings, hardware } from '$lib/stores.js';
+  import { tick } from 'svelte';
+  import { models, dashboardModelA, dashboardModelB, dashboardModelC, dashboardModelD, updateSettings, hardware, lmStudioBaseUrl } from '$lib/stores.js';
   import { getModels } from '$lib/api.js';
   import { getModelIcon, getQuantization, ensureModelIcons, modelIconOverrides } from '$lib/modelIcons.js';
   import { getDefaultsForModel } from '$lib/modelDefaults.js';
@@ -53,8 +53,9 @@
     }
   }
 
-  onMount(() => {
-    if ($models.length === 0) loadModels();
+  $effect(() => {
+    $lmStudioBaseUrl;
+    loadModels();
   });
 
   function toggle() {

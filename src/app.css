@@ -197,8 +197,10 @@ body {
     transform: translateY(0);
   }
 }
+/* Message entrance: handled by Svelte in:fly on MessageBubble (see MessageBubble.svelte).
+   Class kept for any layout; animation removed so Svelte transition is visible. */
 .message-entrance {
-  animation: message-entrance 0.25s ease-out;
+  /* was: animation: message-entrance 0.25s ease-out; */
 }
 
 /* Cockpit Intel panel: slide in from right */
@@ -978,6 +980,11 @@ body {
 @keyframes atom-gradient-drift {
   0%, 100% { background-position: 0% 50%; }
   50% { background-position: 100% 50%; }
+}
+
+/* ── Theme-aware accent for checkboxes and sliders ── */
+.accent-themed {
+  accent-color: var(--ui-accent);
 }
 
 /* Reduced motion: disable or shorten animations */

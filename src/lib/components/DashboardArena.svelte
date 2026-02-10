@@ -6,6 +6,8 @@
   import ChatInput from '$lib/components/ChatInput.svelte';
   import MessageBubble from '$lib/components/MessageBubble.svelte';
   import { generateId } from '$lib/utils.js';
+  import { fly } from 'svelte/transition';
+  import { quintOut } from 'svelte/easing';
 
   let messagesA = $state([]);
   let messagesB = $state([]);
@@ -75,7 +77,7 @@
     return apiMessages;
   }
 
-  async function sendToSlot(slot, modelId, content) {
+  async function sendToSlot(slot, modelId, content, onStreamDone) {
     setRunning(slot, true);
     setSlotError(slot, '');
 
@@ -121,6 +123,11 @@
           ttl: $settings.model_ttl_seconds,
         },
         signal: controller.signal,
+        onDone() {
+          setRunning(slot, false);
+          if (typeof console !== 'undefined' && console.log) console.log('[DashboardArena] Stream completed (onDone), slot', slot);
+          onStreamDone?.();
+        },
         onChunk(chunk) {
           fullContent += chunk;
           if (detectLoop(fullContent)) {
@@ -195,13 +202,24 @@
     const currentRun = runId;
     liveTokens.set(0);
     isStreaming.set(true);
+    if (typeof console !== 'undefined' && console.log) console.log('[DashboardArena] Stream started, slots:', selected.length);
+    let streamDoneCount = 0;
+    const onStreamDone = () => {
+      streamDoneCount += 1;
+      if (streamDoneCount >= selected.length) {
+        isStreaming.set(false);
+        liveTokens.set(null);
+        liveTokPerSec.set(null);
+        if (typeof console !== 'undefined' && console.log) console.log('[DashboardArena] All streams completed, isStreaming set to false');
+      }
+    };
     if (sequential) {
       for (const s of selected) {
         if (runId !== currentRun) break;
-        await sendToSlot(s.slot, s.modelId, content);
+        await sendToSlot(s.slot, s.modelId, content, onStreamDone);
       }
     } else {
-      await Promise.allSettled(selected.map((s) => sendToSlot(s.slot, s.modelId, content)));
+      await Promise.allSettled(selected.map((s) => sendToSlot(s.slot, s.modelId, content, onStreamDone)));
     }
     isStreaming.set(false);
     liveTokens.set(null);
@@ -231,18 +249,100 @@
   const tpsB = $derived(lastTps(messagesB));
   const tpsC = $derived(lastTps(messagesC));
   const tpsD = $derived(lastTps(messagesD));
+
+  /* ── Resizable panel widths (percentages) ── */
+  function loadPanelWidths() {
+    if (typeof localStorage === 'undefined') return [25, 25, 25, 25];
+    try { const r = JSON.parse(localStorage.getItem('arenaPanelWidths') || '[]'); return r.length === 4 ? r : [25, 25, 25, 25]; } catch { return [25, 25, 25, 25]; }
+  }
+  let panelWidths = $state(loadPanelWidths());
+  function savePanelWidths() {
+    if (typeof localStorage !== 'undefined') localStorage.setItem('arenaPanelWidths', JSON.stringify(panelWidths));
+  }
+  const gridCols = $derived.by(() => {
+    const n = $arenaPanelCount;
+    const ws = panelWidths.slice(0, n);
+    const sum = ws.reduce((a, b) => a + b, 0) || 100;
+    return ws.map((w) => (w / sum * 100).toFixed(2) + '%').join(' ');
+  });
+
+  let resizing = $state(-1);
+  let resizeStartX = $state(0);
+  let resizeStartWidths = $state([]);
+  let gridEl = $state(null);
+
+  function startResize(index, e) {
+    resizing = index;
+    resizeStartX = e.clientX;
+    resizeStartWidths = [...panelWidths];
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }
+  function onResizeMove(e) {
+    if (resizing < 0 || !gridEl) return;
+    const totalW = gridEl.getBoundingClientRect().width;
+    const deltaPct = ((e.clientX - resizeStartX) / totalW) * 100;
+    const left = Math.max(10, resizeStartWidths[resizing] + deltaPct);
+    const right = Math.max(10, resizeStartWidths[resizing + 1] - deltaPct);
+    panelWidths[resizing] = left;
+    panelWidths[resizing + 1] = right;
+  }
+  function endResize() {
+    if (resizing < 0) return;
+    resizing = -1;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    savePanelWidths();
+  }
+  $effect(() => {
+    if (typeof document === 'undefined') return;
+    if (resizing < 0) return;
+    document.addEventListener('mousemove', onResizeMove);
+    document.addEventListener('mouseup', endResize);
+    return () => {
+      document.removeEventListener('mousemove', onResizeMove);
+      document.removeEventListener('mouseup', endResize);
+    };
+  });
+
+  /* ── Responsive: detect narrow viewport ── */
+  let windowWidth = $state(typeof window !== 'undefined' ? window.innerWidth : 1200);
+  $effect(() => {
+    if (typeof window === 'undefined') return;
+    const onResize = () => { windowWidth = window.innerWidth; };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  });
+  const isMobile = $derived(windowWidth < 768);
+  const isTablet = $derived(windowWidth >= 768 && windowWidth < 1024);
+  const effectiveCols = $derived.by(() => {
+    const n = $arenaPanelCount;
+    if (isMobile) return 1;
+    if (isTablet) return Math.min(n, 2);
+    return n;
+  });
+  const responsiveGridCols = $derived.by(() => {
+    if (isMobile || isTablet) return `repeat(${effectiveCols}, minmax(0, 1fr))`;
+    return gridCols;
+  });
 </script>
 
 <div class="h-full min-h-0 flex flex-col">
   <div
-    class="flex-1 min-h-0 grid grid-rows-[minmax(0,1fr)] gap-2 p-2 atom-layout-transition"
-    style="grid-template-columns: repeat({$arenaPanelCount}, minmax(0, 1fr));">
+    bind:this={gridEl}
+    class="flex-1 min-h-0 grid gap-2 p-2 atom-layout-transition relative {isMobile ? 'overflow-y-auto' : 'grid-rows-[minmax(0,1fr)]'}"
+    style="grid-template-columns: {responsiveGridCols};">
     {#if $arenaPanelCount >= 1}
-    <div class="flex flex-col min-h-0 h-full overflow-hidden rounded-xl border atom-panel-wrap" style="border-color: var(--ui-border); background-color: var(--ui-bg-main);">
+    <div class="flex flex-col min-h-0 h-full overflow-hidden rounded-xl border atom-panel-wrap" style="border-color: var(--ui-border); background-color: var(--ui-bg-main);" in:fly={{ x: 200, duration: 800, easing: quintOut }}>
       <div class="shrink-0 px-3 py-2 border-b" style="border-color: var(--ui-border);">
         <div class="flex items-center justify-between gap-2">
           <span class="text-xs font-medium" style="color: var(--ui-text-secondary);">Model A</span>
-          {#if running.A}<span class="text-xs" style="color: var(--ui-accent);">Running…</span>{:else if tpsA}{@const c = Number(tpsA) >= 40 ? 'var(--atom-teal)' : Number(tpsA) >= 20 ? 'var(--atom-amber)' : 'var(--atom-accent)'}<span class="text-[10px] font-mono px-1.5 py-0.5 rounded" style="background: color-mix(in srgb, {c} 20%, transparent); color: {c};">{tpsA} t/s</span>{/if}
+          <div class="flex items-center gap-1">
+            {#if running.A}<span class="text-xs" style="color: var(--ui-accent);">Running…</span>{:else if tpsA}{@const c = Number(tpsA) >= 40 ? 'var(--atom-teal)' : Number(tpsA) >= 20 ? 'var(--atom-amber)' : 'var(--atom-accent)'}<span class="text-[10px] font-mono px-1.5 py-0.5 rounded" style="background: color-mix(in srgb, {c} 20%, transparent); color: {c};">{tpsA} t/s</span>{/if}
+            {#if messagesA.length > 0}
+              <button type="button" class="p-0.5 rounded text-[10px] opacity-50 hover:opacity-100 transition-opacity" style="color: var(--ui-text-secondary);" onclick={() => { messagesA = []; }} title="Clear slot A" aria-label="Clear slot A">✕</button>
+            {/if}
+          </div>
         </div>
         <div class="text-xs truncate" style="color: var(--ui-text-secondary);">{$dashboardModelA || 'Select a model'}</div>
         {#if slotErrors.A}<div class="text-xs mt-1" style="color: var(--ui-accent-hot);">{slotErrors.A}</div>{/if}
@@ -263,12 +363,27 @@
     </div>
     {/if}
 
+    {#if $arenaPanelCount >= 2 && !isMobile}
+    <div
+      class="hidden lg:block absolute top-0 bottom-0 w-2 cursor-col-resize z-10 group"
+      style="left: calc({panelWidths[0] / (panelWidths.slice(0, $arenaPanelCount).reduce((a,b)=>a+b,0) || 100) * 100}% - 4px);"
+      onmousedown={(e) => startResize(0, e)}
+      role="presentation">
+      <div class="w-px h-full mx-auto transition-colors {resizing === 0 ? 'w-0.5' : ''}" style="background: {resizing === 0 ? 'var(--ui-accent)' : 'var(--ui-border)'};"></div>
+    </div>
+    {/if}
+
     {#if $arenaPanelCount >= 2}
-    <div class="flex flex-col min-h-0 h-full overflow-hidden rounded-xl border atom-panel-wrap" style="border-color: var(--ui-border); background-color: var(--ui-bg-main);">
+    <div class="flex flex-col min-h-0 h-full overflow-hidden rounded-xl border atom-panel-wrap" style="border-color: var(--ui-border); background-color: var(--ui-bg-main);" in:fly={{ x: 200, duration: 800, easing: quintOut }}>
       <div class="shrink-0 px-3 py-2 border-b" style="border-color: var(--ui-border);">
         <div class="flex items-center justify-between gap-2">
           <span class="text-xs font-medium" style="color: var(--ui-text-secondary);">Model B</span>
-          {#if running.B}<span class="text-xs" style="color: var(--ui-accent);">Running…</span>{:else if tpsB}{@const c = Number(tpsB) >= 40 ? 'var(--atom-teal)' : Number(tpsB) >= 20 ? 'var(--atom-amber)' : 'var(--atom-accent)'}<span class="text-[10px] font-mono px-1.5 py-0.5 rounded" style="background: color-mix(in srgb, {c} 20%, transparent); color: {c};">{tpsB} t/s</span>{/if}
+          <div class="flex items-center gap-1">
+            {#if running.B}<span class="text-xs" style="color: var(--ui-accent);">Running…</span>{:else if tpsB}{@const c = Number(tpsB) >= 40 ? 'var(--atom-teal)' : Number(tpsB) >= 20 ? 'var(--atom-amber)' : 'var(--atom-accent)'}<span class="text-[10px] font-mono px-1.5 py-0.5 rounded" style="background: color-mix(in srgb, {c} 20%, transparent); color: {c};">{tpsB} t/s</span>{/if}
+            {#if messagesB.length > 0}
+              <button type="button" class="p-0.5 rounded text-[10px] opacity-50 hover:opacity-100 transition-opacity" style="color: var(--ui-text-secondary);" onclick={() => { messagesB = []; }} title="Clear slot B" aria-label="Clear slot B">✕</button>
+            {/if}
+          </div>
         </div>
         <div class="text-xs truncate" style="color: var(--ui-text-secondary);">{$dashboardModelB || 'Select a model'}</div>
         {#if slotErrors.B}<div class="text-xs mt-1" style="color: var(--ui-accent-hot);">{slotErrors.B}</div>{/if}
@@ -289,12 +404,27 @@
     </div>
     {/if}
 
+    {#if $arenaPanelCount >= 3 && !isMobile}
+    <div
+      class="hidden lg:block absolute top-0 bottom-0 w-2 cursor-col-resize z-10 group"
+      style="left: calc({(panelWidths[0] + panelWidths[1]) / (panelWidths.slice(0, $arenaPanelCount).reduce((a,b)=>a+b,0) || 100) * 100}% - 4px);"
+      onmousedown={(e) => startResize(1, e)}
+      role="presentation">
+      <div class="w-px h-full mx-auto transition-colors {resizing === 1 ? 'w-0.5' : ''}" style="background: {resizing === 1 ? 'var(--ui-accent)' : 'var(--ui-border)'};"></div>
+    </div>
+    {/if}
+
     {#if $arenaPanelCount >= 3}
-    <div class="flex flex-col min-h-0 h-full overflow-hidden rounded-xl border atom-panel-wrap" style="border-color: var(--ui-border); background-color: var(--ui-bg-main);">
+    <div class="flex flex-col min-h-0 h-full overflow-hidden rounded-xl border atom-panel-wrap" style="border-color: var(--ui-border); background-color: var(--ui-bg-main);" in:fly={{ x: 200, duration: 800, easing: quintOut }}>
       <div class="shrink-0 px-3 py-2 border-b" style="border-color: var(--ui-border);">
         <div class="flex items-center justify-between gap-2">
           <span class="text-xs font-medium" style="color: var(--ui-text-secondary);">Model C</span>
-          {#if running.C}<span class="text-xs" style="color: var(--ui-accent);">Running…</span>{:else if tpsC}{@const c = Number(tpsC) >= 40 ? 'var(--atom-teal)' : Number(tpsC) >= 20 ? 'var(--atom-amber)' : 'var(--atom-accent)'}<span class="text-[10px] font-mono px-1.5 py-0.5 rounded" style="background: color-mix(in srgb, {c} 20%, transparent); color: {c};">{tpsC} t/s</span>{/if}
+          <div class="flex items-center gap-1">
+            {#if running.C}<span class="text-xs" style="color: var(--ui-accent);">Running…</span>{:else if tpsC}{@const c = Number(tpsC) >= 40 ? 'var(--atom-teal)' : Number(tpsC) >= 20 ? 'var(--atom-amber)' : 'var(--atom-accent)'}<span class="text-[10px] font-mono px-1.5 py-0.5 rounded" style="background: color-mix(in srgb, {c} 20%, transparent); color: {c};">{tpsC} t/s</span>{/if}
+            {#if messagesC.length > 0}
+              <button type="button" class="p-0.5 rounded text-[10px] opacity-50 hover:opacity-100 transition-opacity" style="color: var(--ui-text-secondary);" onclick={() => { messagesC = []; }} title="Clear slot C" aria-label="Clear slot C">✕</button>
+            {/if}
+          </div>
         </div>
         <div class="text-xs truncate" style="color: var(--ui-text-secondary);">{$dashboardModelC || 'Select a model'}</div>
         {#if slotErrors.C}<div class="text-xs mt-1" style="color: var(--ui-accent-hot);">{slotErrors.C}</div>{/if}
@@ -315,12 +445,27 @@
     </div>
     {/if}
 
+    {#if $arenaPanelCount >= 4 && !isMobile}
+    <div
+      class="hidden lg:block absolute top-0 bottom-0 w-2 cursor-col-resize z-10 group"
+      style="left: calc({(panelWidths[0] + panelWidths[1] + panelWidths[2]) / (panelWidths.slice(0, $arenaPanelCount).reduce((a,b)=>a+b,0) || 100) * 100}% - 4px);"
+      onmousedown={(e) => startResize(2, e)}
+      role="presentation">
+      <div class="w-px h-full mx-auto transition-colors {resizing === 2 ? 'w-0.5' : ''}" style="background: {resizing === 2 ? 'var(--ui-accent)' : 'var(--ui-border)'};"></div>
+    </div>
+    {/if}
+
     {#if $arenaPanelCount >= 4}
-    <div class="flex flex-col min-h-0 h-full overflow-hidden rounded-xl border atom-panel-wrap" style="border-color: var(--ui-border); background-color: var(--ui-bg-main);">
+    <div class="flex flex-col min-h-0 h-full overflow-hidden rounded-xl border atom-panel-wrap" style="border-color: var(--ui-border); background-color: var(--ui-bg-main);" in:fly={{ x: 200, duration: 800, easing: quintOut }}>
       <div class="shrink-0 px-3 py-2 border-b" style="border-color: var(--ui-border);">
         <div class="flex items-center justify-between gap-2">
           <span class="text-xs font-medium" style="color: var(--ui-text-secondary);">Model D</span>
-          {#if running.D}<span class="text-xs" style="color: var(--ui-accent);">Running…</span>{:else if tpsD}{@const c = Number(tpsD) >= 40 ? 'var(--atom-teal)' : Number(tpsD) >= 20 ? 'var(--atom-amber)' : 'var(--atom-accent)'}<span class="text-[10px] font-mono px-1.5 py-0.5 rounded" style="background: color-mix(in srgb, {c} 20%, transparent); color: {c};">{tpsD} t/s</span>{/if}
+          <div class="flex items-center gap-1">
+            {#if running.D}<span class="text-xs" style="color: var(--ui-accent);">Running…</span>{:else if tpsD}{@const c = Number(tpsD) >= 40 ? 'var(--atom-teal)' : Number(tpsD) >= 20 ? 'var(--atom-amber)' : 'var(--atom-accent)'}<span class="text-[10px] font-mono px-1.5 py-0.5 rounded" style="background: color-mix(in srgb, {c} 20%, transparent); color: {c};">{tpsD} t/s</span>{/if}
+            {#if messagesD.length > 0}
+              <button type="button" class="p-0.5 rounded text-[10px] opacity-50 hover:opacity-100 transition-opacity" style="color: var(--ui-text-secondary);" onclick={() => { messagesD = []; }} title="Clear slot D" aria-label="Clear slot D">✕</button>
+            {/if}
+          </div>
         </div>
         <div class="text-xs truncate" style="color: var(--ui-text-secondary);">{$dashboardModelD || 'Select a model'}</div>
         {#if slotErrors.D}<div class="text-xs mt-1" style="color: var(--ui-accent-hot);">{slotErrors.D}</div>{/if}
@@ -355,7 +500,7 @@
           <input
             type="checkbox"
             bind:checked={sequential}
-            class="rounded border-zinc-300 dark:border-zinc-600 accent-red-600"
+            class="rounded border-zinc-300 dark:border-zinc-600" style="accent-color: var(--ui-accent);"
             onchange={() => { if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume); }} />
           <span>Sequential (lower VRAM/CPU)</span>
         </label>

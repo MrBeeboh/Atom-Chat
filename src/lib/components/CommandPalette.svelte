@@ -1,5 +1,7 @@
 <script>
   import { onMount } from 'svelte';
+  import { fade, scale } from 'svelte/transition';
+  import { quintOut } from 'svelte/easing';
   import {
     layout,
     uiTheme,
@@ -32,6 +34,16 @@
     { value: 'cockpit', label: 'Cockpit' },
     { value: 'arena', label: 'Arena' },
   ];
+
+  function loadRecentCommands() {
+    if (typeof localStorage === 'undefined') return [];
+    try { return JSON.parse(localStorage.getItem('recentPaletteCommands') || '[]').slice(0, 5); } catch { return []; }
+  }
+  let recentIds = $state(loadRecentCommands());
+  function trackRecent(id) {
+    recentIds = [id, ...recentIds.filter((r) => r !== id)].slice(0, 5);
+    if (typeof localStorage !== 'undefined') localStorage.setItem('recentPaletteCommands', JSON.stringify(recentIds));
+  }
 
   let open = $state(false);
   let query = $state('');
@@ -92,6 +104,16 @@
       if (fuzzyMatch(title, q)) items.push({ id: 'conv-' + c.id, label: title, category: 'Conversations', run: () => activeConversationId.set(c.id) });
     });
 
+    // Prepend recent commands when search is empty
+    if (!q && recentIds.length > 0) {
+      const recent = [];
+      for (const rid of recentIds) {
+        const match = items.find((it) => it.id === rid);
+        if (match) recent.push({ ...match, category: 'Recent' });
+      }
+      if (recent.length) items.unshift(...recent);
+    }
+
     return items;
   }
 
@@ -136,6 +158,7 @@
     const idx = ((selectedIndex % list.length) + list.length) % list.length;
     const item = list[idx];
     if (item?.run) {
+      trackRecent(item.id);
       item.run();
       closePalette();
     }
@@ -195,13 +218,15 @@
     aria-label="Command palette"
     tabindex="-1"
     onclick={(e) => e.target === e.currentTarget && closePalette()}
-    onkeydown={(e) => { onKeydown(e); if (e.key === 'Escape' && e.target === e.currentTarget) closePalette(); }}>
+    onkeydown={(e) => { onKeydown(e); if (e.key === 'Escape' && e.target === e.currentTarget) closePalette(); }}
+    transition:fade={{ duration: 200 }}>
     <div
-      class="command-palette-modal w-full max-w-xl rounded-2xl border shadow-2xl overflow-hidden"
+      class="w-full max-w-xl rounded-2xl border shadow-2xl overflow-hidden"
       style="background-color: var(--ui-bg-sidebar); border-color: var(--ui-border);"
       role="presentation"
       onclick={(e) => e.stopPropagation()}
-      onkeydown={(e) => e.stopPropagation()}>
+      onkeydown={(e) => e.stopPropagation()}
+      transition:scale={{ start: 0.72, duration: 500, easing: quintOut }}>
       <div class="flex items-center gap-2 px-4 py-3 border-b" style="border-color: var(--ui-border);">
         <span class="text-zinc-400 dark:text-zinc-500 shrink-0" aria-hidden="true">&#8250;</span>
         <input
@@ -218,13 +243,16 @@
           <div class="px-4 py-6 text-center text-sm" style="color: var(--ui-text-secondary);">No matches</div>
         {:else}
           {#each items as item, i}
+            {#if i === 0 || item.category !== items[i - 1]?.category}
+              <div class="px-4 pt-3 pb-1 text-[10px] font-medium uppercase tracking-wider" style="color: var(--ui-text-secondary);">{item.category}</div>
+            {/if}
             {@const isSelected = i === selectedIndex}
             <button
               type="button"
               class="w-full text-left px-4 py-2.5 flex items-center justify-between gap-3 transition-colors {isSelected ? '' : ''}"
               style="background-color: {isSelected ? 'var(--ui-sidebar-active)' : 'transparent'}; color: var(--ui-text-primary);"
               onmouseenter={() => (selectedIndex = i)}
-              onclick={() => { if (item.run) { item.run(); closePalette(); } }}>
+              onclick={() => { if (item.run) { trackRecent(item.id); item.run(); closePalette(); } }}>
               <span class="truncate">{item.label}</span>
               {#if item.shortcut}
                 <span class="text-[10px] font-mono shrink-0 opacity-70" style="color: var(--ui-text-secondary);">{item.shortcut}</span>

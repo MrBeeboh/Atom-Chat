@@ -1,7 +1,11 @@
 @echo off
 setlocal enabledelayedexpansion
 title ATOM UI
-cd /d "c:\CURSOR\lm-studio-ui"
+cd /d "%~dp0"
+
+echo [ATOM] Running from: %CD%
+echo [ATOM] If your app shows no changes, hard-refresh the browser: Ctrl+Shift+R
+echo.
 
 echo [ATOM] Clearing port 5173 if in use...
 powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort 5173 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }" 2>nul

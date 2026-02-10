@@ -18,6 +18,7 @@
     "eslint": "^9.15.0",
     "eslint-plugin-svelte": "^2.36.0",
     "globals": "^15.12.0",
+    "playwright": "^1.58.2",
     "svelte": "^5.43.8",
     "svelte-eslint-parser": "^0.43.0",
     "tailwindcss": "^4.1.18",

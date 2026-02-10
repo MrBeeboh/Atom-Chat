@@ -1,6 +1,5 @@
 <script>
   import {
-    tokSeries,
     settings,
     selectedModelId,
     lastResponseTokPerSec,
@@ -8,7 +7,10 @@
     activeMessages,
     updateSettings,
     settingsOpen,
+    activeConversationId,
+    conversations,
   } from '$lib/stores.js';
+  import { createConversation, listConversations, getMessageCount } from '$lib/db.js';
   import { getModelIcon, getQuantization, modelIconOverrides } from '$lib/modelIcons.js';
 
   let responseHistory = $state([]);
@@ -42,7 +44,6 @@
     return () => {};
   });
 
-  let series = $state([]);
   let settingsVal = $state({});
   let contextLength = $state(4096);
   let temperature = $state(0.7);
@@ -52,12 +53,8 @@
   let messagesList = $state([]);
 
   $effect(() => {
-    const unsubS = tokSeries.subscribe((v) => (series = Array.isArray(v) ? v : []));
     const unsubC = selectedModelId.subscribe((v) => (currentModelId = v ?? ''));
-    return () => {
-      unsubS();
-      unsubC();
-    };
+    return () => unsubC();
   });
 
   $effect(() => {
@@ -86,20 +83,13 @@
     contextLength > 0 ? Math.min(100, Math.round((estimatedContextUsed / contextLength) * 100)) : 0
   );
 
-  const sparklinePoints = $derived.by(() => {
-    const data = series;
-    if (!data.length) return '0,0 60,0';
-    const w = 200;
-    const h = 40;
-    const max = Math.max(1, ...data);
-    return data
-      .map((v, i) => {
-        const x = (i / Math.max(1, data.length - 1)) * w;
-        const y = h - (v / max) * h;
-        return `${x.toFixed(1)},${y.toFixed(1)}`;
-      })
-      .join(' ');
-  });
+  async function resetContext() {
+    const id = await createConversation();
+    let list = await listConversations();
+    list = await Promise.all(list.map(async (c) => ({ ...c, messageCount: await getMessageCount(c.id) })));
+    conversations.set(list);
+    activeConversationId.set(id);
+  }
 
   function onTempInput(e) {
     const v = parseFloat(e.target.value);
@@ -123,19 +113,17 @@
   class="intel-panel flex flex-col gap-4 overflow-y-auto p-3 text-sm h-full"
   style="color: var(--ui-text-secondary); background-color: var(--ui-bg-sidebar); border-color: var(--ui-border);">
   <div>
-    <div class="font-medium mb-1.5 text-xs uppercase tracking-wide" style="color: var(--ui-text-primary);">Live TPS</div>
-    <svg class="w-full h-10 block rounded border" style="border-color: var(--ui-border);" viewBox="0 0 200 40" preserveAspectRatio="none">
-      <polyline
-        points={sparklinePoints}
-        fill="none"
-        stroke="var(--ui-accent)"
-        stroke-width="1.5"
-        vector-effect="non-scaling-stroke" />
-    </svg>
-  </div>
-
-  <div>
-    <div class="font-medium mb-1.5 text-xs uppercase tracking-wide" style="color: var(--ui-text-primary);">Context</div>
+    <div class="font-medium mb-1.5 text-xs uppercase tracking-wide flex items-center justify-between gap-2">
+      <span style="color: var(--ui-text-primary);">Context</span>
+      <button
+        type="button"
+        class="text-[10px] px-2 py-1 rounded border shrink-0 hover:opacity-90"
+        style="border-color: var(--ui-border); color: var(--ui-text-secondary);"
+        onclick={resetContext}
+        title="Start a new chat to reset context usage">
+        Reset context
+      </button>
+    </div>
     <div class="h-2 rounded-full overflow-hidden border" style="background: var(--ui-input-bg); border-color: var(--ui-border);">
       <div
         class="h-full rounded-full transition-all duration-300"
@@ -181,8 +169,8 @@
           step="0.05"
           value={temperature}
           oninput={onTempInput}
-          class="w-full h-1.5 rounded-full accent-red-600"
-          style="background: var(--ui-input-bg);" />
+          class="w-full h-1.5 rounded-full"
+          style="background: var(--ui-input-bg); accent-color: var(--ui-accent);" />
       </div>
       <div>
         <div class="flex justify-between text-[10px] mb-0.5"><span>Top-P</span><span class="font-mono">{topP}</span></div>
@@ -193,8 +181,8 @@
           step="0.05"
           value={topP}
           oninput={onTopPInput}
-          class="w-full h-1.5 rounded-full accent-red-600"
-          style="background: var(--ui-input-bg);" />
+          class="w-full h-1.5 rounded-full"
+          style="background: var(--ui-input-bg); accent-color: var(--ui-accent);" />
       </div>
       <div>
         <div class="flex justify-between text-[10px] mb-0.5"><span>Top-K</span><span class="font-mono">{topK}</span></div>
@@ -205,8 +193,8 @@
           step="1"
           value={topK}
           oninput={onTopKInput}
-          class="w-full h-1.5 rounded-full accent-red-600"
-          style="background: var(--ui-input-bg);" />
+          class="w-full h-1.5 rounded-full"
+          style="background: var(--ui-input-bg); accent-color: var(--ui-accent);" />
       </div>
     </div>
   </div>

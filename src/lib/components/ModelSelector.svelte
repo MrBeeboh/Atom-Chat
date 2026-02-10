@@ -1,6 +1,6 @@
 <script>
-  import { onMount, tick } from 'svelte';
-  import { models, selectedModelId, updateSettings, hardware, presetDefaultModels } from '$lib/stores.js';
+  import { tick } from 'svelte';
+  import { models, selectedModelId, updateSettings, hardware, presetDefaultModels, lmStudioBaseUrl } from '$lib/stores.js';
   import { getModels } from '$lib/api.js';
   import { getModelIcon, getQuantization, ensureModelIcons, modelIconOverrides } from '$lib/modelIcons.js';
   import { getDefaultsForModel } from '$lib/modelDefaults.js';
@@ -74,7 +74,10 @@
     }
   }
 
-  onMount(load);
+  $effect(() => {
+    $lmStudioBaseUrl;
+    load();
+  });
 
   async function select(id) {
     selectedModelId.set(id);

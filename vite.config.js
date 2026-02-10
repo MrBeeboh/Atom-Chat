@@ -18,7 +18,6 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     proxy: {
-      // Avoid CORS: browser hits same origin, Vite forwards to LM Studio
       '/api/lmstudio': {
         target: 'http://localhost:1234',
         changeOrigin: true,

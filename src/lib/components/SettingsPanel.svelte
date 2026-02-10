@@ -1,5 +1,5 @@
 <script>
-  import { settings, layout, updateSettings, selectedModelId, hardware, models, presetDefaultModels } from '$lib/stores.js';
+  import { settings, layout, updateSettings, selectedModelId, hardware, models, presetDefaultModels, lmStudioBaseUrl } from '$lib/stores.js';
   import { loadModel } from '$lib/api.js';
   import { getDefaultsForModel, BATCH_SIZE_MIN, BATCH_SIZE_MAX } from '$lib/modelDefaults.js';
 
@@ -245,6 +245,23 @@
       <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">Control temperature, sampling, and system prompt (LM Studio–compatible). Settings are per layout.</p>
     </div>
     <div class="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+      <!-- LM Studio server URL -->
+      <div class="border border-zinc-200 dark:border-zinc-600 rounded-lg overflow-hidden">
+        <div class="px-4 py-3 border-b border-zinc-200 dark:border-zinc-600 bg-zinc-50 dark:bg-zinc-800/80">
+          <span class="text-sm font-medium text-zinc-700 dark:text-zinc-300">LM Studio server</span>
+        </div>
+        <div class="px-4 py-3 space-y-1">
+          <label for="settings-lmstudio-url" class="block text-sm font-medium text-zinc-600 dark:text-zinc-400">Server URL</label>
+          <input
+            id="settings-lmstudio-url"
+            type="url"
+            bind:value={$lmStudioBaseUrl}
+            placeholder="http://localhost:1234"
+            class="w-full rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-zinc-900 dark:text-zinc-100 text-sm font-mono placeholder:text-zinc-400" />
+          <p class="text-xs text-zinc-500 dark:text-zinc-400">Leave empty for default (localhost:1234). Use your LM Studio “Reachable at” URL, e.g. <code class="bg-zinc-200 dark:bg-zinc-700 px-1 rounded">http://10.0.0.51:1234</code>. Enable CORS in LM Studio → Developer → Server Settings.</p>
+        </div>
+      </div>
+
       <!-- Load settings (batch size, context – applied when loading model) -->
       <div class="border border-zinc-200 dark:border-zinc-600 rounded-lg overflow-hidden">
         <button
@@ -323,11 +340,11 @@
             </div>
             <div class="flex items-center gap-4">
               <label class="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" bind:checked={flashAttention} class="rounded border-zinc-300 dark:border-zinc-600 accent-red-600" />
+                <input type="checkbox" bind:checked={flashAttention} class="rounded border-zinc-300 dark:border-zinc-600 accent-themed" />
                 <span class="text-sm text-zinc-700 dark:text-zinc-300">Flash attention</span>
               </label>
               <label class="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" bind:checked={offloadKvToGpu} class="rounded border-zinc-300 dark:border-zinc-600 accent-red-600" />
+                <input type="checkbox" bind:checked={offloadKvToGpu} class="rounded border-zinc-300 dark:border-zinc-600 accent-themed" />
                 <span class="text-sm text-zinc-700 dark:text-zinc-300">Offload KV cache to GPU</span>
               </label>
             </div>
@@ -353,15 +370,15 @@
         </div>
         <div class="px-4 pb-4 pt-3 space-y-3 border-t border-zinc-200 dark:border-zinc-600">
           <label class="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" bind:checked={audioEnabled} class="rounded border-zinc-300 dark:border-zinc-600 accent-red-600" />
+            <input type="checkbox" bind:checked={audioEnabled} class="rounded border-zinc-300 dark:border-zinc-600 accent-themed" />
             <span class="text-sm text-zinc-700 dark:text-zinc-300">Enable audio feedback</span>
           </label>
           <label class="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" bind:checked={audioClicks} disabled={!audioEnabled} class="rounded border-zinc-300 dark:border-zinc-600 accent-red-600" />
+            <input type="checkbox" bind:checked={audioClicks} disabled={!audioEnabled} class="rounded border-zinc-300 dark:border-zinc-600 accent-themed" />
             <span class="text-sm text-zinc-700 dark:text-zinc-300">Click sounds for actions</span>
           </label>
           <label class="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" bind:checked={audioTyping} disabled={!audioEnabled} class="rounded border-zinc-300 dark:border-zinc-600 accent-red-600" />
+            <input type="checkbox" bind:checked={audioTyping} disabled={!audioEnabled} class="rounded border-zinc-300 dark:border-zinc-600 accent-themed" />
             <span class="text-sm text-zinc-700 dark:text-zinc-300">Typing sound during generation</span>
           </label>
           <div>
@@ -374,7 +391,7 @@
               step="0.05"
               bind:value={audioVolume}
               disabled={!audioEnabled}
-              class="w-full h-2 rounded-full accent-red-600" />
+              class="w-full h-2 rounded-full accent-themed" />
           </div>
           <p class="text-xs text-zinc-500 dark:text-zinc-400">Send and completion tones are always enabled when audio is on.</p>
         </div>
@@ -441,7 +458,7 @@
                   max="2"
                   step="0.05"
                   bind:value={temp}
-                  class="flex-1 h-2 rounded-full accent-red-600" />
+                  class="flex-1 h-2 rounded-full accent-themed" />
                 <input
                   type="number"
                   min="0"
@@ -536,7 +553,7 @@
                   max="1"
                   step="0.01"
                   bind:value={topP}
-                  class="flex-1 h-2 rounded-full accent-red-600" />
+                  class="flex-1 h-2 rounded-full accent-themed" />
                 <input
                   type="number"
                   min="0"

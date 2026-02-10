@@ -1,0 +1,3 @@
+# Ignore if someone runs npm or similar inside handoff
+node_modules/
+.git/

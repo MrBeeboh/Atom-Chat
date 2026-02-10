@@ -1,16 +1,22 @@
 /**
  * LM Studio API client.
- * OpenAI-compat: http://localhost:1234/v1
- * REST (load):    http://localhost:1234/api/v1
+ * OpenAI-compat: base/v1 (e.g. chat/completions)
+ * REST (load):   base/api/v1 (e.g. models, models/load)
  *
- * Compatible with LM Studio 0.4.x: parallel inference, /v1/chat/completions, /api/v1/models/load.
- * See docs/LM-STUDIO-0.4-RELEASE-NOTES.md for 0.4.0–0.4.2 changelog and impact.
+ * Base URL is configurable via localStorage 'lmStudioBaseUrl' (or Settings). Empty = default.
+ * Default: dev uses proxy /api/lmstudio; production uses http://localhost:1234.
+ * Compatible with LM Studio 0.4.x: GET /api/v1/models, POST /v1/chat/completions, POST /api/v1/models/load.
  */
 
-// In dev, use proxy (same origin) to avoid CORS; in build use direct URL
-const getBase = () => (typeof import.meta !== 'undefined' && import.meta.env?.DEV ? '/api/lmstudio' : 'http://localhost:1234');
-const LM_STUDIO_BASE = `${getBase()}/v1`;
-const LM_STUDIO_REST = `${getBase()}/api/v1`;
+const DEFAULT_BASE = typeof import.meta !== 'undefined' && import.meta.env?.DEV ? '/api/lmstudio' : 'http://localhost:1234';
+
+/** Current LM Studio base URL (no trailing slash). Reads from localStorage so UI settings apply immediately. */
+function getLmStudioBase() {
+  if (typeof localStorage === 'undefined') return DEFAULT_BASE;
+  const v = localStorage.getItem('lmStudioBaseUrl');
+  if (v != null && String(v).trim() !== '') return String(v).trim().replace(/\/$/, '');
+  return DEFAULT_BASE;
+}
 
 /**
  * Fetch list of models from LM Studio.
@@ -20,7 +26,10 @@ const LM_STUDIO_REST = `${getBase()}/api/v1`;
  * @returns {Promise<{ id: string }[]>}
  */
 export async function getModels() {
-  const res = await fetch(`${LM_STUDIO_REST}/models`);
+  const base = getLmStudioBase();
+  const rest = `${base}/api/v1`;
+  const openai = `${base}/v1`;
+  const res = await fetch(`${rest}/models`);
   if (res.ok) {
     const data = await res.json();
     const models = data.models ?? [];
@@ -29,7 +38,7 @@ export async function getModels() {
       : [];
     if (llms.length > 0) return llms;
   }
-  const fallback = await fetch(`${LM_STUDIO_BASE}/models`);
+  const fallback = await fetch(`${openai}/models`);
   if (!fallback.ok) throw new Error(`LM Studio models: ${fallback.status}`);
   const data = await fallback.json();
   const list = data.data ?? data;
@@ -63,7 +72,8 @@ export async function loadModel(modelId, loadConfig = {}) {
   if (loadConfig.cpu_threads != null) body.n_threads = loadConfig.cpu_threads;
   body.echo_load_config = true;
 
-  const res = await fetch(`${LM_STUDIO_REST}/models/load`, {
+  const base = getLmStudioBase();
+  const res = await fetch(`${base}/api/v1/models/load`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -83,14 +93,23 @@ export async function loadModel(modelId, loadConfig = {}) {
  * @param {Object} [opts.options] - temperature, max_tokens, ttl, etc.
  * @param {(chunk: string) => void} opts.onChunk
  * @param {(usage: { prompt_tokens?: number, completion_tokens?: number }) => void} [opts.onUsage]
+ * @param {() => void} [opts.onDone] - Called when stream ends ([DONE] line or connection closed). Use to clear busy UI immediately.
  * @param {AbortSignal} [opts.signal] - AbortSignal to cancel the stream
  * @returns {Promise<{ usage?: object, elapsedMs: number, aborted?: boolean }>}
  */
-export async function streamChatCompletion({ model, messages, options = {}, onChunk, onUsage, signal }) {
+export async function streamChatCompletion({ model, messages, options = {}, onChunk, onUsage, onDone, signal }) {
   const startTime = Date.now();
   let usage = null;
+  let doneCalled = false;
+  const callOnDone = () => {
+    if (!doneCalled) {
+      doneCalled = true;
+      onDone?.();
+    }
+  };
+  const base = getLmStudioBase();
   try {
-    const res = await fetch(`${LM_STUDIO_BASE}/chat/completions`, {
+    const res = await fetch(`${base}/v1/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -115,9 +134,13 @@ export async function streamChatCompletion({ model, messages, options = {}, onCh
     const decoder = new TextDecoder();
     let buffer = '';
     try {
+      let streamEnded = false;
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          callOnDone();
+          break;
+        }
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
         buffer = lines.pop() ?? '';
@@ -125,18 +148,30 @@ export async function streamChatCompletion({ model, messages, options = {}, onCh
           const trimmed = line.trim();
           if (trimmed.startsWith('data: ')) {
             const payload = trimmed.slice(6);
-            if (payload === '[DONE]') continue;
+            if (payload === '[DONE]') {
+              callOnDone();
+              streamEnded = true;
+              break;
+            }
             try {
               const parsed = JSON.parse(payload);
               const choice = parsed.choices?.[0];
               if (choice?.delta?.content) onChunk(choice.delta.content);
+              if (choice?.finish_reason != null) {
+                callOnDone();
+                streamEnded = true;
+              }
               if (parsed.usage) {
                 usage = parsed.usage;
                 onUsage?.(parsed.usage);
+                callOnDone();
+                streamEnded = true;
               }
+              if (streamEnded) break;
             } catch (_) {}
           }
         }
+        if (streamEnded) break;
       }
     } catch (readErr) {
       if (readErr?.name === 'AbortError') {

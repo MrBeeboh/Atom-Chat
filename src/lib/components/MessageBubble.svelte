@@ -1,5 +1,7 @@
 <script>
   import { renderMarkdown } from '$lib/markdown.js';
+  import { fly } from 'svelte/transition';
+  import { bounceOut } from 'svelte/easing';
   import PerfStats from '$lib/components/PerfStats.svelte';
   import { pinnedContent } from '$lib/stores.js';
 
@@ -21,7 +23,8 @@
 </script>
 
 <div
-  class="flex {isUser ? 'justify-end' : 'justify-start'}">
+  class="flex {isUser ? 'justify-end' : 'justify-start'}"
+  in:fly={{ y: 56, duration: 1200, easing: bounceOut }}>
   <div
     class="max-w-[82%] rounded-2xl px-4 py-3 shadow-sm
       {isUser

@@ -1,5 +1,6 @@
 /**
  * Single source of truth for UI color themes (uiTheme store).
+ * Canonical list per docs/AGENT-HANDOFF-THEMES-AND-LAYOUTS.json; do not remove themes.
  * Used by Sidebar, CommandPalette, UiThemeSelect, and any layout that shows theme picker.
  */
 export const UI_THEME_OPTIONS = [

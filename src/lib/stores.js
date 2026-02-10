@@ -36,13 +36,18 @@ export const cockpitIntelOpen = writable(true);
 /** Workbench layout: pinned assistant message (markdown string or null). */
 export const pinnedContent = writable(null);
 
-/** Focus layout: floating menu open (toggle with `). */
-export const focusMenuOpen = writable(false);
 
 /** Color scheme: default (red) | cyberpunk | neural | quantum */
 export const uiTheme = writable(
   (typeof localStorage !== 'undefined' && localStorage.getItem('uiTheme')) || 'default'
 );
+
+/** LM Studio server base URL (e.g. http://localhost:1234 or http://10.0.0.51:1234). Empty = use default. */
+const getStoredLmStudioUrl = () => (typeof localStorage !== 'undefined' ? localStorage.getItem('lmStudioBaseUrl') : null) || '';
+export const lmStudioBaseUrl = writable(getStoredLmStudioUrl());
+if (typeof localStorage !== 'undefined') {
+  lmStudioBaseUrl.subscribe((v) => localStorage.setItem('lmStudioBaseUrl', v ?? ''));
+}
 
 /** Layout: cockpit | arena only (restore point). Old layouts migrate to cockpit. */
 const OLD_TO_NEW_LAYOUT = {
@@ -288,3 +293,7 @@ export const darkClass = derived(theme, ($theme) => {
   if ($theme === 'light') return '';
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : '';
 });
+
+// Chat state stores
+export const messages = writable([]);
+export const currentResponse = writable('');
