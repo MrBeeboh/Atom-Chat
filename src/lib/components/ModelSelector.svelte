@@ -8,6 +8,7 @@
   import { findSmallestModel } from '$lib/utils/modelSelection.js';
 
   let open = $state(false);
+  let loading = $state(false);
   let triggerEl = $state(null);
   let dropdownPlace = $state({ top: 0, left: 0, width: 200, maxHeight: 420, openUp: false });
 
@@ -57,6 +58,7 @@
   }
 
   async function load() {
+    loading = true;
     try {
       const list = await getModels();
       const ids = list.map((m) => m.id);
@@ -91,6 +93,8 @@
       console.warn('LM Studio models:', e);
       models.set([]);
       modelSelectionNotification.set('Cannot connect to LM Studio. Please ensure server is running.');
+    } finally {
+      loading = false;
     }
   }
 
@@ -118,7 +122,7 @@
   <div class="relative" role="combobox" aria-expanded={open} aria-haspopup="listbox" aria-controls="model-listbox" aria-label="Select model" bind:this={triggerEl}>
     <button
       type="button"
-      class="flex items-center gap-2 rounded-lg border text-sm px-3 py-2 max-w-[260px] focus:ring-2 font-semibold min-h-[36px] transition-colors duration-150 ui-model-selector {open ? 'ui-model-selector-open' : ''}"
+      class="flex items-center gap-2 rounded-lg border text-sm px-3 py-2 max-w-[260px] focus:ring-2 focus:ring-offset-1 font-semibold min-h-[44px] transition-colors duration-150 ui-model-selector {open ? 'ui-model-selector-open' : ''}"
       style="background-color: var(--ui-input-bg); color: var(--ui-text-primary); border-color: var(--ui-border);"
       onclick={toggle}
       onkeydown={(e) => e.key === 'Escape' && (open = false)}
@@ -138,6 +142,14 @@
       class="fixed z-[100] rounded-xl border border-zinc-200 dark:border-zinc-600 bg-white dark:bg-zinc-800 shadow-lg py-1 overflow-y-auto"
       style="left: {dropdownPlace.left}px; width: {dropdownPlace.width}px; max-height: {dropdownPlace.maxHeight}px; {dropdownPlace.openUp ? 'bottom: ' + dropdownPlace.bottom + 'px; top: auto;' : 'top: ' + dropdownPlace.top + 'px;'}"
       role="listbox">
+      {#if loading}
+        <div class="px-4 py-3 text-sm flex items-center gap-2" style="color: var(--ui-text-secondary);">
+          <svg class="animate-spin w-4 h-4 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden="true"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+          Loading models…
+        </div>
+      {:else if $models.length === 0}
+        <div class="px-4 py-3 text-sm" style="color: var(--ui-text-secondary);">No models found. Is LM Studio running?</div>
+      {:else}
       {#each $models as m}
         {@const icon = getModelIcon(m.id, $modelIconOverrides)}
         <button
@@ -150,6 +162,7 @@
           <span class="truncate">{m.id}</span>
         </button>
       {/each}
+      {/if}
     </div>
     <button
       type="button"

@@ -3,6 +3,7 @@
 
   let { onSend, onStop } = $props();
   let text = $state('');
+  let textareaEl = $state(null);
 
   async function handleSubmit() {
     if (!text.trim() || $isStreaming) return;
@@ -19,15 +20,29 @@
       handleSubmit();
     }
   }
+
+  function autoResize() {
+    if (!textareaEl) return;
+    textareaEl.style.height = 'auto';
+    textareaEl.style.height = Math.min(textareaEl.scrollHeight, 200) + 'px';
+  }
+
+  $effect(() => {
+    text;
+    if (textareaEl) return requestAnimationFrame(autoResize);
+  });
 </script>
 
 <div class="chat-input-container">
   <textarea
+    bind:this={textareaEl}
     bind:value={text}
     onkeydown={handleKeydown}
+    oninput={autoResize}
     disabled={$isStreaming ? true : null}
     placeholder="Type your message... (Ctrl+Enter to send)"
-    rows="3"></textarea>
+    rows="1"
+  ></textarea>
 
   {#if $isStreaming && onStop}
     <button type="button" class="send-button" style="background: var(--ui-accent-hot, #dc2626);" onclick={() => onStop()} title="Stop">Stop</button>
@@ -38,7 +53,7 @@
       class="send-button"
     >
       {#if $isStreaming}
-        Sending...
+        <span class="inline-flex items-center gap-1.5"><svg class="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>Sending...</span>
       {:else}
         Send
       {/if}
@@ -61,8 +76,10 @@
     border-radius: 8px;
     font-family: inherit;
     font-size: 14px;
-    resize: vertical;
-    min-height: 60px;
+    resize: none;
+    min-height: 44px;
+    max-height: 200px;
+    overflow-y: auto;
     background-color: var(--ui-input-bg, #fff);
     color: var(--ui-text-primary, #111);
   }
@@ -79,6 +96,7 @@
 
   .send-button {
     padding: 12px 24px;
+    min-height: 44px;
     background: var(--ui-accent, #3b82f6);
     color: var(--ui-bg-main, white);
     border: none;

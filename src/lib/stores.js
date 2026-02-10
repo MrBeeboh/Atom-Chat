@@ -37,6 +37,28 @@ export const sidebarOpen = writable(false);
 /** UI: settings panel open */
 export const settingsOpen = writable(false);
 
+/** LM Studio connection status: true = reachable, false = not reachable, null = unknown */
+export const lmStudioConnected = writable(null);
+
+/** UI: keyboard shortcuts help modal open */
+export const shortcutsModalOpen = writable(false);
+
+/** Confirm modal: { title, message, confirmLabel, cancelLabel, danger, resolve } or null */
+export const confirmStore = writable(null);
+/** Show confirmation modal; returns Promise<boolean> */
+export function confirm(options) {
+  return new Promise((resolve) => {
+    confirmStore.set({
+      title: options.title ?? 'Confirm',
+      message: options.message ?? '',
+      confirmLabel: options.confirmLabel ?? 'Confirm',
+      cancelLabel: options.cancelLabel ?? 'Cancel',
+      danger: options.danger ?? false,
+      resolve,
+    });
+  });
+}
+
 /** UI: sidebar collapsed to narrow strip on desktop (toggle via logo/icon). */
 export const sidebarCollapsed = writable(false);
 

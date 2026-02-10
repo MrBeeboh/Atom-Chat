@@ -3,7 +3,7 @@
   import { get } from 'svelte/store';
   import { fly } from 'svelte/transition';
   import { backOut, quintOut } from 'svelte/easing';
-  import { theme, sidebarOpen, settingsOpen, layout, dashboardModelA, dashboardModelB, dashboardModelC, dashboardModelD, activeConversationId, conversations, selectedModelId, uiTheme, sidebarCollapsed, cockpitIntelOpen, arenaPanelCount, models } from '$lib/stores.js';
+  import { theme, sidebarOpen, settingsOpen, layout, dashboardModelA, dashboardModelB, dashboardModelC, dashboardModelD, activeConversationId, conversations, selectedModelId, uiTheme, sidebarCollapsed, cockpitIntelOpen, arenaPanelCount, models, lmStudioConnected } from '$lib/stores.js';
   import { createConversation, listConversations, getMessageCount, getMessages } from '$lib/db.js';
   import { getModels } from '$lib/api.js';
   import Sidebar from '$lib/components/Sidebar.svelte';
@@ -21,6 +21,9 @@
   import DashboardArena from '$lib/components/DashboardArena.svelte';
   import DashboardNexus from '$lib/components/DashboardNexus.svelte';
   import FloatingMetricsDashboard from '$lib/components/FloatingMetricsDashboard.svelte';
+  import ConfirmModal from '$lib/components/ConfirmModal.svelte';
+  import ShortcutsModal from '$lib/components/ShortcutsModal.svelte';
+  import { checkLmStudioConnection } from '$lib/api.js';
 
   const LAYOUT_OPTS = [
     { value: 'cockpit', label: 'Cockpit' },
@@ -54,6 +57,16 @@
   });
   layout.subscribe((v) => { if (typeof localStorage !== 'undefined') localStorage.setItem('layout', v); });
   onMount(() => { document.documentElement.dataset.uiTheme = get(uiTheme); });
+
+  onMount(() => {
+    let pollId;
+    async function pollConnection() {
+      lmStudioConnected.set(await checkLmStudioConnection());
+      pollId = setTimeout(pollConnection, 10000);
+    }
+    pollConnection();
+    return () => clearTimeout(pollId);
+  });
 
   onMount(async () => {
     let list = await listConversations();
@@ -91,6 +104,8 @@
   <AudioManager />
   <CommandPalette />
   <FloatingMetricsDashboard />
+  <ConfirmModal />
+  <ShortcutsModal />
 
   {#if $layout === 'cockpit'}
     <div class="flex h-full flex-col">
@@ -107,7 +122,8 @@
           <UiThemeSelect compact={true} />
           <ThemeToggle />
         </div>
-        <button type="button" class="p-1.5 rounded text-xs shrink-0" style="color: var(--ui-text-secondary);" onclick={() => settingsOpen.set(true)} aria-label="Settings" title="Settings">⚙</button>
+        <span class="w-2 h-2 rounded-full shrink-0" title={$lmStudioConnected === true ? 'LM Studio connected' : $lmStudioConnected === false ? 'LM Studio not reachable' : 'Checking...'} style="background-color: {$lmStudioConnected === true ? '#22c55e' : $lmStudioConnected === false ? '#ef4444' : '#94a3b8'};" aria-label={$lmStudioConnected === true ? 'Connected' : $lmStudioConnected === false ? 'Disconnected' : 'Checking'}></span>
+        <button type="button" class="p-2 rounded text-xs shrink-0 min-h-[44px] min-w-[44px] flex items-center justify-center" style="color: var(--ui-text-secondary);" onclick={() => settingsOpen.set(true)} aria-label="Settings" title="Settings">⚙</button>
       </header>
       <div class="flex flex-1 min-h-0 min-w-0">
         <ConvoRail />
@@ -136,7 +152,10 @@
   {:else if $layout === 'arena'}
     <div class="flex h-full flex-col">
       <header class="shrink-0 flex items-center justify-between px-3 py-2 border-b flex-wrap" style="border-color: var(--ui-border); background-color: var(--ui-bg-sidebar); {HEADER_GAP}">
-        <span class="font-semibold shrink-0" style="color: var(--ui-accent);">ATOM Arena</span>
+        <div class="flex items-center gap-2 shrink-0">
+          <button type="button" class="md:hidden p-2 rounded min-h-[44px] min-w-[44px] flex items-center justify-center" style="color: var(--ui-text-secondary);" onclick={() => sidebarOpen.set(true)} aria-label="Open menu">☰</button>
+          <span class="font-semibold shrink-0" style="color: var(--ui-accent);">ATOM Arena</span>
+        </div>
         <nav class="flex items-center gap-0.5 shrink-0" aria-label="Layout">
           {#each LAYOUT_OPTS as opt}
             <button type="button" class="px-2 py-1 rounded text-xs {$layout === opt.value ? 'font-medium' : ''}" style="color: {$layout === opt.value ? 'var(--ui-accent)' : 'var(--ui-text-secondary)'}; background: {$layout === opt.value ? 'color-mix(in srgb, var(--ui-accent) 15%, transparent)' : 'transparent'};" onclick={() => layout.set(opt.value)}>{opt.label}</button>
@@ -156,10 +175,17 @@
           <UiThemeSelect compact={true} />
           <ThemeToggle />
         </div>
-        <button type="button" class="p-2 rounded-lg shrink-0" style="color: var(--ui-text-secondary);" onclick={() => settingsOpen.set(true)} aria-label="Settings" title="Settings">⚙</button>
+        <span class="w-2 h-2 rounded-full shrink-0" title={$lmStudioConnected === true ? 'LM Studio connected' : $lmStudioConnected === false ? 'LM Studio not reachable' : 'Checking...'} style="background-color: {$lmStudioConnected === true ? '#22c55e' : $lmStudioConnected === false ? '#ef4444' : '#94a3b8'};" aria-label={$lmStudioConnected === true ? 'Connected' : $lmStudioConnected === false ? 'Disconnected' : 'Checking'}></span>
+        <button type="button" class="p-2 rounded-lg shrink-0 min-h-[44px] min-w-[44px] flex items-center justify-center" style="color: var(--ui-text-secondary);" onclick={() => settingsOpen.set(true)} aria-label="Settings" title="Settings">⚙</button>
       </header>
-      <div class="flex flex-1 min-h-0">
+      <div class="flex flex-1 min-h-0 relative">
         <aside class="w-52 shrink-0 border-r overflow-auto hidden md:block" style="background-color: var(--ui-bg-sidebar); border-color: var(--ui-border);"><Sidebar /></aside>
+        {#if $sidebarOpen}
+          <div class="fixed inset-0 z-40 md:hidden" role="dialog" aria-modal="true" aria-label="Sidebar">
+            <div class="absolute inset-0 bg-black/40" onclick={() => sidebarOpen.set(false)}></div>
+            <aside class="absolute left-0 top-0 bottom-0 w-64 bg-white dark:bg-zinc-900 border-r shadow-xl" style="background-color: var(--ui-bg-sidebar); border-color: var(--ui-border);"><Sidebar /></aside>
+          </div>
+        {/if}
         <div class="flex-1 flex flex-col min-w-0">
           <div class="grid gap-2 p-2 border-b" style="border-color: var(--ui-border); grid-template-columns: repeat({$arenaPanelCount}, minmax(0, 1fr));">
             {#if $arenaPanelCount >= 1}
@@ -195,7 +221,10 @@
   {:else if $layout === 'nexus'}
     <div class="flex h-full flex-col">
       <header class="shrink-0 flex items-center flex-wrap px-3 py-2 border-b text-sm" style="border-color: var(--ui-border); background-color: var(--ui-bg-sidebar); color: var(--ui-text-secondary); {HEADER_GAP}">
-        <span class="font-semibold shrink-0" style="color: var(--ui-accent);">ATOM Nexus</span>
+        <div class="flex items-center gap-2 shrink-0">
+          <button type="button" class="md:hidden p-2 rounded min-h-[44px] min-w-[44px] flex items-center justify-center" style="color: var(--ui-text-secondary);" onclick={() => sidebarOpen.set(true)} aria-label="Open menu">☰</button>
+          <span class="font-semibold shrink-0" style="color: var(--ui-accent);">ATOM Nexus</span>
+        </div>
         <nav class="flex items-center gap-0.5 shrink-0" aria-label="Layout">
           {#each LAYOUT_OPTS as opt}
             <button type="button" class="px-2 py-1 rounded text-xs {$layout === opt.value ? 'font-medium' : ''}" style="color: {$layout === opt.value ? 'var(--ui-accent)' : 'var(--ui-text-secondary)'}; background: {$layout === opt.value ? 'color-mix(in srgb, var(--ui-accent) 15%, transparent)' : 'transparent'};" onclick={() => layout.set(opt.value)}>{opt.label}</button>
@@ -207,10 +236,17 @@
           <UiThemeSelect compact={true} />
           <ThemeToggle />
         </div>
-        <button type="button" class="p-1.5 rounded text-xs shrink-0" style="color: var(--ui-text-secondary);" onclick={() => settingsOpen.set(true)} aria-label="Settings" title="Settings">⚙</button>
+        <span class="w-2 h-2 rounded-full shrink-0" title={$lmStudioConnected === true ? 'LM Studio connected' : $lmStudioConnected === false ? 'LM Studio not reachable' : 'Checking...'} style="background-color: {$lmStudioConnected === true ? '#22c55e' : $lmStudioConnected === false ? '#ef4444' : '#94a3b8'};" aria-label={$lmStudioConnected === true ? 'Connected' : $lmStudioConnected === false ? 'Disconnected' : 'Checking'}></span>
+        <button type="button" class="p-2 rounded text-xs shrink-0 min-h-[44px] min-w-[44px] flex items-center justify-center" style="color: var(--ui-text-secondary);" onclick={() => settingsOpen.set(true)} aria-label="Settings" title="Settings">⚙</button>
       </header>
-      <div class="flex flex-1 min-h-0 min-w-0">
+      <div class="flex flex-1 min-h-0 min-w-0 relative">
         <aside class="w-52 shrink-0 border-r overflow-auto hidden md:block" style="background-color: var(--ui-bg-sidebar); border-color: var(--ui-border);"><Sidebar /></aside>
+        {#if $sidebarOpen}
+          <div class="fixed inset-0 z-40 md:hidden" role="dialog" aria-modal="true" aria-label="Sidebar">
+            <div class="absolute inset-0 bg-black/40" onclick={() => sidebarOpen.set(false)}></div>
+            <aside class="absolute left-0 top-0 bottom-0 w-64 bg-white dark:bg-zinc-900 border-r shadow-xl" style="background-color: var(--ui-bg-sidebar); border-color: var(--ui-border);"><Sidebar /></aside>
+          </div>
+        {/if}
         <div class="flex-1 min-h-0 min-w-0"><DashboardNexus /></div>
       </div>
     </div>

@@ -1,10 +1,12 @@
 <script>
   import { onMount } from 'svelte';
-  import { activeConversationId, conversations } from '$lib/stores.js';
+  import { activeConversationId, conversations, sidebarOpen, confirm } from '$lib/stores.js';
   import { listConversations, createConversation, deleteConversation, getMessageCount } from '$lib/db.js';
   import { bulkEraseChats } from '$lib/bulkEraseChats.js';
-  import { formatTime } from '$lib/utils.js';
+  import { formatTime, groupByDate } from '$lib/utils.js';
   import { getModelIcon, modelIconOverrides } from '$lib/modelIcons.js';
+
+  const groups = $derived(groupByDate($conversations));
 
   async function loadConversations() {
     let list = await listConversations();
@@ -29,11 +31,12 @@
 
   async function select(id) {
     activeConversationId.set(id);
+    sidebarOpen.set(false);
   }
 
   async function remove(ev, id) {
     ev.stopPropagation();
-    if (!confirm('Delete this conversation?')) return;
+    if (!(await confirm({ title: 'Delete conversation', message: 'Delete this conversation?' }))) return;
     await deleteConversation(id);
     if ($activeConversationId === id) activeConversationId.set(null);
     await loadConversations();
@@ -42,7 +45,7 @@
   async function onBulkErase() {
     const n = $conversations?.length ?? 0;
     if (n === 0) return;
-    if (!confirm(`Delete all ${n} conversation${n === 1 ? '' : 's'}? This cannot be undone.`)) return;
+    if (!(await confirm({ title: 'Bulk erase', message: `Delete all ${n} conversation${n === 1 ? '' : 's'}? This cannot be undone.`, confirmLabel: 'Delete all', danger: true }))) return;
     await bulkEraseChats();
   }
 </script>
@@ -50,7 +53,7 @@
 <div class="flex-1 overflow-y-auto p-2 flex flex-col min-h-0">
   <button
     type="button"
-    class="w-full py-2.5 px-3 rounded-lg text-left font-medium text-xs transition-opacity hover:opacity-90 shrink-0"
+    class="w-full py-3 px-3 rounded-lg text-left font-medium text-xs transition-opacity hover:opacity-90 shrink-0 min-h-[44px]"
     style="background: var(--ui-accent); color: var(--ui-bg-main);"
     onclick={newChat}>
     + New chat
@@ -66,7 +69,10 @@
     </button>
   {/if}
   <ul class="mt-2 space-y-0.5 flex-1 min-h-0 overflow-y-auto">
-    {#each $conversations as conv}
+    {#each ['today', 'yesterday', 'week', 'older'] as key}
+      {#if groups[key]?.length > 0}
+        <li class="px-2 pt-2 pb-0.5 text-[10px] font-medium uppercase tracking-wider" style="color: var(--ui-text-secondary);">{key === 'today' ? 'Today' : key === 'yesterday' ? 'Yesterday' : key === 'week' ? 'This week' : 'Older'}</li>
+        {#each groups[key] as conv}
       {@const icon = conv.model ? getModelIcon(conv.model, $modelIconOverrides) : null}
       {@const isActive = $activeConversationId === conv.id}
       <li>
@@ -92,6 +98,8 @@
             aria-label="Delete">×</button>
         </div>
       </li>
+        {/each}
+      {/if}
     {/each}
   </ul>
 </div>

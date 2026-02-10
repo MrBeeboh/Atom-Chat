@@ -14,6 +14,9 @@
     insertIntoInput,
     webSearchForNextMessage,
     floatingMetricsOpen,
+    shortcutsModalOpen,
+    cockpitIntelOpen,
+    confirm,
   } from '$lib/stores.js';
   import { createConversation, listConversations, getMessageCount } from '$lib/db.js';
   import { bulkEraseChats } from '$lib/bulkEraseChats.js';
@@ -33,6 +36,7 @@
   const LAYOUT_OPTIONS = [
     { value: 'cockpit', label: 'Cockpit' },
     { value: 'arena', label: 'Arena' },
+    { value: 'nexus', label: 'Nexus' },
   ];
 
   function loadRecentCommands() {
@@ -131,10 +135,8 @@
       closePalette();
       return;
     }
-    if (!confirm(`Delete all ${n} conversation${n === 1 ? '' : 's'}? This cannot be undone.`)) {
-      return;
-    }
     closePalette();
+    if (!(await confirm({ title: 'Bulk erase', message: `Delete all ${n} conversation${n === 1 ? '' : 's'}? This cannot be undone.`, confirmLabel: 'Delete all', danger: true }))) return;
     await bulkEraseChats();
   }
 
@@ -196,11 +198,30 @@
         else openPalette();
         return;
       }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
+        e.preventDefault();
+        runNewChat();
+        return;
+      }
+      if (e.key === '?' && !open) {
+        const t = document.activeElement?.tagName?.toLowerCase();
+        if (t !== 'input' && t !== 'textarea' && !(document.activeElement?.getAttribute('contenteditable') === 'true')) {
+          e.preventDefault();
+          shortcutsModalOpen.set(true);
+        }
+        return;
+      }
       if (e.key === '/' && !open) {
         const t = document.activeElement?.tagName?.toLowerCase();
         if (t !== 'input' && t !== 'textarea' && !(document.activeElement?.getAttribute('contenteditable') === 'true')) {
           e.preventDefault();
           openPalette();
+        }
+      }
+      if (e.key === ']' && !e.ctrlKey && !e.metaKey && !e.altKey && !open) {
+        const t = document.activeElement?.tagName?.toLowerCase();
+        if (t !== 'input' && t !== 'textarea' && !(document.activeElement?.getAttribute('contenteditable') === 'true')) {
+          cockpitIntelOpen.update((v) => !v);
         }
       }
     }

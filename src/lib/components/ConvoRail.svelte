@@ -1,11 +1,13 @@
 <script>
   import { onMount } from 'svelte';
-  import { activeConversationId, conversations, layout } from '$lib/stores.js';
+  import { activeConversationId, conversations, layout, confirm } from '$lib/stores.js';
   import { listConversations, createConversation, deleteConversation, getMessageCount } from '$lib/db.js';
   import { bulkEraseChats } from '$lib/bulkEraseChats.js';
+  import { groupByDate } from '$lib/utils.js';
 
   let expanded = $state(false);
   let convosList = $state([]);
+  const groups = $derived(groupByDate(convosList));
   let activeId = $state(null);
   let layoutVal = $state('flow');
 
@@ -59,7 +61,7 @@
 
   async function remove(ev, id) {
     ev.stopPropagation();
-    if (!confirm('Delete this conversation?')) return;
+    if (!(await confirm({ title: 'Delete conversation', message: 'Delete this conversation?' }))) return;
     await deleteConversation(id);
     if (activeId === id) activeConversationId.set(null);
     await loadConversations();
@@ -68,7 +70,7 @@
   async function onBulkErase() {
     const n = convosList?.length ?? 0;
     if (n === 0) return;
-    if (!confirm(`Delete all ${n} conversation${n === 1 ? '' : 's'}? This cannot be undone.`)) return;
+    if (!(await confirm({ title: 'Bulk erase', message: `Delete all ${n} conversation${n === 1 ? '' : 's'}? This cannot be undone.`, confirmLabel: 'Delete all', danger: true }))) return;
     await bulkEraseChats();
   }
 </script>
@@ -108,7 +110,10 @@
     </button>
   {/if}
   <ul class="flex-1 overflow-y-auto mt-1 space-y-0.5 px-1 min-h-0">
-    {#each convosList as conv}
+    {#each ['today', 'yesterday', 'week', 'older'] as key}
+      {#if groups[key]?.length > 0}
+        <li class="px-2 pt-2 pb-0.5 text-[10px] font-medium uppercase tracking-wider" style="color: var(--ui-text-secondary);">{key === 'today' ? 'Today' : key === 'yesterday' ? 'Yesterday' : key === 'week' ? 'This week' : 'Older'}</li>
+        {#each groups[key] as conv}
       {@const isActive = activeId === conv.id}
       <li>
         <div
@@ -127,6 +132,8 @@
           {/if}
         </div>
       </li>
+        {/each}
+      {/if}
     {/each}
   </ul>
 </div>

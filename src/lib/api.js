@@ -30,6 +30,32 @@ function toModelItem(m) {
 }
 
 /**
+ * Check if LM Studio is reachable (lightweight health check).
+ * @returns {Promise<boolean>}
+ */
+export async function checkLmStudioConnection() {
+  const base = getLmStudioBase();
+  const tryFetch = async (url) => {
+    const ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), 3000);
+    try {
+      const res = await fetch(url, { method: 'GET', signal: ctrl.signal });
+      return res.ok;
+    } finally {
+      clearTimeout(to);
+    }
+  };
+  try {
+    if (await tryFetch(`${base}/api/v1/models`)) return true;
+  } catch (_) {}
+  try {
+    return await tryFetch(`${base}/v1/models`);
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Fetch list of models from LM Studio.
  * Uses LM Studio 0.4.x native GET /api/v1/models (all downloaded LLMs) when available,
  * so all pull-downs show every model. Falls back to OpenAI-compat GET /v1/models (loaded only) for older LM Studio.

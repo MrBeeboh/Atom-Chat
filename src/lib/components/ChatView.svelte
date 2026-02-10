@@ -106,6 +106,16 @@
       <div class="flex-1 flex flex-col items-center justify-center px-4 py-8">
         <div class="w-full max-w-2xl mx-auto text-center">
           <h1 class="text-2xl md:text-3xl font-semibold mb-6" style="color: var(--ui-text-primary);">What can I help with?</h1>
+          <div class="flex flex-wrap justify-center gap-2 mb-6">
+            {#each ['Explain this concept simply', 'Write a short story', 'Help me debug code', 'Summarize in 3 bullet points'] as suggestion}
+              <button
+                type="button"
+                class="px-4 py-2 rounded-lg text-sm border transition-colors hover:opacity-90 min-h-[44px]"
+                style="border-color: var(--ui-border); color: var(--ui-text-secondary); background: var(--ui-input-bg);"
+                onclick={() => sendUserMessage(suggestion)}
+              >{suggestion}</button>
+            {/each}
+          </div>
           {#if $chatError}
             <div class="mb-4 px-3 py-2 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-sm flex items-center justify-between gap-2">
               <span>{$chatError}</span>

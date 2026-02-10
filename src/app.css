@@ -11,6 +11,18 @@
 html {
   @apply antialiased;
 }
+/* Focus rings for keyboard (visible only on focus-visible) */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[role="button"]:focus-visible,
+[role="combobox"]:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ui-bg-main), 0 0 0 4px var(--ui-accent);
+  border-radius: 4px;
+}
 body {
   @apply min-h-screen text-zinc-800 dark:text-zinc-200;
   background-color: #fafafa;
