@@ -4,7 +4,6 @@
   import { settings, layout, updateSettings, selectedModelId, hardware, models, presetDefaultModels, lmStudioBaseUrl } from '$lib/stores.js';
   import { loadModel } from '$lib/api.js';
   import { getDefaultsForModel, BATCH_SIZE_MIN, BATCH_SIZE_MAX } from '$lib/modelDefaults.js';
-  import { getModelProviderIcon } from '$lib/utils/modelProviderIcons.js';
 
   let { onclose } = $props();
 
@@ -424,7 +423,7 @@
                 aria-label="Default model for {p.name}">
                 <option value="">None</option>
                 {#each $models as m}
-                  <option value={m.id}>{getModelProviderIcon(m.id)} {m.id}</option>
+                  <option value={m.id}>{m.id}</option>
                 {/each}
               </select>
             </div>

@@ -17,7 +17,7 @@
   import { getMessages, addMessage, clearMessages, getMessageCount, listConversations, updateConversation } from '$lib/db.js';
   import { sendMessage } from '$lib/api/lmstudio.js';
   import { generateId } from '$lib/utils.js';
-  import { getModelProviderIcon } from '$lib/utils/modelProviderIcons.js';
+  import { getModelIcon, modelIconOverrides } from '$lib/modelIcons.js';
   import MessageList from '$lib/components/MessageList.svelte';
   import ChatInput from '$lib/components/ChatInput.svelte';
 
@@ -168,7 +168,7 @@
       </h3>
       <div class="p-3 flex flex-col gap-2 overflow-auto">
         <p class="text-sm truncate flex items-center gap-1" style="color: var(--ui-text-primary);" title="{$selectedModelId || 'None'}">
-          {#if $selectedModelId}<span class="shrink-0" aria-hidden="true">{getModelProviderIcon($selectedModelId)}</span>{/if}
+          {#if $selectedModelId}<img src={getModelIcon($selectedModelId, $modelIconOverrides)} alt="" class="w-4 h-4 shrink-0 rounded object-contain" />{/if}
           {$selectedModelId || 'No model'}
         </p>
         <span
@@ -186,7 +186,7 @@
         >
           <option value="">Select model</option>
           {#each $models as m}
-            <option value={m.id}>{getModelProviderIcon(m.id)} {m.id}</option>
+            <option value={m.id}>{m.id}</option>
           {/each}
         </select>
       </div>

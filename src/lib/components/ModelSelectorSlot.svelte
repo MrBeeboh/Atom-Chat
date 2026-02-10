@@ -3,7 +3,6 @@
   import { models, dashboardModelA, dashboardModelB, dashboardModelC, dashboardModelD, updateSettings, hardware, lmStudioBaseUrl } from '$lib/stores.js';
   import { getModels } from '$lib/api.js';
   import { getModelIcon, getQuantization, ensureModelIcons, modelIconOverrides } from '$lib/modelIcons.js';
-  import { getModelProviderIcon } from '$lib/utils/modelProviderIcons.js';
   import { getDefaultsForModel } from '$lib/modelDefaults.js';
   import { getRecommendedFromHf } from '$lib/huggingface.js';
 
@@ -62,7 +61,7 @@
   function toggle() {
     const willOpen = !open;
     open = willOpen;
-    if (willOpen && $models.length === 0 && !loading) loadModels();
+    if (willOpen) loadModels();
   }
 
   function getStore() {
@@ -106,9 +105,7 @@
       <button type="button" class="flex items-center gap-2 rounded-lg border text-sm px-3 py-2 w-full min-h-[36px] transition-colors duration-150 ui-model-selector {open ? 'ui-model-selector-open' : ''}" style="background-color: var(--ui-input-bg); color: var(--ui-text-primary); border-color: var(--ui-border);" onclick={toggle} onkeydown={(e) => e.key === 'Escape' && (open = false)} aria-label="Select model A">
         {#if val}
           {@const selIcon = getModelIcon(val, $modelIconOverrides)}
-          {@const providerIcon = getModelProviderIcon(val)}
           {#if selIcon}<img src={selIcon} alt="" class="w-4 h-4 shrink-0 rounded object-contain" />{/if}
-          <span class="shrink-0" aria-hidden="true">{providerIcon}</span>
           <span class="truncate font-bold uppercase tracking-tight text-xs">{val}</span>
         {:else}<span class="text-zinc-500 dark:text-zinc-400">Select model</span>{/if}
         <svg class="w-4 h-4 shrink-0 ml-1 transition-transform duration-150 {open ? 'rotate-180' : ''}" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
@@ -126,10 +123,8 @@
           {:else}
             {#each $models as m}
               {@const icon = getModelIcon(m.id, $modelIconOverrides)}
-              {@const providerIcon = getModelProviderIcon(m.id)}
               <button type="button" class="flex items-center gap-2 w-full px-4 py-2.5 text-left text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700/80 transition-colors {val === m.id ? 'bg-zinc-50 dark:bg-zinc-700/50 font-medium' : ''}" role="option" aria-selected={val === m.id} onclick={() => select(m.id)}>
                 <img src={icon} alt="" class="w-5 h-5 shrink-0 rounded object-contain" />
-                <span class="shrink-0" aria-hidden="true">{providerIcon}</span>
                 <span class="truncate">{m.id}</span>
               </button>
             {/each}
@@ -147,9 +142,7 @@
       <button type="button" class="flex items-center gap-2 rounded-lg border text-sm px-3 py-2 w-full min-h-[36px] transition-colors duration-150 ui-model-selector {open ? 'ui-model-selector-open' : ''}" style="background-color: var(--ui-input-bg); color: var(--ui-text-primary); border-color: var(--ui-border);" onclick={toggle} onkeydown={(e) => e.key === 'Escape' && (open = false)} aria-label="Select model B">
         {#if val}
           {@const selIcon = getModelIcon(val, $modelIconOverrides)}
-          {@const providerIcon = getModelProviderIcon(val)}
           {#if selIcon}<img src={selIcon} alt="" class="w-4 h-4 shrink-0 rounded object-contain" />{/if}
-          <span class="shrink-0" aria-hidden="true">{providerIcon}</span>
           <span class="truncate font-bold uppercase tracking-tight text-xs">{val}</span>
         {:else}<span class="text-zinc-500 dark:text-zinc-400">Select model</span>{/if}
         <svg class="w-4 h-4 shrink-0 ml-1 transition-transform duration-150 {open ? 'rotate-180' : ''}" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
@@ -167,10 +160,8 @@
           {:else}
             {#each $models as m}
               {@const icon = getModelIcon(m.id, $modelIconOverrides)}
-              {@const providerIcon = getModelProviderIcon(m.id)}
               <button type="button" class="flex items-center gap-2 w-full px-4 py-2.5 text-left text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700/80 transition-colors {val === m.id ? 'bg-zinc-50 dark:bg-zinc-700/50 font-medium' : ''}" role="option" aria-selected={val === m.id} onclick={() => select(m.id)}>
                 <img src={icon} alt="" class="w-5 h-5 shrink-0 rounded object-contain" />
-                <span class="shrink-0" aria-hidden="true">{providerIcon}</span>
                 <span class="truncate">{m.id}</span>
               </button>
             {/each}
@@ -188,9 +179,7 @@
       <button type="button" class="flex items-center gap-2 rounded-lg border text-sm px-3 py-2 w-full min-h-[36px] transition-colors duration-150 ui-model-selector {open ? 'ui-model-selector-open' : ''}" style="background-color: var(--ui-input-bg); color: var(--ui-text-primary); border-color: var(--ui-border);" onclick={toggle} onkeydown={(e) => e.key === 'Escape' && (open = false)} aria-label="Select model C">
         {#if val}
           {@const selIcon = getModelIcon(val, $modelIconOverrides)}
-          {@const providerIcon = getModelProviderIcon(val)}
           {#if selIcon}<img src={selIcon} alt="" class="w-4 h-4 shrink-0 rounded object-contain" />{/if}
-          <span class="shrink-0" aria-hidden="true">{providerIcon}</span>
           <span class="truncate font-bold uppercase tracking-tight text-xs">{val}</span>
         {:else}<span class="text-zinc-500 dark:text-zinc-400">Select model</span>{/if}
         <svg class="w-4 h-4 shrink-0 ml-1 transition-transform duration-150 {open ? 'rotate-180' : ''}" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
@@ -208,10 +197,8 @@
           {:else}
             {#each $models as m}
               {@const icon = getModelIcon(m.id, $modelIconOverrides)}
-              {@const providerIcon = getModelProviderIcon(m.id)}
               <button type="button" class="flex items-center gap-2 w-full px-4 py-2.5 text-left text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700/80 transition-colors {val === m.id ? 'bg-zinc-50 dark:bg-zinc-700/50 font-medium' : ''}" role="option" aria-selected={val === m.id} onclick={() => select(m.id)}>
                 <img src={icon} alt="" class="w-5 h-5 shrink-0 rounded object-contain" />
-                <span class="shrink-0" aria-hidden="true">{providerIcon}</span>
                 <span class="truncate">{m.id}</span>
               </button>
             {/each}
@@ -229,9 +216,7 @@
       <button type="button" class="flex items-center gap-2 rounded-lg border text-sm px-3 py-2 w-full min-h-[36px] transition-colors duration-150 ui-model-selector {open ? 'ui-model-selector-open' : ''}" style="background-color: var(--ui-input-bg); color: var(--ui-text-primary); border-color: var(--ui-border);" onclick={toggle} onkeydown={(e) => e.key === 'Escape' && (open = false)} aria-label="Select model D">
         {#if val}
           {@const selIcon = getModelIcon(val, $modelIconOverrides)}
-          {@const providerIcon = getModelProviderIcon(val)}
           {#if selIcon}<img src={selIcon} alt="" class="w-4 h-4 shrink-0 rounded object-contain" />{/if}
-          <span class="shrink-0" aria-hidden="true">{providerIcon}</span>
           <span class="truncate font-bold uppercase tracking-tight text-xs">{val}</span>
         {:else}<span class="text-zinc-500 dark:text-zinc-400">Select model</span>{/if}
         <svg class="w-4 h-4 shrink-0 ml-1 transition-transform duration-150 {open ? 'rotate-180' : ''}" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
@@ -249,10 +234,8 @@
           {:else}
             {#each $models as m}
               {@const icon = getModelIcon(m.id, $modelIconOverrides)}
-              {@const providerIcon = getModelProviderIcon(m.id)}
               <button type="button" class="flex items-center gap-2 w-full px-4 py-2.5 text-left text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700/80 transition-colors {val === m.id ? 'bg-zinc-50 dark:bg-zinc-700/50 font-medium' : ''}" role="option" aria-selected={val === m.id} onclick={() => select(m.id)}>
                 <img src={icon} alt="" class="w-5 h-5 shrink-0 rounded object-contain" />
-                <span class="shrink-0" aria-hidden="true">{providerIcon}</span>
                 <span class="truncate">{m.id}</span>
               </button>
             {/each}

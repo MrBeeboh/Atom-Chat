@@ -12,7 +12,6 @@
   } from '$lib/stores.js';
   import { createConversation, listConversations, getMessageCount } from '$lib/db.js';
   import { getModelIcon, getQuantization, modelIconOverrides } from '$lib/modelIcons.js';
-  import { getModelProviderIcon } from '$lib/utils/modelProviderIcons.js';
 
   let responseHistory = $state([]);
   const MAX_HISTORY = 5;
@@ -142,7 +141,6 @@
     <div class="rounded-lg border p-2 flex items-center gap-2" style="border-color: var(--ui-border); background: var(--ui-input-bg);">
       {#if currentModelId}
         <img src={getModelIcon(currentModelId, $modelIconOverrides)} alt="" class="w-6 h-6 shrink-0 rounded object-contain" />
-        <span class="shrink-0" aria-hidden="true">{getModelProviderIcon(currentModelId)}</span>
         <span class="truncate flex-1 text-xs font-medium min-w-0" style="color: var(--ui-text-primary);">{currentModelId}</span>
         {#if getQuantization(currentModelId)}
           <span class="text-[10px] px-1.5 py-0.5 rounded font-mono opacity-80" style="background: var(--ui-border);">{getQuantization(currentModelId)}</span>

@@ -18,7 +18,6 @@
   import { createConversation, listConversations, getMessageCount } from '$lib/db.js';
   import { bulkEraseChats } from '$lib/bulkEraseChats.js';
   import { UI_THEME_OPTIONS } from '$lib/themeOptions.js';
-  import { getModelProviderIcon } from '$lib/utils/modelProviderIcons.js';
 
   let modelsList = $state([]);
   let conversationsList = $state([]);
@@ -86,7 +85,7 @@
     ($models || []).forEach((m) => {
       const id = m.id || m;
       const label = typeof id === 'string' ? id : id.id;
-      if (fuzzyMatch(label, q)) items.push({ id: 'model-' + label, label: getModelProviderIcon(label) + ' ' + label, category: 'Models', run: () => selectedModelId.set(label) });
+      if (fuzzyMatch(label, q)) items.push({ id: 'model-' + label, label, category: 'Models', run: () => selectedModelId.set(label) });
     });
 
     // Layouts

@@ -3,7 +3,6 @@
   import { models, selectedModelId, updateSettings, hardware, presetDefaultModels, lmStudioBaseUrl, modelSelectionNotification } from '$lib/stores.js';
   import { getModels } from '$lib/api.js';
   import { getModelIcon, getQuantization, ensureModelIcons, modelIconOverrides } from '$lib/modelIcons.js';
-  import { getModelProviderIcon } from '$lib/utils/modelProviderIcons.js';
   import { getDefaultsForModel } from '$lib/modelDefaults.js';
   import { getRecommendedFromHf } from '$lib/huggingface.js';
   import { findSmallestModel } from '$lib/utils/modelSelection.js';
@@ -108,7 +107,9 @@
   }
 
   function toggle() {
-    open = !open;
+    const willOpen = !open;
+    open = willOpen;
+    if (willOpen) load();
   }
 </script>
 
@@ -124,9 +125,7 @@
       aria-label="Select model">
       {#if $selectedModelId}
         {@const selIcon = getModelIcon($selectedModelId, $modelIconOverrides)}
-        {@const providerIcon = getModelProviderIcon($selectedModelId)}
         <img src={selIcon} alt="" class="w-4 h-4 shrink-0 rounded object-contain" />
-        <span class="shrink-0" aria-hidden="true">{providerIcon}</span>
         <span class="truncate font-bold uppercase tracking-tight text-xs">{$selectedModelId}</span>
       {:else}
         <span class="text-zinc-500 dark:text-zinc-400">Select model</span>
@@ -141,7 +140,6 @@
       role="listbox">
       {#each $models as m}
         {@const icon = getModelIcon(m.id, $modelIconOverrides)}
-        {@const providerIcon = getModelProviderIcon(m.id)}
         <button
           type="button"
           class="flex items-center gap-2 w-full px-4 py-2.5 text-left text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700/80 transition-colors {m.id === $selectedModelId ? 'bg-zinc-50 dark:bg-zinc-700/50 font-medium' : ''}"
@@ -149,7 +147,6 @@
           aria-selected={m.id === $selectedModelId}
           onclick={() => select(m.id)}>
           <img src={icon} alt="" class="w-5 h-5 shrink-0 rounded object-contain" />
-          <span class="shrink-0" aria-hidden="true">{providerIcon}</span>
           <span class="truncate">{m.id}</span>
         </button>
       {/each}
