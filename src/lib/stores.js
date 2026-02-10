@@ -265,15 +265,15 @@ if (typeof localStorage !== 'undefined') {
   performanceMode.subscribe((v) => localStorage.setItem('performanceMode', v ? '1' : '0'));
 }
 
-/** Arena: number of model panels (1–4). Saved to localStorage. */
+/** Arena: number of model panels to show (1–4). Only this many slots/panels are shown. Saved to localStorage. */
 const arenaPanelCountStored = () => {
   const v = typeof localStorage !== 'undefined' ? localStorage.getItem('arenaPanelCount') : null;
   const n = Number(v);
-  return n >= 1 && n <= 4 ? n : 3;
+  return n >= 1 && n <= 4 ? n : 1;
 };
 export const arenaPanelCount = writable(arenaPanelCountStored());
 if (typeof localStorage !== 'undefined') {
-  arenaPanelCount.subscribe((v) => localStorage.setItem('arenaPanelCount', String(v >= 1 && v <= 4 ? v : 3)));
+  arenaPanelCount.subscribe((v) => localStorage.setItem('arenaPanelCount', String(v >= 1 && v <= 4 ? v : 1)));
 }
 
 /** Arena: when true, Slot A is the judge — it does not answer the prompt; use "Judgment time" to rate B/C/D. */

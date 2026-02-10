@@ -445,6 +445,7 @@
 </script>
 
 <div class="h-full min-h-0 flex flex-col">
+  <!-- Only the number of panels selected (1–4) are shown; model selector row in App.svelte matches this count. -->
   <div
     bind:this={gridEl}
     class="flex-1 min-h-0 grid gap-2 p-2 atom-layout-transition relative {isMobile ? 'overflow-y-auto' : 'grid-rows-[minmax(0,1fr)]'}"
