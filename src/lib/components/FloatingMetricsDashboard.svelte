@@ -30,7 +30,7 @@
   function onMove(e) {
     if (!dragStart) return;
     const panelW = $floatingMetricsMinimized ? 200 : 220;
-    const panelH = $floatingMetricsMinimized ? 36 : 220;
+    const panelH = $floatingMetricsMinimized ? 36 : 260;
     const x = Math.max(0, Math.min(e.clientX - dragStart.x, window.innerWidth - panelW));
     const y = Math.max(0, Math.min(e.clientY - dragStart.y, window.innerHeight - panelH));
     floatingMetricsPosition.set({ x, y });
@@ -50,20 +50,33 @@
     };
   });
 
-  let hoveredIdx = $state(-1);
-  let seriesArr = $state([]);
-  $effect(() => {
-    const unsub = tokSeries.subscribe((v) => (seriesArr = Array.isArray(v) ? v : []));
-    return () => unsub();
-  });
+  const UNIFIED_MAX = 60;
+  const w = 200;
+  const h = 72;
+  /** Unified 0–100% series: each point { tok, vram, gpu, ram, cpu } for same time index */
+  let unifiedSeries = $state([]);
 
   $effect(() => {
     let cancelled = false;
     function tick() {
       if (cancelled) return;
       if (!get(floatingMetricsOpen) || get(floatingMetricsMinimized)) return;
+      const tok = get(liveTokPerSec) ?? get(lastResponseTokPerSec) ?? 0;
       fetchHardwareMetrics().then((m) => {
-        if (!cancelled) hardwareMetrics.set(m);
+        if (cancelled) return;
+        hardwareMetrics.set(m);
+        const vramPct = m && m.vram_total_gb > 0 ? (m.vram_used_gb / m.vram_total_gb) * 100 : 0;
+        const ramPct = m && m.ram_total_gb > 0 ? (m.ram_used_gb / m.ram_total_gb) * 100 : 0;
+        unifiedSeries = [
+          ...unifiedSeries.slice(-(UNIFIED_MAX - 1)),
+          {
+            tok: Math.min(100, Number(tok)),
+            vram: vramPct,
+            gpu: m ? m.gpu_util : 0,
+            ram: ramPct,
+            cpu: m ? m.cpu_percent : 0,
+          },
+        ];
       });
     }
     tick();
@@ -73,19 +86,24 @@
       clearInterval(id);
     };
   });
-  const maxVal = $derived(Math.max(1, ...seriesArr));
-  const w = 180;
-  const h = 56;
-  const pathPoints = $derived.by(() => {
-    if (!seriesArr.length) return '';
-    return seriesArr
-      .map((v, i) => {
-        const x = (i / Math.max(1, seriesArr.length - 1)) * w;
-        const y = h - (Number(v) / maxVal) * h;
+
+  const pathFor = (key) => {
+    if (!unifiedSeries.length) return '';
+    return unifiedSeries
+      .map((p, i) => {
+        const x = (i / Math.max(1, unifiedSeries.length - 1)) * w;
+        const v = Math.min(100, Math.max(0, p[key] ?? 0));
+        const y = h - (v / 100) * h;
         return `${x},${y}`;
       })
       .join(' ');
-  });
+  };
+  let hoveredIdx = $state(-1);
+  const pathTok = $derived(pathFor('tok'));
+  const pathVram = $derived(pathFor('vram'));
+  const pathGpu = $derived(pathFor('gpu'));
+  const pathRam = $derived(pathFor('ram'));
+  const pathCpu = $derived(pathFor('cpu'));
 
   function toggleMinimize() {
     floatingMetricsMinimized.update((v) => !v);
@@ -156,61 +174,37 @@
     </div>
     {#if !$floatingMetricsMinimized}
       <div class="p-2 border-t border-zinc-200/60 dark:border-zinc-700/60 space-y-1.5" style="border-color: var(--ui-border);">
-        <div class="flex items-center justify-between gap-2">
+        <div class="flex items-center justify-between gap-2 mb-0.5">
+          <span class="text-[10px] uppercase text-zinc-500 dark:text-zinc-400">All 0–100%</span>
+          <span class="text-[9px] text-zinc-400 dark:text-zinc-500">Tok · VRAM · GPU · RAM · CPU</span>
+        </div>
+        <div class="relative" role="img" aria-label="Unified metrics sparkline">
+          <svg width={w} height={h} class="block" style="overflow: visible;">
+            <polyline fill="none" stroke="var(--atom-teal)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" points={pathTok} />
+            <polyline fill="none" stroke="var(--atom-amber, #f59e0b)" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" points={pathVram} />
+            <polyline fill="none" stroke="#ef4444" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" points={pathGpu} />
+            <polyline fill="none" stroke="#3b82f6" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" points={pathRam} />
+            <polyline fill="none" stroke="#22c55e" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" points={pathCpu} />
+          </svg>
+        </div>
+        <div class="flex items-center gap-2 mb-0.5">
           <span class="text-[10px] uppercase text-zinc-500 dark:text-zinc-400">Tokens/s</span>
           <span class="text-sm font-mono font-semibold" style="color: var(--atom-teal);">
             {$liveTokPerSec != null ? $liveTokPerSec.toFixed(1) : $lastResponseTokPerSec != null ? $lastResponseTokPerSec.toFixed(1) : '—'}
           </span>
         </div>
-        <div class="relative" role="img" aria-label="Tokens per second sparkline">
-          <svg
-            width={w}
-            height={h}
-            class="block"
-            role="img"
-            onmousemove={(e) => {
-              if (!seriesArr.length) { hoveredIdx = -1; return; }
-              const rect = e.currentTarget.getBoundingClientRect();
-              const xRatio = Math.max(0, Math.min(1, (e.clientX - rect.left) / w));
-              hoveredIdx = Math.round(xRatio * (seriesArr.length - 1));
-            }}
-            onmouseleave={() => (hoveredIdx = -1)}>
-            <polyline
-              fill="none"
-              stroke="var(--atom-teal)"
-              stroke-width="1.5"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              points={pathPoints}
-            />
-            {#if hoveredIdx >= 0 && hoveredIdx < seriesArr.length}
-              {@const hx = (hoveredIdx / Math.max(1, seriesArr.length - 1)) * w}
-              {@const hy = h - (Number(seriesArr[hoveredIdx]) / maxVal) * h}
-              <circle cx={hx} cy={hy} r="3" fill="var(--atom-teal)" />
-            {/if}
-          </svg>
-          {#if hoveredIdx >= 0 && hoveredIdx < seriesArr.length}
-            {@const hx = (hoveredIdx / Math.max(1, seriesArr.length - 1)) * w}
-            <div
-              class="absolute pointer-events-none rounded px-1.5 py-0.5 text-[10px] font-mono whitespace-nowrap shadow"
-              style="left: {Math.min(hx, w - 50)}px; bottom: {h + 4}px; background: var(--ui-bg-main); color: var(--atom-teal); border: 1px solid var(--ui-border);">
-              {Number(seriesArr[hoveredIdx]).toFixed(1)} t/s
-            </div>
-          {/if}
+        <div class="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-[10px] font-mono pt-1 border-t" style="border-color: var(--ui-border);">
+          <span class="uppercase text-zinc-500 dark:text-zinc-400">VRAM</span>
+          <span class="truncate" style="color: var(--atom-amber, #f59e0b);">{$hardwareMetrics ? `${$hardwareMetrics.vram_used_gb} / ${$hardwareMetrics.vram_total_gb} GB` : '—'}</span>
+          <span class="uppercase text-zinc-500 dark:text-zinc-400">GPU</span>
+          <span class="truncate" style="color: var(--atom-amber, #f59e0b);">{$hardwareMetrics ? $hardwareMetrics.gpu_util + '%' : '—'}</span>
+          <span class="uppercase text-zinc-500 dark:text-zinc-400">Sys RAM</span>
+          <span class="truncate" style="color: var(--atom-blue, #3b82f6);">{$hardwareMetrics ? `${$hardwareMetrics.ram_used_gb} / ${$hardwareMetrics.ram_total_gb} GB` : '—'}</span>
+          <span class="uppercase text-zinc-500 dark:text-zinc-400">CPU</span>
+          <span class="truncate" style="color: var(--atom-teal);">{$hardwareMetrics ? $hardwareMetrics.cpu_percent + '%' : '—'}</span>
         </div>
-        {#if $hardwareMetrics}
-          <div class="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-[10px] font-mono pt-1 border-t" style="border-color: var(--ui-border);">
-            <span class="uppercase text-zinc-500 dark:text-zinc-400">VRAM</span>
-            <span class="truncate" style="color: var(--atom-amber, #f59e0b);">{$hardwareMetrics.vram_used_gb} / {$hardwareMetrics.vram_total_gb} GB</span>
-            <span class="uppercase text-zinc-500 dark:text-zinc-400">GPU</span>
-            <span class="truncate" style="color: var(--atom-amber, #f59e0b);">{$hardwareMetrics.gpu_util}%</span>
-            <span class="uppercase text-zinc-500 dark:text-zinc-400">Sys RAM</span>
-            <span class="truncate" style="color: var(--atom-blue, #3b82f6);">{$hardwareMetrics.ram_used_gb} / {$hardwareMetrics.ram_total_gb} GB</span>
-            <span class="uppercase text-zinc-500 dark:text-zinc-400">CPU</span>
-            <span class="truncate" style="color: var(--atom-teal);">{$hardwareMetrics.cpu_percent}%</span>
-          </div>
-        {:else}
-          <p class="text-[10px] text-zinc-500 dark:text-zinc-400 pt-1 border-t" style="border-color: var(--ui-border);">Run <code class="px-0.5 rounded bg-zinc-200 dark:bg-zinc-700">python scripts/hardware_server.py</code> for GPU/RAM/CPU</p>
+        {#if !$hardwareMetrics}
+          <p class="text-[9px] text-zinc-400 dark:text-zinc-500 pt-0.5" style="border-color: var(--ui-border);">Start <code class="px-0.5 rounded opacity-80" style="background: var(--ui-input-bg);">python scripts/hardware_server.py</code> to fill above</p>
         {/if}
       </div>
     {/if}

@@ -31,7 +31,8 @@ if HAS_NVML:
 
 @app.route("/metrics")
 def get_metrics():
-    cpu_usage = psutil.cpu_percent(interval=None)
+    # interval=0.1 so we get a real value (interval=None returns 0 on first call)
+    cpu_usage = psutil.cpu_percent(interval=0.1)
     ram_info = psutil.virtual_memory()
 
     metrics = {
