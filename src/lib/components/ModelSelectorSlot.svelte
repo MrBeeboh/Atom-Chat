@@ -47,24 +47,21 @@
       ensureModelIcons(ids);
     } catch (e) {
       loadError = e?.message || 'Could not load models';
-      // Don't clear models on error – another slot may have already loaded the list; only show error so user can Retry
-      if ($models.length === 0) models.set([]);
+      models.set([]);
     } finally {
       loading = false;
     }
   }
 
-  // Only slot A triggers initial load so we don't run 4 parallel requests and race/clear the list
   $effect(() => {
     $lmStudioBaseUrl;
-    if (slot === 'A') loadModels();
+    loadModels();
   });
 
   function toggle() {
     const willOpen = !open;
     open = willOpen;
-    // Only refetch when opening if we don't have a list yet (avoids redundant fetches and races)
-    if (willOpen && $models.length === 0) loadModels();
+    if (willOpen) loadModels();
   }
 
   function getStore() {
