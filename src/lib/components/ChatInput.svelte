@@ -1,10 +1,12 @@
 <script>
   import { get } from 'svelte/store';
-  import { isStreaming, voiceServerUrl } from '$lib/stores.js';
+  import { isStreaming, voiceServerUrl, pendingDroppedFiles } from '$lib/stores.js';
+  import { pdfToImageDataUrls } from '$lib/pdfToImages.js';
 
   let { onSend, onStop } = $props();
   let text = $state('');
   let textareaEl = $state(null);
+  let fileInputEl = $state(/** @type {HTMLInputElement | null} */ (null));
   let recording = $state(false);
   let voiceProcessing = $state(false);
   let voiceError = $state(null);
@@ -15,14 +17,120 @@
   const MAX_RECORDING_MS = 90_000; // 90 s cap
   let recordingTimerId = $state(null);
 
+  /** Attachments: { dataUrl, label } for display; we send dataUrl list to onSend. */
+  let attachments = $state([]);
+  let attachProcessing = $state(false);
+  let attachError = $state(null);
+  const ACCEPT_IMAGE = 'image/jpeg,image/png,image/webp,image/gif';
+  const ACCEPT_PDF = 'application/pdf';
+  const MAX_FILE_MB = 25;
+  const MAX_TOTAL_MB = 80;
+
   async function handleSubmit() {
-    if (!text.trim() || $isStreaming) return;
+    if ($isStreaming) return;
+    const userMessage = (text || '').trim();
+    const imageDataUrls = attachments.map((a) => a.dataUrl);
+    if (!userMessage && imageDataUrls.length === 0) return;
 
-    const userMessage = text.trim();
     text = '';
+    attachments = [];
+    attachError = null;
 
-    if (onSend) await onSend(userMessage);
+    if (onSend) await onSend(userMessage, imageDataUrls);
   }
+
+  function addImageDataUrls(dataUrls, label) {
+    for (const url of dataUrls) {
+      attachments = [...attachments, { dataUrl: url, label: label || 'Image' }];
+    }
+  }
+
+  async function processFiles(files) {
+    if (!files?.length) return;
+    attachError = null;
+    attachProcessing = true;
+    let totalMb = attachments.reduce((sum, a) => sum + (a.dataUrl.length * 3 / 4 / 1024 / 1024), 0);
+
+    try {
+      for (const file of Array.from(files)) {
+        const fileMb = file.size / 1024 / 1024;
+        if (fileMb > MAX_FILE_MB) {
+          attachError = `"${file.name}" is too large (max ${MAX_FILE_MB} MB per file).`;
+          continue;
+        }
+        if (totalMb + fileMb > MAX_TOTAL_MB) {
+          attachError = `Total attachments over ${MAX_TOTAL_MB} MB.`;
+          break;
+        }
+
+        const type = (file.type || '').toLowerCase();
+        if (type === 'application/pdf') {
+          const urls = await pdfToImageDataUrls(file);
+          if (urls.length === 0) {
+            attachError = `Could not read PDF "${file.name}".`;
+            continue;
+          }
+          urls.forEach((url, i) => addImageDataUrls([url], urls.length > 1 ? `${file.name} (p.${i + 1})` : file.name));
+          totalMb += (urls[0].length * 3 / 4 / 1024 / 1024) * urls.length;
+        } else if (type.startsWith('image/')) {
+          const url = await new Promise((resolve, reject) => {
+            const r = new FileReader();
+            r.onload = () => resolve(r.result);
+            r.onerror = () => reject(new Error('Failed to read file'));
+            r.readAsDataURL(file);
+          });
+          addImageDataUrls([url], file.name);
+          totalMb += fileMb;
+        } else {
+          attachError = `Unsupported: ${file.name}. Use images (JPEG, PNG, WebP, GIF) or PDF.`;
+        }
+      }
+    } catch (e) {
+      attachError = e?.message || 'Failed to add file(s).';
+    } finally {
+      attachProcessing = false;
+    }
+  }
+
+  function onFileInputChange(e) {
+    const input = e.currentTarget;
+    processFiles(input.files);
+    input.value = '';
+  }
+
+  function removeAttachment(index) {
+    attachments = attachments.filter((_, i) => i !== index);
+    attachError = null;
+  }
+
+  function onDrop(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    processFiles(e.dataTransfer?.files);
+  }
+
+  function onDragOver(e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  function onPaste(e) {
+    const files = e.clipboardData?.files;
+    if (files?.length) {
+      e.preventDefault();
+      processFiles(files);
+    }
+  }
+
+  $effect(() => {
+    const unsub = pendingDroppedFiles.subscribe((files) => {
+      if (files?.length) {
+        pendingDroppedFiles.set(null);
+        processFiles(files);
+      }
+    });
+    return () => { unsub(); };
+  });
 
   function handleKeydown(e) {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
@@ -138,7 +246,35 @@
   }
 </script>
 
-<div class="chat-input-container">
+<div
+  class="chat-input-container"
+  ondragover={onDragOver}
+  ondrop={onDrop}
+  role="presentation"
+>
+  <input
+    bind:this={fileInputEl}
+    type="file"
+    accept="{ACCEPT_IMAGE},{ACCEPT_PDF}"
+    multiple
+    class="hidden-file-input"
+    onchange={onFileInputChange}
+    aria-label="Attach image or PDF"
+  />
+  <button
+    type="button"
+    class="attach-button"
+    title="Attach image or PDF (or drag & drop, paste)"
+    disabled={$isStreaming || attachProcessing}
+    onclick={() => fileInputEl?.click()}
+    aria-label="Attach files"
+  >
+    {#if attachProcessing}
+      <span class="mic-spinner" aria-hidden="true">⟳</span>
+    {:else}
+      <span aria-hidden="true">📎</span>
+    {/if}
+  </button>
   <button
     type="button"
     class="mic-button"
@@ -155,22 +291,40 @@
       <span class="mic-icon" aria-hidden="true">🎤</span>
     {/if}
   </button>
-  <textarea
-    bind:this={textareaEl}
-    bind:value={text}
-    onkeydown={handleKeydown}
-    oninput={autoResize}
-    disabled={$isStreaming ? true : null}
-    placeholder="Type your message... (Ctrl+Enter to send)"
-    rows="1"
-  ></textarea>
+  <div class="chat-input-main">
+    {#if attachments.length > 0}
+      <div class="attachments-row">
+        {#each attachments as att, i}
+          <div class="attachment-thumb">
+            {#if att.dataUrl.startsWith('data:image')}
+              <img src={att.dataUrl} alt="" class="thumb-img" />
+            {:else}
+              <span class="thumb-placeholder">IMG</span>
+            {/if}
+            <span class="thumb-label" title={att.label}>{att.label.length > 12 ? att.label.slice(0, 10) + '…' : att.label}</span>
+            <button type="button" class="thumb-remove" onclick={() => removeAttachment(i)} aria-label="Remove">×</button>
+          </div>
+        {/each}
+      </div>
+    {/if}
+    <textarea
+      bind:this={textareaEl}
+      bind:value={text}
+      onkeydown={handleKeydown}
+      oninput={autoResize}
+      onpaste={onPaste}
+      disabled={$isStreaming ? true : null}
+      placeholder="Type your message or drop/paste images or PDFs... (Ctrl+Enter to send)"
+      rows="1"
+    ></textarea>
+  </div>
 
   {#if $isStreaming && onStop}
     <button type="button" class="send-button" style="background: var(--ui-accent-hot, #dc2626);" onclick={() => onStop()} title="Stop">Stop</button>
   {:else}
     <button
       onclick={handleSubmit}
-      disabled={!text.trim() || $isStreaming ? true : null}
+      disabled={($isStreaming || (!text.trim() && attachments.length === 0)) ? true : null}
       class="send-button"
     >
       {#if $isStreaming}
@@ -185,6 +339,9 @@
   {/if}
   {#if voiceError}
     <p class="voice-error" role="alert">{voiceError}</p>
+  {/if}
+  {#if attachError}
+    <p class="attach-error" role="alert">{attachError}</p>
   {/if}
 </div>
 
@@ -290,7 +447,8 @@
     color: var(--ui-text-secondary, #6b7280);
     align-self: center;
   }
-  .voice-error {
+  .voice-error,
+  .attach-error {
     position: absolute;
     bottom: 100%;
     left: 16px;
@@ -302,5 +460,109 @@
     background: color-mix(in srgb, #dc2626 15%, var(--ui-bg-main));
     color: var(--ui-text-primary);
     border: 1px solid var(--ui-accent-hot, #dc2626);
+  }
+  .hidden-file-input {
+    position: absolute;
+    width: 0;
+    height: 0;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .attach-button {
+    flex-shrink: 0;
+    width: 44px;
+    min-height: 44px;
+    border-radius: 8px;
+    border: 2px solid var(--ui-border, #e5e7eb);
+    background: var(--ui-input-bg, #fff);
+    color: var(--ui-text-primary, #111);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+    transition: all 150ms;
+  }
+  .attach-button:hover:not(:disabled) {
+    border-color: var(--ui-accent, #3b82f6);
+    background: color-mix(in srgb, var(--ui-accent, #3b82f6) 10%, transparent);
+  }
+  .attach-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .chat-input-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .attachments-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: flex-start;
+  }
+  .attachment-thumb {
+    position: relative;
+    width: 56px;
+    height: 56px;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid var(--ui-border, #e5e7eb);
+    background: var(--ui-bg-main);
+    flex-shrink: 0;
+  }
+  .thumb-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .thumb-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--ui-text-secondary);
+    background: var(--ui-input-bg);
+  }
+  .thumb-label {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 2px 4px;
+    font-size: 9px;
+    background: rgba(0,0,0,0.6);
+    color: #fff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .thumb-remove {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    background: rgba(0,0,0,0.6);
+    color: #fff;
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .thumb-remove:hover {
+    background: var(--ui-accent-hot, #dc2626);
   }
 </style>

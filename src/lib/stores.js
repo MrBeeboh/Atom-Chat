@@ -10,6 +10,9 @@ export const conversations = writable([]);
 /** Messages for the active conversation (reactive) */
 export const activeMessages = writable([]);
 
+/** When set, ChatInput processes these files (drop anywhere in chat) then clears. */
+export const pendingDroppedFiles = writable(null);
+
 /** Loaded LM Studio model list { id }[] */
 export const models = writable([]);
 

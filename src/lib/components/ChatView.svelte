@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte';
-  import { activeConversationId, activeMessages, conversations, settings, effectiveModelId, isStreaming, chatError } from '$lib/stores.js';
+  import { activeConversationId, activeMessages, conversations, settings, effectiveModelId, isStreaming, chatError, pendingDroppedFiles } from '$lib/stores.js';
   import { getMessages, addMessage, clearMessages, deleteMessage, getMessageCount } from '$lib/db.js';
   import { sendMessage } from '$lib/api/lmstudio.js';
   import MessageList from '$lib/components/MessageList.svelte';
@@ -23,23 +23,32 @@
   });
 
   function buildApiMessages(msgs, systemPrompt) {
-    const out = msgs.map((m) => ({
-      role: m.role,
-      content: typeof m.content === 'string' ? m.content : (Array.isArray(m.content) ? (m.content.find((p) => p.type === 'text')?.text ?? '') : ''),
-    })).filter((m) => m.content || m.role === 'assistant');
+    const out = msgs.map((m) => ({ role: m.role, content: m.content })).filter((m) => {
+      if (m.role === 'system') return true;
+      if (typeof m.content === 'string') return m.content.trim().length > 0;
+      if (Array.isArray(m.content)) return m.content.length > 0;
+      return false;
+    });
     if (systemPrompt?.trim()) out.unshift({ role: 'system', content: systemPrompt.trim() });
     return out;
   }
 
-  async function sendUserMessage(text) {
-    if (!convId || !text.trim()) return;
+  async function sendUserMessage(text, imageDataUrls = []) {
+    const hasText = (text || '').trim().length > 0;
+    const hasImages = imageDataUrls?.length > 0;
+    if (!convId || (!hasText && !hasImages)) return;
     chatError.set(null);
     if (!$effectiveModelId) {
       chatError.set('Please select a model from the dropdown above.');
       return;
     }
 
-    const userContent = text.trim();
+    const userContent = hasImages
+      ? [
+          ...(hasText ? [{ type: 'text', text: text.trim() }] : [{ type: 'text', text: ' ' }]),
+          ...imageDataUrls.map((url) => ({ type: 'image_url', image_url: { url } })),
+        ]
+      : text.trim();
     await addMessage(convId, { role: 'user', content: userContent });
     await loadMessages();
 
@@ -100,7 +109,17 @@
   }
 </script>
 
-<div class="flex-1 flex flex-col min-h-0" role="application">
+<div
+  class="flex-1 flex flex-col min-h-0 chat-drop-zone"
+  role="application"
+  ondragover={(e) => { e.preventDefault(); e.stopPropagation(); }}
+  ondrop={(e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const files = e.dataTransfer?.files;
+    if (files?.length) pendingDroppedFiles.set(files);
+  }}
+>
   {#if convId}
     {#if $activeMessages.length === 0}
       <div class="flex-1 flex flex-col items-center justify-center px-4 py-8">

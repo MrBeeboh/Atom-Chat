@@ -13,6 +13,7 @@
     lastResponseTokens,
     lastResponseTokPerSec,
     updateSettings,
+    pendingDroppedFiles,
   } from '$lib/stores.js';
   import { getMessages, addMessage, clearMessages, getMessageCount, listConversations, updateConversation } from '$lib/db.js';
   import { sendMessage } from '$lib/api/lmstudio.js';
@@ -38,28 +39,32 @@
 
   function buildApiMessages(msgs, systemPrompt) {
     const out = msgs
-      .map((m) => ({
-        role: m.role,
-        content:
-          typeof m.content === 'string'
-            ? m.content
-            : Array.isArray(m.content)
-              ? m.content.find((p) => p.type === 'text')?.text ?? ''
-              : '',
-      }))
-      .filter((m) => m.content || m.role === 'assistant');
+      .map((m) => ({ role: m.role, content: m.content }))
+      .filter((m) => {
+        if (m.role === 'system') return true;
+        if (typeof m.content === 'string') return m.content.trim().length > 0;
+        if (Array.isArray(m.content)) return m.content.length > 0;
+        return false;
+      });
     if (systemPrompt?.trim()) out.unshift({ role: 'system', content: systemPrompt.trim() });
     return out;
   }
 
-  async function sendUserMessage(text) {
-    if (!convId || !text.trim()) return;
+  async function sendUserMessage(text, imageDataUrls = []) {
+    const hasText = (text || '').trim().length > 0;
+    const hasImages = imageDataUrls?.length > 0;
+    if (!convId || (!hasText && !hasImages)) return;
     chatError.set(null);
     if (!$effectiveModelId) {
       chatError.set('Please select a model from the dropdown above.');
       return;
     }
-    const userContent = text.trim();
+    const userContent = hasImages
+      ? [
+          ...(hasText ? [{ type: 'text', text: text.trim() }] : [{ type: 'text', text: ' ' }]),
+          ...imageDataUrls.map((url) => ({ type: 'image_url', image_url: { url } })),
+        ]
+      : text.trim();
     await addMessage(convId, { role: 'user', content: userContent });
     await loadMessages();
     const msgs = await getMessages(convId);
@@ -147,7 +152,17 @@
       : null;
 </script>
 
-<div class="nexus-dashboard flex flex-col h-full min-h-0" style="background-color: var(--ui-bg-main);">
+<div
+  class="nexus-dashboard flex flex-col h-full min-h-0"
+  style="background-color: var(--ui-bg-main);"
+  ondragover={(e) => { e.preventDefault(); e.stopPropagation(); }}
+  ondrop={(e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const files = e.dataTransfer?.files;
+    if (files?.length) pendingDroppedFiles.set(files);
+  }}
+>
   <div class="nexus-grid flex-1 min-h-0 p-4 gap-4 grid grid-cols-1 md:grid-cols-[20%_1fr_30%] grid-rows-[1fr_auto] md:grid-rows-[1fr_1fr]">
     <!-- Top row -->
     <section

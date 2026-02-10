@@ -1,6 +1,6 @@
 <script>
   import { get } from 'svelte/store';
-  import { chatError, dashboardModelA, dashboardModelB, dashboardModelC, dashboardModelD, isStreaming, settings, liveTokens, pushTokSample, liveTokPerSec, arenaPanelCount, arenaSlotAIsJudge } from '$lib/stores.js';
+  import { chatError, dashboardModelA, dashboardModelB, dashboardModelC, dashboardModelD, isStreaming, settings, liveTokens, pushTokSample, liveTokPerSec, arenaPanelCount, arenaSlotAIsJudge, pendingDroppedFiles } from '$lib/stores.js';
   import { playClick, playComplete } from '$lib/audio.js';
   import { streamChatCompletion } from '$lib/api.js';
   import ChatInput from '$lib/components/ChatInput.svelte';
@@ -444,7 +444,16 @@
   });
 </script>
 
-<div class="h-full min-h-0 flex flex-col">
+<div
+  class="h-full min-h-0 flex flex-col"
+  ondragover={(e) => { e.preventDefault(); e.stopPropagation(); }}
+  ondrop={(e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const files = e.dataTransfer?.files;
+    if (files?.length) pendingDroppedFiles.set(files);
+  }}
+>
   <!-- Only the number of panels selected (1–4) are shown; model selector row in App.svelte matches this count. -->
   <div
     bind:this={gridEl}
