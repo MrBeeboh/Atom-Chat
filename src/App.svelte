@@ -16,11 +16,13 @@
   import ConvoRail from '$lib/components/ConvoRail.svelte';
   import IntelPanel from '$lib/components/IntelPanel.svelte';
   import DashboardArena from '$lib/components/DashboardArena.svelte';
+  import DashboardNexus from '$lib/components/DashboardNexus.svelte';
   import FloatingMetricsDashboard from '$lib/components/FloatingMetricsDashboard.svelte';
 
   const LAYOUT_OPTS = [
     { value: 'cockpit', label: 'Cockpit' },
     { value: 'arena', label: 'Arena' },
+    { value: 'nexus', label: 'Nexus' },
   ];
   const HEADER_MODEL_MIN = 'min-width: 13rem;';
   const HEADER_PRESET_MIN = 'min-width: 7rem;';
@@ -172,6 +174,29 @@
           </div>
           <div class="flex-1 min-h-0 h-full"><DashboardArena /></div>
         </div>
+      </div>
+    </div>
+
+  {:else if $layout === 'nexus'}
+    <div class="flex h-full flex-col">
+      <header class="shrink-0 flex items-center flex-wrap px-3 py-2 border-b text-sm" style="border-color: var(--ui-border); background-color: var(--ui-bg-sidebar); color: var(--ui-text-secondary); {HEADER_GAP}">
+        <span class="font-semibold shrink-0" style="color: var(--ui-accent);">ATOM Nexus</span>
+        <nav class="flex items-center gap-0.5 shrink-0" aria-label="Layout">
+          {#each LAYOUT_OPTS as opt}
+            <button type="button" class="px-2 py-1 rounded text-xs {$layout === opt.value ? 'font-medium' : ''}" style="color: {$layout === opt.value ? 'var(--ui-accent)' : 'var(--ui-text-secondary)'}; background: {$layout === opt.value ? 'color-mix(in srgb, var(--ui-accent) 15%, transparent)' : 'transparent'};" onclick={() => layout.set(opt.value)}>{opt.label}</button>
+          {/each}
+        </nav>
+        <div class="shrink-0 overflow-hidden" style="{HEADER_MODEL_MIN}"><ModelSelector /></div>
+        <div class="shrink-0" style="{HEADER_PRESET_MIN}"><PresetSelect compact={true} /></div>
+        <div class="flex items-center gap-1.5 shrink-0 pl-2 ml-2 border-l" style="border-color: var(--ui-border); {HEADER_THEME_MIN}" role="group" aria-label="Theme">
+          <UiThemeSelect compact={true} />
+          <ThemeToggle />
+        </div>
+        <button type="button" class="p-1.5 rounded text-xs shrink-0" style="color: var(--ui-text-secondary);" onclick={() => settingsOpen.set(true)} aria-label="Settings" title="Settings">⚙</button>
+      </header>
+      <div class="flex flex-1 min-h-0 min-w-0">
+        <aside class="w-52 shrink-0 border-r overflow-auto hidden md:block" style="background-color: var(--ui-bg-sidebar); border-color: var(--ui-border);"><Sidebar /></aside>
+        <div class="flex-1 min-h-0 min-w-0"><DashboardNexus /></div>
       </div>
     </div>
   {/if}
