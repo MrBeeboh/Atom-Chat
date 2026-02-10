@@ -150,11 +150,17 @@
     };
   });
 
+  /** Number of points drawn on X: fixed window so graph scrolls instead of compressing. Wider panel = more points (more time). */
+  const visiblePoints = $derived(Math.max(60, Math.min(300, Math.round(60 + (size.width - 200) * 0.6))));
+  /** Only the last visiblePoints are plotted, so horizontal spacing stays constant and old data scrolls off. */
+  const seriesToPlot = $derived(unifiedSeries.length ? unifiedSeries.slice(-visiblePoints) : []);
+
   const pathFor = (key) => {
-    if (!unifiedSeries.length) return '';
-    return unifiedSeries
+    if (!seriesToPlot.length) return '';
+    const n = seriesToPlot.length;
+    return seriesToPlot
       .map((p, i) => {
-        const x = (i / Math.max(1, unifiedSeries.length - 1)) * w;
+        const x = (n > 1 ? i / (n - 1) : 0) * w;
         const v = Math.min(100, Math.max(0, p[key] ?? 0));
         const y = h - (v / 100) * h;
         return `${x},${y}`;
