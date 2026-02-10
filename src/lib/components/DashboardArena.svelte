@@ -450,8 +450,8 @@
     class="flex-1 min-h-0 grid gap-2 p-2 atom-layout-transition relative {isMobile ? 'overflow-y-auto' : 'grid-rows-[minmax(0,1fr)]'}"
     style="grid-template-columns: {responsiveGridCols};">
     {#if $arenaPanelCount >= 1}
-    <div class="flex flex-col min-h-0 h-full overflow-hidden rounded-xl border atom-panel-wrap" style="border-color: var(--ui-border); background-color: var(--ui-bg-main);" in:fly={{ x: 200, duration: 800, easing: quintOut }}>
-      <div class="shrink-0 px-3 py-2 border-b" style="border-color: var(--ui-border);">
+    <div class="flex flex-col min-h-0 h-full overflow-hidden rounded-xl atom-panel-wrap" style="background-color: var(--ui-bg-main);" in:fly={{ x: 200, duration: 800, easing: quintOut }}>
+      <div class="shrink-0 px-3 py-2">
         <div class="flex items-center justify-between gap-2">
           <span class="text-xs font-medium" style="color: var(--ui-text-secondary);">Model A{$arenaSlotAIsJudge ? ' (Judge)' : ''}</span>
           <div class="flex items-center gap-1">
@@ -493,8 +493,8 @@
     {/if}
 
     {#if $arenaPanelCount >= 2}
-    <div class="flex flex-col min-h-0 h-full overflow-hidden rounded-xl border atom-panel-wrap" style="border-color: var(--ui-border); background-color: var(--ui-bg-main);" in:fly={{ x: 200, duration: 800, easing: quintOut }}>
-      <div class="shrink-0 px-3 py-2 border-b" style="border-color: var(--ui-border);">
+    <div class="flex flex-col min-h-0 h-full overflow-hidden rounded-xl atom-panel-wrap" style="background-color: var(--ui-bg-main);" in:fly={{ x: 200, duration: 800, easing: quintOut }}>
+      <div class="shrink-0 px-3 py-2">
         <div class="flex items-center justify-between gap-2">
           <span class="text-xs font-medium" style="color: var(--ui-text-secondary);">Model B</span>
           <div class="flex items-center gap-1">
@@ -534,8 +534,8 @@
     {/if}
 
     {#if $arenaPanelCount >= 3}
-    <div class="flex flex-col min-h-0 h-full overflow-hidden rounded-xl border atom-panel-wrap" style="border-color: var(--ui-border); background-color: var(--ui-bg-main);" in:fly={{ x: 200, duration: 800, easing: quintOut }}>
-      <div class="shrink-0 px-3 py-2 border-b" style="border-color: var(--ui-border);">
+    <div class="flex flex-col min-h-0 h-full overflow-hidden rounded-xl atom-panel-wrap" style="background-color: var(--ui-bg-main);" in:fly={{ x: 200, duration: 800, easing: quintOut }}>
+      <div class="shrink-0 px-3 py-2">
         <div class="flex items-center justify-between gap-2">
           <span class="text-xs font-medium" style="color: var(--ui-text-secondary);">Model C</span>
           <div class="flex items-center gap-1">
@@ -575,8 +575,8 @@
     {/if}
 
     {#if $arenaPanelCount >= 4}
-    <div class="flex flex-col min-h-0 h-full overflow-hidden rounded-xl border atom-panel-wrap" style="border-color: var(--ui-border); background-color: var(--ui-bg-main);" in:fly={{ x: 200, duration: 800, easing: quintOut }}>
-      <div class="shrink-0 px-3 py-2 border-b" style="border-color: var(--ui-border);">
+    <div class="flex flex-col min-h-0 h-full overflow-hidden rounded-xl atom-panel-wrap" style="background-color: var(--ui-bg-main);" in:fly={{ x: 200, duration: 800, easing: quintOut }}>
+      <div class="shrink-0 px-3 py-2">
         <div class="flex items-center justify-between gap-2">
           <span class="text-xs font-medium" style="color: var(--ui-text-secondary);">Model D</span>
           <div class="flex items-center gap-1">
@@ -606,7 +606,7 @@
     {/if}
   </div>
 
-  <div class="shrink-0 border-t p-3" style="border-color: var(--ui-border); background-color: var(--ui-bg-sidebar);">
+  <div class="shrink-0 p-3" style="background-color: var(--ui-bg-sidebar);">
     <div class="max-w-4xl mx-auto">
       {#if $chatError}
         <div class="mb-3 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-sm flex items-center justify-between gap-2">
