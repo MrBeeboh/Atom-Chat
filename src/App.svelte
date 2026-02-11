@@ -56,6 +56,7 @@
     if (typeof document !== 'undefined') document.documentElement.dataset.uiTheme = v;
   });
   layout.subscribe((v) => { if (typeof localStorage !== 'undefined') localStorage.setItem('layout', v); });
+  sidebarCollapsed.subscribe((v) => { if (typeof localStorage !== 'undefined') localStorage.setItem('sidebarCollapsed', v ? 'true' : 'false'); });
   onMount(() => { document.documentElement.dataset.uiTheme = get(uiTheme); });
 
   onMount(() => {
@@ -117,6 +118,13 @@
     cockpitIntelOpen.update((v) => !v);
     intelTabBounce = true;
     setTimeout(() => (intelTabBounce = false), 420);
+  }
+
+  let sidebarTabBounce = false;
+  function toggleSidebarCollapsed() {
+    sidebarCollapsed.update((v) => !v);
+    sidebarTabBounce = true;
+    setTimeout(() => (sidebarTabBounce = false), 420);
   }
 </script>
 
@@ -232,7 +240,26 @@
         </div>
       </header>
       <div class="flex flex-1 min-h-0 relative">
-        <aside class="w-52 shrink-0 border-r overflow-auto hidden md:block" style="background-color: var(--ui-bg-sidebar); border-color: var(--ui-border);"><Sidebar /></aside>
+        <aside
+          class="shrink-0 border-r overflow-hidden hidden md:flex flex-col transition-[width] duration-200 relative min-w-0"
+          style="width: {$sidebarCollapsed ? '44px' : '13rem'}; background-color: var(--ui-bg-sidebar); border-color: var(--ui-border);">
+          <button
+            type="button"
+            class="panel-tab {sidebarTabBounce ? 'panel-tab-bounce' : ''}"
+            style="--panel-tab-transform: translate(100%, -50%); top: 50%; right: 0; border-left: none; border-radius: 0 6px 6px 0;"
+            title={$sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-label={$sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            onclick={toggleSidebarCollapsed}>
+            {#if $sidebarCollapsed}
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7" /></svg>
+            {:else}
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 19l-7-7 7-7" /></svg>
+            {/if}
+          </button>
+          <div class="min-h-0 overflow-auto {$sidebarCollapsed ? 'w-0 min-w-0 max-w-0 flex-[0_0_0] overflow-hidden' : 'flex-1 min-w-0'}">
+            <Sidebar />
+          </div>
+        </aside>
         {#if $sidebarOpen}
           <div class="fixed inset-0 z-40 md:hidden" role="dialog" aria-modal="true" aria-label="Sidebar">
             <div class="absolute inset-0 bg-black/40" onclick={() => sidebarOpen.set(false)}></div>

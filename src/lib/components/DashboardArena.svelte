@@ -1,12 +1,13 @@
 <script>
   import { get } from 'svelte/store';
   import { onMount } from 'svelte';
-  import { chatError, dashboardModelA, dashboardModelB, dashboardModelC, dashboardModelD, isStreaming, settings, globalDefault, perModelOverrides, getEffectiveSettingsForModel, mergeEffectiveSettings, liveTokens, pushTokSample, liveTokPerSec, arenaPanelCount, arenaSlotAIsJudge, arenaWebSearchMode, arenaSlotOverrides, setArenaSlotOverride, pendingDroppedFiles, webSearchForNextMessage, webSearchInProgress, webSearchConnected, layout } from '$lib/stores.js';
+  import { chatError, dashboardModelA, dashboardModelB, dashboardModelC, dashboardModelD, isStreaming, settings, globalDefault, perModelOverrides, getEffectiveSettingsForModel, mergeEffectiveSettings, liveTokens, pushTokSample, liveTokPerSec, arenaPanelCount, arenaSlotAIsJudge, arenaWebSearchMode, arenaSlotOverrides, setArenaSlotOverride, pendingDroppedFiles, webSearchForNextMessage, webSearchInProgress, webSearchConnected, layout, lmStudioUnloadHelperUrl } from '$lib/stores.js';
   import { playClick, playComplete } from '$lib/audio.js';
-  import { streamChatCompletion } from '$lib/api.js';
+  import { streamChatCompletion, unloadModel, loadModel, waitUntilUnloaded, unloadAllLoadedModels } from '$lib/api.js';
   import { searchDuckDuckGo, formatSearchResultForChat } from '$lib/duckduckgo.js';
   import ChatInput from '$lib/components/ChatInput.svelte';
   import MessageBubble from '$lib/components/MessageBubble.svelte';
+  import ThinkingAtom from '$lib/components/ThinkingAtom.svelte';
   import { generateId, resizeImageDataUrlsForVision, shouldSkipImageResizeForVision } from '$lib/utils.js';
   import { fly } from 'svelte/transition';
   import { quintOut } from 'svelte/easing';
@@ -24,8 +25,14 @@
   );
   /** Optional feedback/correction sent to the judge (e.g. correct NFPA 72 definition). */
   let judgeFeedback = $state('');
-  /** Collapsed by default so the feedback block doesn't dominate the UI. */
-  let judgeFeedbackOpen = $state(false);
+  /** Arena footer: Questions list expanded vs collapsed. */
+  let arenaSetupExpanded = $state(
+    typeof localStorage !== 'undefined' ? (localStorage.getItem('arenaSetupExpanded') ?? '1') !== '0' : true
+  );
+  $effect(() => {
+    if (typeof localStorage !== 'undefined' && arenaSetupExpanded !== undefined)
+      localStorage.setItem('arenaSetupExpanded', arenaSetupExpanded ? '1' : '0');
+  });
   /** Contest rules: persistent, sent with each question. Stored in localStorage. */
   let contestRules = $state(
     typeof localStorage !== 'undefined' ? (localStorage.getItem('arenaContestRules') ?? '') : ''
@@ -62,6 +69,50 @@
   let lastSampleTokens = 0;
   /** Which Arena slot's "Model options" panel is open: 'A'|'B'|'C'|'D'|null */
   let optionsOpenSlot = $state(null);
+  /** Sequential/judge transition: show 'ejecting' | 'loading' | 'judge_web' with atom animation. */
+  let arenaTransitionPhase = $state(/** @type {null | 'ejecting' | 'loading' | 'judge_web'} */ (null));
+  /** Index of the current witty "judge checking web" message (rotated each time we enter judge_web). */
+  let judgeWebMessageIndex = $state(0);
+  const JUDGE_WEB_LINES = [
+    { main: 'Judge is checking the web…', sub: '(Googling so the judge can fact-check. No, really.)' },
+    { main: 'Judge is checking the internet.', sub: '(Yes, the whole thing. We asked nicely.)' },
+    { main: 'Judge is consulting the oracle.', sub: '(It’s Google. But “oracle” sounds cooler.)' },
+    { main: 'Judge is fact-checking in the cloud.', sub: '(Someone had to. It’s not gonna check itself.)' },
+    { main: 'Judge is asking the internet.', sub: '(We’ll see if it answers. Usually it’s cats.)' },
+    { main: 'Judge is doing the research.', sub: '(So you don’t have to. You’re welcome.)' },
+    { main: 'Judge is verifying things.', sub: '(Rumors say the internet has facts. We’re testing that.)' },
+    { main: 'Judge is hitting the books.', sub: '(The books are web servers. Same energy.)' },
+    { main: 'Judge is checking the web…', sub: '(Making sure the models didn’t just make it up. Again.)' },
+  ];
+  /** Eject-all in progress; message after (success or error). */
+  let ejectBusy = $state(false);
+  let ejectMessage = $state(/** @type {null | string} */ (null));
+
+  /** Running scores from judge (B, C, D). Persisted to localStorage. */
+  const loadArenaScores = () => {
+    if (typeof localStorage === 'undefined') return { B: 0, C: 0, D: 0 };
+    try {
+      const raw = localStorage.getItem('arenaScores');
+      if (!raw) return { B: 0, C: 0, D: 0 };
+      const o = JSON.parse(raw);
+      return { B: Number(o.B) || 0, C: Number(o.C) || 0, D: Number(o.D) || 0 };
+    } catch {
+      return { B: 0, C: 0, D: 0 };
+    }
+  };
+  let arenaScores = $state(loadArenaScores());
+  $effect(() => {
+    if (typeof localStorage !== 'undefined' && arenaScores)
+      localStorage.setItem('arenaScores', JSON.stringify(arenaScores));
+  });
+  /** Include current standings in the next prompt so models see how they're doing. */
+  let arenaIncludeStandingsInPrompt = $state(
+    typeof localStorage !== 'undefined' ? (localStorage.getItem('arenaIncludeStandingsInPrompt') ?? '0') !== '0' : false
+  );
+  $effect(() => {
+    if (typeof localStorage !== 'undefined')
+      localStorage.setItem('arenaIncludeStandingsInPrompt', arenaIncludeStandingsInPrompt ? '1' : '0');
+  });
 
   const aborters = { A: null, B: null, C: null, D: null };
 
@@ -84,16 +135,56 @@
     return () => document.removeEventListener('keydown', onKeydown);
   });
 
-  /** Helper for per-slot override inputs so we get correct event target type. */
+  /** Parse judge output for "Model B: 7/10" lines; return { B: 7, C: 5, ... }. */
+  function parseJudgeScores(text) {
+    if (!text || typeof text !== 'string') return {};
+    const out = {};
+    const re = /Model\s+([B-D]):\s*(\d+)\s*\/\s*10/gi;
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      const slot = m[1].toUpperCase();
+      const n = parseInt(m[2], 10);
+      if (slot >= 'B' && slot <= 'D' && n >= 0 && n <= 10) out[slot] = n;
+    }
+    return out;
+  }
+
+  function resetArenaScores() {
+    arenaScores = { B: 0, C: 0, D: 0 };
+  }
+
+  /** Standings line for UI or for inclusion in prompt (e.g. "Current standings: B 24 pts, C 18 pts. Leader: B."). */
+  const arenaStandingsLine = $derived.by(() => {
+    const s = arenaScores;
+    const parts = [];
+    if (s.B > 0 || s.C > 0 || s.D > 0) {
+      if (s.B > 0) parts.push(`B ${s.B} pts`);
+      if (s.C > 0) parts.push(`C ${s.C} pts`);
+      if (s.D > 0) parts.push(`D ${s.D} pts`);
+      const leader = ['B', 'C', 'D'].reduce((a, b) => (s[a] >= (s[b] ?? 0) ? a : b), 'B');
+      return parts.length ? `Current standings: ${parts.join(', ')}. Leader: Model ${leader}.` : '';
+    }
+    return '';
+  });
+
+  /** Helper for per-slot override inputs so we get correct event target type. Defensive against NaN/invalid. */
   function slotOverrideInput(slot, key) {
     return (e) => {
       const el = e.currentTarget;
       if (!el || typeof el.value === 'undefined') return;
       const raw = el.value;
       const cur = $arenaSlotOverrides[slot] ?? {};
-      if (key === 'temperature') setArenaSlotOverride(slot, { ...cur, temperature: raw === '' ? undefined : parseFloat(raw) });
-      else if (key === 'max_tokens') setArenaSlotOverride(slot, { ...cur, max_tokens: raw === '' ? undefined : parseInt(raw, 10) });
-      else if (key === 'system_prompt') setArenaSlotOverride(slot, { ...cur, system_prompt: raw.trim() || undefined });
+      if (key === 'temperature') {
+        const v = raw === '' ? undefined : parseFloat(raw);
+        const safe = v !== undefined && !Number.isNaN(v) && v >= 0 && v <= 2 ? v : cur.temperature;
+        setArenaSlotOverride(slot, { ...cur, temperature: safe });
+      } else if (key === 'max_tokens') {
+        const v = raw === '' ? undefined : parseInt(raw, 10);
+        const safe = v !== undefined && !Number.isNaN(v) && v >= 1 ? Math.min(100000, v) : cur.max_tokens;
+        setArenaSlotOverride(slot, { ...cur, max_tokens: safe });
+      } else if (key === 'system_prompt') {
+        setArenaSlotOverride(slot, { ...cur, system_prompt: typeof raw === 'string' ? raw.trim() || undefined : undefined });
+      }
     };
   }
 
@@ -240,7 +331,10 @@
       if (err?.name !== 'AbortError') {
         setSlotError(slot, err?.message || 'Failed to get response. Is your model server running and the model loaded?');
       }
-      updateMessage(slot, assistantMsgId, { content: '', stats: null, modelId });
+      try {
+        updateMessage(slot, assistantMsgId, { content: fullContent || '', stats: null, modelId });
+      } catch (_) { /* message list may have been cleared (e.g. Next question); ignore */ }
+      onStreamDone?.();
       return;
     } finally {
       setRunning(slot, false);
@@ -258,10 +352,10 @@
   }
 
   async function sendUserMessage(text, imageDataUrls = []) {
-    if (!text.trim() || $isStreaming) return;
+    if (!text || !String(text).trim() || $isStreaming) return;
     chatError.set(null);
 
-    let effectiveText = text.trim();
+    let effectiveText = String(text).trim();
     const webMode = get(arenaWebSearchMode);
     if (webMode === 'all' && get(webSearchForNextMessage)) {
       webSearchForNextMessage.set(false);
@@ -296,19 +390,6 @@
       return;
     }
 
-    const rulesPrefix = contestRules.trim() ? contestRules.trim() + '\n\n---\n\n' : '';
-    const needResize = imageDataUrls.length && !selected.every((s) => shouldSkipImageResizeForVision(s.modelId));
-    const urlsForApi = imageDataUrls.length ? (needResize ? await resizeImageDataUrlsForVision(imageDataUrls) : imageDataUrls) : [];
-    const content = urlsForApi.length
-      ? [
-          { type: 'text', text: rulesPrefix + effectiveText },
-          ...urlsForApi.map((url) => ({
-            type: 'image_url',
-            image_url: { url, ...(needResize ? { detail: 'low' } : {}) },
-          })),
-        ]
-      : rulesPrefix + effectiveText;
-
     runId += 1;
     const currentRun = runId;
     liveTokens.set(0);
@@ -322,21 +403,77 @@
         liveTokPerSec.set(null);
       }
     };
-    if (sequential) {
-      for (const s of selected) {
-        if (runId !== currentRun) break;
-        await sendToSlot(s.slot, s.modelId, content, onStreamDone);
+
+    try {
+      const rulesPrefix = (typeof contestRules === 'string' ? contestRules : '').trim() ? (contestRules.trim() + '\n\n---\n\n') : '';
+      const standingsPrefix =
+        arenaIncludeStandingsInPrompt && arenaStandingsLine ? arenaStandingsLine + '\n\n---\n\n' : '';
+      const textBase = standingsPrefix + rulesPrefix + effectiveText;
+      const urls = Array.isArray(imageDataUrls) ? imageDataUrls : [];
+      const needResize = urls.length > 0 && !selected.every((s) => shouldSkipImageResizeForVision(s.modelId));
+      const urlsForApi = urls.length ? (needResize ? await resizeImageDataUrlsForVision(urls) : urls) : [];
+      const content = urlsForApi.length
+        ? [
+            { type: 'text', text: textBase },
+            ...urlsForApi.map((url) => ({
+              type: 'image_url',
+              image_url: { url, ...(needResize ? { detail: 'low' } : {}) },
+            })),
+          ]
+        : textBase;
+
+      if (runId !== currentRun) return;
+
+      /* Eject every loaded model so the first contestant has full VRAM (best-effort; don't block if helper down). */
+      arenaTransitionPhase = 'ejecting';
+      await unloadAllLoadedModels(get(lmStudioUnloadHelperUrl));
+      const allArenaModelIds = [
+        get(dashboardModelA),
+        get(dashboardModelB),
+        get(dashboardModelC),
+        get(dashboardModelD),
+      ].filter(Boolean);
+      await waitUntilUnloaded(allArenaModelIds, { pollIntervalMs: 400, timeoutMs: 25000 });
+      await new Promise((r) => setTimeout(r, 1500));
+      arenaTransitionPhase = null;
+      if (runId !== currentRun) return;
+
+      if (sequential) {
+        for (let i = 0; i < selected.length; i++) {
+          if (runId !== currentRun) break;
+          const s = selected[i];
+          await sendToSlot(s.slot, s.modelId, content, onStreamDone);
+          const next = selected[i + 1];
+          if (!next?.modelId || runId !== currentRun) continue;
+          arenaTransitionPhase = 'ejecting';
+          try {
+            if (s.modelId) await unloadModel(s.modelId);
+          } catch (_) { /* LM Studio may not support unload or already unloaded; continue */ }
+          if (runId !== currentRun) break;
+          arenaTransitionPhase = 'loading';
+          try {
+            await loadModel(next.modelId);
+          } catch (_) { /* Load may fail or already loaded; sendToSlot will load on demand */ }
+          arenaTransitionPhase = null;
+        }
+      } else {
+        await Promise.allSettled(selected.map((s) => sendToSlot(s.slot, s.modelId, content, onStreamDone)));
       }
-    } else {
-      await Promise.allSettled(selected.map((s) => sendToSlot(s.slot, s.modelId, content, onStreamDone)));
+    } catch (err) {
+      if (err?.name !== 'AbortError') {
+        chatError.set(err?.message || 'Something went wrong. Try again.');
+      }
+    } finally {
+      arenaTransitionPhase = null;
+      isStreaming.set(false);
+      liveTokens.set(null);
+      liveTokPerSec.set(null);
     }
-    isStreaming.set(false);
-    liveTokens.set(null);
-    liveTokPerSec.set(null);
   }
 
   function stopAll() {
     runId += 1;
+    arenaTransitionPhase = null;
     for (const slot of ['A', 'B', 'C', 'D']) {
       try { aborters[slot]?.abort(); } catch (_) {}
       aborters[slot] = null;
@@ -359,9 +496,13 @@
     if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume);
     if (questions.length > 0) {
       const idx = questionIndex % questions.length;
-      const nextText = questions[idx].trim();
-      if (nextText) sendUserMessage(nextText, []);
+      const nextText = (questions[idx] && String(questions[idx]).trim()) || '';
       questionIndex = idx + 1;
+      if (nextText) {
+        sendUserMessage(nextText, []).catch((e) => {
+          chatError.set(e?.message || 'Failed to send next question.');
+        });
+      }
     }
   }
 
@@ -375,6 +516,7 @@
 
   async function runJudgment() {
     if ($arenaSlotAIsJudge && $isStreaming) return;
+    if (running.A) return;
     const judgeId = get(dashboardModelA);
     if (!judgeId) {
       chatError.set('Select a model in Slot A to use as judge.');
@@ -391,19 +533,43 @@
       chatError.set('Run a prompt with at least one responder (B, C, or D) first.');
       return;
     }
+    /* Eject all loaded models so the judge gets full VRAM — same as run start: eject then wait until gone. */
+    try {
+      arenaTransitionPhase = 'ejecting';
+      await unloadAllLoadedModels(get(lmStudioUnloadHelperUrl));
+      const contestantIds = [
+        n >= 2 && get(dashboardModelB) ? get(dashboardModelB) : null,
+        n >= 3 && get(dashboardModelC) ? get(dashboardModelC) : null,
+        n >= 4 && get(dashboardModelD) ? get(dashboardModelD) : null,
+      ].filter(Boolean);
+      await waitUntilUnloaded(contestantIds, { pollIntervalMs: 400, timeoutMs: 25000 });
+      await new Promise((r) => setTimeout(r, 1500));
+      arenaTransitionPhase = 'loading';
+      try {
+        await loadModel(judgeId);
+      } catch (_) { /* Load may fail or already loaded; stream will trigger load on demand */ }
+      arenaTransitionPhase = null;
+    } finally {
+      arenaTransitionPhase = null;
+    }
+
     const lastUserMsg = slotsWithResponses[0].msgs.filter((m) => m.role === 'user').pop();
     const promptText = lastUserMsg ? contentToText(lastUserMsg.content) : '';
     let judgeWebContext = '';
     if (get(arenaWebSearchMode) === 'judge' && promptText.trim()) {
       webSearchInProgress.set(true);
+      arenaTransitionPhase = 'judge_web';
+      judgeWebMessageIndex = Math.floor(Math.random() * JUDGE_WEB_LINES.length);
       try {
         const searchResult = await searchDuckDuckGo(promptText);
         webSearchConnected.set(true);
         judgeWebContext = formatSearchResultForChat(promptText, searchResult);
       } catch (_) {
         webSearchConnected.set(false);
+      } finally {
+        arenaTransitionPhase = null;
+        webSearchInProgress.set(false);
       }
-      webSearchInProgress.set(false);
     }
     const parts = [
       'You are a judge. Score each model response 1-10 (10 = best) with one short reason (right or wrong).',
@@ -471,6 +637,14 @@
       });
       const estimatedTokens = Math.max(1, Math.ceil(fullContent.length / 4));
       updateMessage('A', assistantMsgId, { content: fullContent, stats: { completion_tokens: estimatedTokens, estimated: true }, modelId: judgeId });
+      const roundScores = parseJudgeScores(fullContent);
+      if (Object.keys(roundScores).length > 0) {
+        arenaScores = {
+          B: (arenaScores.B || 0) + (roundScores.B ?? 0),
+          C: (arenaScores.C || 0) + (roundScores.C ?? 0),
+          D: (arenaScores.D || 0) + (roundScores.D ?? 0),
+        };
+      }
     } catch (err) {
       if (err?.name !== 'AbortError') {
         setSlotError('A', err?.message || 'Judge request failed.');
@@ -482,10 +656,29 @@
     }
   }
 
+  async function ejectAllModels() {
+    if (ejectBusy) return;
+    ejectBusy = true;
+    ejectMessage = null;
+    chatError.set(null);
+    try {
+      const result = await unloadAllLoadedModels(get(lmStudioUnloadHelperUrl));
+      if (result?.ok) {
+        ejectMessage = 'All models ejected.';
+      } else {
+        ejectMessage = 'Unload helper not running. Run start_atom_ui.bat or start_unload_helper.bat.';
+      }
+      setTimeout(() => { ejectMessage = null; }, 4000);
+    } finally {
+      ejectBusy = false;
+    }
+  }
+
   const canRunJudgment = $derived(
     $arenaSlotAIsJudge &&
     $dashboardModelA &&
     !$isStreaming &&
+    !running.A &&
     (($arenaPanelCount >= 2 && messagesB.length > 0) ||
      ($arenaPanelCount >= 3 && messagesC.length > 0) ||
      ($arenaPanelCount >= 4 && messagesD.length > 0))
@@ -623,6 +816,9 @@
       <div class="shrink-0 px-3 py-2">
         <div class="flex items-center justify-between gap-2">
           <span class="text-xs font-medium" style="color: var(--ui-text-secondary);">Model A{$arenaSlotAIsJudge ? ' (Judge)' : ''}</span>
+            {#if $arenaSlotAIsJudge && arenaStandingsLine}
+              <span class="text-[10px] font-mono px-1.5 py-0.5 rounded" style="color: var(--ui-text-secondary); background: var(--ui-input-bg);" title={arenaStandingsLine}>Scores: B {arenaScores.B} | C {arenaScores.C} | D {arenaScores.D}</span>
+            {/if}
           <div class="flex items-center gap-1">
             <button type="button" class="p-1 rounded text-xs opacity-70 hover:opacity-100 transition-opacity" style="color: var(--ui-text-secondary);" onclick={() => optionsOpenSlot = optionsOpenSlot === 'A' ? null : 'A'} title="Model A options" aria-label="Model A options" aria-expanded={optionsOpenSlot === 'A'}>⚙ Options</button>
             {#if running.A}<span class="text-xs" style="color: var(--ui-accent);">Running…</span>{:else if tpsA}{@const c = Number(tpsA) >= 40 ? 'var(--atom-teal)' : Number(tpsA) >= 20 ? 'var(--atom-amber)' : 'var(--atom-accent)'}<span class="text-[10px] font-mono px-1.5 py-0.5 rounded" style="background: color-mix(in srgb, {c} 20%, transparent); color: {c};">{tpsA} t/s</span>{/if}
@@ -682,6 +878,7 @@
         <div class="flex items-center justify-between gap-2">
           <span class="text-xs font-medium" style="color: var(--ui-text-secondary);">Model B</span>
           <div class="flex items-center gap-1">
+            {#if arenaScores.B > 0}<span class="text-[10px] font-mono px-1.5 py-0.5 rounded" style="background: color-mix(in srgb, var(--atom-teal) 20%, transparent); color: var(--atom-teal);" title="Running total">{(arenaScores.B)} pts</span>{/if}
             <button type="button" class="p-1 rounded text-xs opacity-70 hover:opacity-100 transition-opacity" style="color: var(--ui-text-secondary);" onclick={() => optionsOpenSlot = optionsOpenSlot === 'B' ? null : 'B'} title="Model B options" aria-label="Model B options" aria-expanded={optionsOpenSlot === 'B'}>⚙ Options</button>
             {#if running.B}<span class="text-xs" style="color: var(--ui-accent);">Running…</span>{:else if tpsB}{@const c = Number(tpsB) >= 40 ? 'var(--atom-teal)' : Number(tpsB) >= 20 ? 'var(--atom-amber)' : 'var(--atom-accent)'}<span class="text-[10px] font-mono px-1.5 py-0.5 rounded" style="background: color-mix(in srgb, {c} 20%, transparent); color: {c};">{tpsB} t/s</span>{/if}
             {#if messagesB.length > 0}
@@ -738,6 +935,7 @@
         <div class="flex items-center justify-between gap-2">
           <span class="text-xs font-medium" style="color: var(--ui-text-secondary);">Model C</span>
           <div class="flex items-center gap-1">
+            {#if arenaScores.C > 0}<span class="text-[10px] font-mono px-1.5 py-0.5 rounded" style="background: color-mix(in srgb, var(--atom-teal) 20%, transparent); color: var(--atom-teal);" title="Running total">{(arenaScores.C)} pts</span>{/if}
             <button type="button" class="p-1 rounded text-xs opacity-70 hover:opacity-100 transition-opacity" style="color: var(--ui-text-secondary);" onclick={() => optionsOpenSlot = optionsOpenSlot === 'C' ? null : 'C'} title="Model C options" aria-label="Model C options" aria-expanded={optionsOpenSlot === 'C'}>⚙ Options</button>
             {#if running.C}<span class="text-xs" style="color: var(--ui-accent);">Running…</span>{:else if tpsC}{@const c = Number(tpsC) >= 40 ? 'var(--atom-teal)' : Number(tpsC) >= 20 ? 'var(--atom-amber)' : 'var(--atom-accent)'}<span class="text-[10px] font-mono px-1.5 py-0.5 rounded" style="background: color-mix(in srgb, {c} 20%, transparent); color: {c};">{tpsC} t/s</span>{/if}
             {#if messagesC.length > 0}
@@ -794,6 +992,7 @@
         <div class="flex items-center justify-between gap-2">
           <span class="text-xs font-medium" style="color: var(--ui-text-secondary);">Model D</span>
           <div class="flex items-center gap-1">
+            {#if arenaScores.D > 0}<span class="text-[10px] font-mono px-1.5 py-0.5 rounded" style="background: color-mix(in srgb, var(--atom-teal) 20%, transparent); color: var(--atom-teal);" title="Running total">{(arenaScores.D)} pts</span>{/if}
             <button type="button" class="p-1 rounded text-xs opacity-70 hover:opacity-100 transition-opacity" style="color: var(--ui-text-secondary);" onclick={() => optionsOpenSlot = optionsOpenSlot === 'D' ? null : 'D'} title="Model D options" aria-label="Model D options" aria-expanded={optionsOpenSlot === 'D'}>⚙ Options</button>
             {#if running.D}<span class="text-xs" style="color: var(--ui-accent);">Running…</span>{:else if tpsD}{@const c = Number(tpsD) >= 40 ? 'var(--atom-teal)' : Number(tpsD) >= 20 ? 'var(--atom-amber)' : 'var(--atom-accent)'}<span class="text-[10px] font-mono px-1.5 py-0.5 rounded" style="background: color-mix(in srgb, {c} 20%, transparent); color: {c};">{tpsD} t/s</span>{/if}
             {#if messagesD.length > 0}
@@ -835,153 +1034,154 @@
     {/if}
   </div>
 
-  <div class="shrink-0 border-t p-4" style="background-color: var(--ui-bg-sidebar); border-color: var(--ui-border);">
-    <div class="max-w-4xl mx-auto space-y-4">
-      <!-- Contest rules + Questions + Next question -->
-      <section class="grid gap-4 sm:grid-cols-2" aria-label="Arena setup">
-        <div>
-          <label for="arena-contest-rules" class="block text-xs font-medium mb-1.5" style="color: var(--ui-text-primary);">Contest rules</label>
-          <textarea
-            id="arena-contest-rules"
-            class="w-full px-2 py-1.5 rounded-lg border text-xs resize-y min-h-18 max-h-28"
-            style="border-color: var(--ui-border); background-color: var(--ui-input-bg); color: var(--ui-text-primary);"
-            placeholder="Paste contest rules. Sent with every question."
-            rows="2"
-            bind:value={contestRules}
-          ></textarea>
-        </div>
-        <div>
-          <label for="arena-questions-list" class="block text-xs font-medium mb-1.5" style="color: var(--ui-text-primary);">Questions (numbered 1. 2. …)</label>
-          <textarea
-            id="arena-questions-list"
-            class="w-full px-2 py-1.5 rounded-lg border text-xs resize-y min-h-18 max-h-28"
-            style="border-color: var(--ui-border); background-color: var(--ui-input-bg); color: var(--ui-text-primary);"
-            placeholder="Paste numbered questions. Click Next to send the next one."
-            rows="2"
-            bind:value={questionsList}
-          ></textarea>
-        </div>
-      </section>
-      <div class="flex flex-wrap items-center gap-3">
-        <button
-          type="button"
-          class="px-4 py-2 rounded-lg text-sm font-medium transition-colors shrink-0 disabled:opacity-50"
-          style="background-color: var(--ui-accent); color: var(--ui-bg-main);"
-          disabled={$isStreaming}
-          onclick={nextQuestion}
-          title={parsedQuestions.length > 0 ? `Clear panels and send question #${(questionIndex % parsedQuestions.length) + 1}` : 'Clear all panels. Add numbered questions above to auto-send next.'}>
-          {nextQuestionLabel}
-        </button>
-        {#if parsedQuestions.length > 0}
-          <span class="text-xs" style="color: var(--ui-text-secondary);">{parsedQuestions.length} question{parsedQuestions.length !== 1 ? 's' : ''}</span>
-        {/if}
+  {#if arenaTransitionPhase}
+    <div class="shrink-0 flex flex-col items-center justify-center gap-1 py-3 px-2 rounded-lg mx-2 mb-1 border" style="background-color: var(--ui-input-bg); border-color: var(--ui-border); color: var(--ui-text-primary);" role="status" aria-live="polite">
+      <div class="flex items-center gap-2">
+        <ThinkingAtom size={22} />
+        <span class="text-sm font-medium">
+          {#if arenaTransitionPhase === 'judge_web'}
+            {JUDGE_WEB_LINES[judgeWebMessageIndex].main}
+          {:else if arenaTransitionPhase === 'ejecting'}
+            Ejecting…
+          {:else}
+            New model loading
+          {/if}
+        </span>
       </div>
-
-      {#if $chatError}
-        <div class="px-3 py-2 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-sm flex items-center justify-between gap-2" role="alert">
-          <span>{$chatError}</span>
-          <button type="button" class="shrink-0 p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/30" onclick={() => chatError.set(null)} aria-label="Dismiss">×</button>
-        </div>
+      {#if arenaTransitionPhase === 'judge_web'}
+        <span class="text-xs opacity-80" style="color: var(--ui-text-secondary);">{JUDGE_WEB_LINES[judgeWebMessageIndex].sub}</span>
       {/if}
+    </div>
+  {/if}
 
-      <!-- Toggles -->
-      <section class="flex flex-wrap items-center gap-4 pt-1 text-xs" style="color: var(--ui-text-secondary);" aria-label="Arena options">
-        <label class="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            bind:checked={sequential}
-            class="rounded border-zinc-300 dark:border-zinc-600" style="accent-color: var(--ui-accent);"
-            onchange={() => { if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume); }} />
-          <span>Sequential (lower VRAM/CPU)</span>
-        </label>
-        <span>Parallel runs all models at once.</span>
-        <div class="flex items-center gap-2" role="group" aria-label="Who gets internet web search in Arena">
-          <span class="shrink-0 font-medium" style="color: var(--ui-text-primary);">Internet:</span>
-          <div class="flex rounded-lg border overflow-hidden" style="border-color: var(--ui-border);">
-            <button
-              type="button"
-              class="px-3 py-1.5 text-xs font-medium transition-colors border-r"
-              class:opacity-70={$arenaWebSearchMode !== 'none'}
-              style="border-color: var(--ui-border); background: {$arenaWebSearchMode === 'none' ? 'var(--ui-sidebar-active)' : 'transparent'}; color: {$arenaWebSearchMode === 'none' ? 'var(--ui-text-primary)' : 'var(--ui-text-secondary)'}"
-              onclick={() => { arenaWebSearchMode.set('none'); if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume); }}
-              title="No one gets web search.">
-              None
-            </button>
-            <button
-              type="button"
-              class="px-3 py-1.5 text-xs font-medium transition-colors border-r"
-              class:opacity-70={$arenaWebSearchMode !== 'all'}
-              style="border-color: var(--ui-border); background: {$arenaWebSearchMode === 'all' ? 'var(--ui-sidebar-active)' : 'transparent'}; color: {$arenaWebSearchMode === 'all' ? 'var(--ui-text-primary)' : 'var(--ui-text-secondary)'}"
-              onclick={() => { arenaWebSearchMode.set('all'); if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume); }}
-              title="All models get web search on send.">
-              All
-            </button>
-            <button
-              type="button"
-              class="px-3 py-1.5 text-xs font-medium transition-colors"
-              class:opacity-70={$arenaWebSearchMode !== 'judge'}
-              style="border-color: var(--ui-border); background: {$arenaWebSearchMode === 'judge' ? 'var(--ui-sidebar-active)' : 'transparent'}; color: {$arenaWebSearchMode === 'judge' ? 'var(--ui-text-primary)' : 'var(--ui-text-secondary)'}"
-              onclick={() => { arenaWebSearchMode.set('judge'); if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume); }}
-              title="Only judge gets web search at Judgment time.">
-              Judge only
-            </button>
-          </div>
-        </div>
-        {#if $arenaSlotAIsJudge}
-          <div class="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              class="flex items-center gap-1.5 text-xs font-medium rounded px-2 py-1 transition-colors"
-              style="color: var(--ui-text-secondary);"
-              onclick={() => judgeFeedbackOpen = !judgeFeedbackOpen}
-              aria-expanded={judgeFeedbackOpen}
-              aria-controls="arena-judge-feedback-block">
-              <span aria-hidden="true">{judgeFeedbackOpen ? '▼' : '▶'}</span>
-              Feedback to judge (optional)
-            </button>
-            {#if judgeFeedbackOpen}
-              <div id="arena-judge-feedback-block" class="flex flex-wrap items-center gap-2 w-full" role="region" aria-label="Judge feedback and run judgment">
-                <label class="flex flex-col gap-1 text-xs min-w-[16rem]" style="color: var(--ui-text-secondary);">
-                  <span class="sr-only">Paste correction for the judge</span>
-                  <textarea
-                    class="px-2 py-1 rounded border text-xs max-w-md resize-y"
-                    style="border-color: var(--ui-border); background-color: var(--ui-input-bg); color: var(--ui-text-primary);"
-                    placeholder="Paste correction (e.g. correct NFPA 72 definition). Judge will use this to re-evaluate."
-                    rows="2"
-                    bind:value={judgeFeedback}
-                  ></textarea>
-                </label>
+  <div class="shrink-0 border-t px-3 py-2" style="background-color: var(--ui-bg-sidebar); border-color: var(--ui-border);">
+    <div class="w-full max-w-[1600px] mx-auto flex flex-col gap-3">
+      <!-- Row 1: Feedback to judge (left) | Questions, Next, toggles (right) – in line with each other -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 items-end">
+        <div class="min-w-0">
+          {#if $arenaSlotAIsJudge}
+            <section class="flex flex-col gap-1.5" aria-label="Judge feedback and judgment">
+              <label for="arena-judge-feedback" class="text-xs font-medium" style="color: var(--ui-text-primary);">Feedback to judge (optional)</label>
+              <div class="flex gap-2 items-end flex-wrap">
+                <textarea
+                  id="arena-judge-feedback"
+                  class="flex-1 min-w-40 px-2.5 py-1.5 rounded-lg border text-xs resize-y min-h-10 max-h-20"
+                  style="border-color: var(--ui-border); background-color: var(--ui-input-bg); color: var(--ui-text-primary);"
+                  placeholder="Paste correction for judge. Then run judgment."
+                  rows="1"
+                  bind:value={judgeFeedback}
+                ></textarea>
                 <button
                   type="button"
-                  class="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-50"
+                  class="px-3 py-2 rounded-lg text-xs font-medium transition-colors shrink-0 disabled:opacity-50"
                   style="background-color: var(--ui-accent); color: var(--ui-bg-main);"
                   disabled={!canRunJudgment}
                   onclick={() => { if (canRunJudgment) runJudgment(); }}
-                  aria-label="Run judgment with optional feedback">
+                  title="Run judge on B/C/D responses">
                   Judgment time
                 </button>
               </div>
-            {:else}
-              <button
-                type="button"
-                class="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-50"
-                style="background-color: var(--ui-accent); color: var(--ui-bg-main);"
-                disabled={!canRunJudgment}
-                onclick={() => { if (canRunJudgment) runJudgment(); }}
-                aria-label="Run judgment">
-                Judgment time
-              </button>
-            {/if}
+            </section>
+          {/if}
+        </div>
+        <div class="flex flex-wrap items-center gap-2 min-w-0">
+          <span class="text-xs font-medium shrink-0" style="color: var(--ui-text-secondary);" title="Running totals from judge (Judgment time).">Score tally: B {arenaScores.B} | C {arenaScores.C} | D {arenaScores.D}</span>
+          {#if arenaStandingsLine}
+            <button type="button" class="text-[10px] px-2 py-1 rounded border shrink-0" style="border-color: var(--ui-border); color: var(--ui-text-secondary); background: var(--ui-input-bg);" onclick={() => { resetArenaScores(); if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume); }} title="Clear score totals">Reset scores</button>
+          {/if}
+          <button
+            type="button"
+            class="flex items-center gap-1 text-xs font-medium rounded-lg px-2 py-1.5 transition-colors border shrink-0 disabled:opacity-50"
+            style="color: var(--ui-text-secondary); border-color: var(--ui-border); background-color: var(--ui-input-bg);"
+            disabled={ejectBusy}
+            onclick={ejectAllModels}
+            title="Eject all loaded models (free VRAM). Set Unload helper URL in Settings and run the Python helper for this to work.">
+            {ejectBusy ? 'Ejecting…' : 'Eject all'}
+          </button>
+          {#if ejectMessage}
+            <span class="text-xs shrink-0" style="color: var(--atom-teal);" role="status">{ejectMessage}</span>
+          {/if}
+          <button
+            type="button"
+            class="flex items-center gap-1 text-xs font-medium rounded-lg px-2 py-1.5 transition-colors border shrink-0"
+            style="color: var(--ui-text-secondary); border-color: var(--ui-border); background-color: var(--ui-input-bg);"
+            onclick={() => arenaSetupExpanded = !arenaSetupExpanded}
+            aria-expanded={arenaSetupExpanded}
+            aria-controls="arena-questions-block"
+            title={arenaSetupExpanded ? 'Collapse questions' : 'Expand questions'}>
+            <span aria-hidden="true">{arenaSetupExpanded ? '▼' : '▶'}</span>
+            Questions
+          </button>
+          <button
+            type="button"
+            class="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0 disabled:opacity-50"
+            style="background-color: var(--ui-accent); color: var(--ui-bg-main);"
+            disabled={$isStreaming}
+            onclick={nextQuestion}
+            title={parsedQuestions.length > 0 ? `Send question #${(questionIndex % parsedQuestions.length) + 1}` : 'Clear panels'}>
+            {nextQuestionLabel}
+          </button>
+          {#if parsedQuestions.length > 0}
+            <span class="text-xs shrink-0" style="color: var(--ui-text-secondary);">{parsedQuestions.length} question{parsedQuestions.length !== 1 ? 's' : ''}</span>
+          {/if}
+          <label class="flex items-center gap-1.5 cursor-pointer text-xs shrink-0" style="color: var(--ui-text-secondary);">
+            <input type="checkbox" bind:checked={sequential} class="rounded" style="accent-color: var(--ui-accent);" onchange={() => { if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume); }} />
+            <span title="Run one model at a time. Uncheck to run all models in parallel — faster but can overload VRAM/CPU.">Sequential</span>
+            <span class="opacity-75" style="color: var(--ui-text-secondary);" title="Uncheck to run all models at once; uses more VRAM and CPU.">(one at a time; off = parallel)</span>
+          </label>
+          <label class="flex items-center gap-1.5 cursor-pointer text-xs shrink-0" style="color: var(--ui-text-secondary);" title="Prepend current standings to the next question so models see how they're doing.">
+            <input type="checkbox" bind:checked={arenaIncludeStandingsInPrompt} class="rounded" style="accent-color: var(--ui-accent);" />
+            <span>Tell models standings</span>
+          </label>
+          <div class="flex items-center gap-1 shrink-0 text-xs" role="group" aria-label="Web search">
+            <span style="color: var(--ui-text-secondary);">Web:</span>
+            <div class="flex rounded-lg border overflow-hidden" style="border-color: var(--ui-border);">
+              <button type="button" class="px-2.5 py-1 text-xs font-medium transition-colors border-r" class:opacity-70={$arenaWebSearchMode !== 'none'} style="border-color: var(--ui-border); background: {$arenaWebSearchMode === 'none' ? 'var(--ui-sidebar-active)' : 'transparent'}; color: {$arenaWebSearchMode === 'none' ? 'var(--ui-text-primary)' : 'var(--ui-text-secondary)'}" onclick={() => { arenaWebSearchMode.set('none'); if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume); }} title="No web search">None</button>
+              <button type="button" class="px-2.5 py-1 text-xs font-medium transition-colors border-r" class:opacity-70={$arenaWebSearchMode !== 'all'} style="border-color: var(--ui-border); background: {$arenaWebSearchMode === 'all' ? 'var(--ui-sidebar-active)' : 'transparent'}; color: {$arenaWebSearchMode === 'all' ? 'var(--ui-text-primary)' : 'var(--ui-text-secondary)'}" onclick={() => { arenaWebSearchMode.set('all'); if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume); }} title="All models get web">All</button>
+              <button type="button" class="px-2.5 py-1 text-xs font-medium transition-colors" class:opacity-70={$arenaWebSearchMode !== 'judge'} style="border-color: var(--ui-border); background: {$arenaWebSearchMode === 'judge' ? 'var(--ui-sidebar-active)' : 'transparent'}; color: {$arenaWebSearchMode === 'judge' ? 'var(--ui-text-primary)' : 'var(--ui-text-secondary)'}" onclick={() => { arenaWebSearchMode.set('judge'); if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume); }} title="Judge only">Judge</button>
+            </div>
           </div>
-        {/if}
-      </section>
+        </div>
+      </div>
 
-      <!-- Chat input -->
-      <section class="pt-2" aria-label="Send prompt to models">
-        <ChatInput
-          onSend={sendUserMessage}
-          onStop={stopAll} />
-        <p class="text-xs mt-2" style="color: var(--ui-text-secondary);">One prompt → multiple model responses. Or use numbered questions above and Next.</p>
+      <!-- Row 2: Contest rules (left) | Questions list (right) – aligned side by side -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+        <section class="flex flex-col gap-1.5 min-w-0" aria-label="Contest rules">
+          <label for="arena-contest-rules" class="text-xs font-medium" style="color: var(--ui-text-primary);">Contest rules</label>
+          <textarea
+            id="arena-contest-rules"
+            class="w-full px-2.5 py-1.5 rounded-lg border text-xs resize-y min-h-18 max-h-28"
+            style="border-color: var(--ui-border); background-color: var(--ui-input-bg); color: var(--ui-text-primary);"
+            placeholder="Paste contest rules. Sent with every question."
+            rows="3"
+            bind:value={contestRules}
+          ></textarea>
+        </section>
+        <div class="flex flex-col gap-1.5 min-w-0">
+          <label for="arena-questions-list" class="text-xs font-medium" style="color: var(--ui-text-primary);">Questions (numbered 1. 2. …)</label>
+          <div id="arena-questions-block" class="overflow-hidden transition-[max-height] duration-200" style="max-height: {arenaSetupExpanded ? '20rem' : '0'};">
+            <textarea
+              id="arena-questions-list"
+              class="w-full px-2.5 py-1.5 rounded-lg border text-xs resize-y min-h-18 max-h-48"
+              style="border-color: var(--ui-border); background-color: var(--ui-input-bg); color: var(--ui-text-primary);"
+              placeholder="Paste numbered questions. Next sends the next one."
+              rows="3"
+              bind:value={questionsList}
+            ></textarea>
+          </div>
+        </div>
+      </div>
+
+      {#if $chatError}
+        <div class="px-3 py-2 rounded-lg text-sm flex items-center justify-between gap-2" style="background: rgba(239,68,68,0.1); color: var(--ui-accent-hot); border: 1px solid var(--ui-border);" role="alert">
+          <span>{$chatError}</span>
+          <button type="button" class="shrink-0 p-1 rounded hover:opacity-80" onclick={() => chatError.set(null)} aria-label="Dismiss">×</button>
+        </div>
+      {/if}
+
+      <section class="pt-0.5 max-w-2xl mx-auto w-full" aria-label="Send prompt">
+        <ChatInput onSend={sendUserMessage} onStop={stopAll} />
+        <p class="text-[10px] mt-1 text-center" style="color: var(--ui-text-secondary);">One prompt → all models. Left: rules &amp; judge. Right: questions &amp; Next.</p>
       </section>
     </div>
   </div>

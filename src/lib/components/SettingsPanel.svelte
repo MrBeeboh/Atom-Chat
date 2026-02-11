@@ -1,7 +1,7 @@
 <script>
   import { fly } from 'svelte/transition';
   import { backOut, quintOut } from 'svelte/easing';
-  import { globalDefault, updateGlobalDefault, selectedModelId, models, presetDefaultModels, lmStudioBaseUrl, voiceServerUrl } from '$lib/stores.js';
+  import { globalDefault, updateGlobalDefault, selectedModelId, models, presetDefaultModels, lmStudioBaseUrl, voiceServerUrl, lmStudioUnloadHelperUrl } from '$lib/stores.js';
 
   let { onclose } = $props();
 
@@ -87,6 +87,23 @@
             placeholder="http://localhost:1234"
             class="w-full rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-zinc-900 dark:text-zinc-100 text-sm font-mono placeholder:text-zinc-400" />
           <p class="text-xs text-zinc-500 dark:text-zinc-400">Leave empty for default (localhost:1234). Use your LM Studio “Reachable at” URL, e.g. <code class="bg-zinc-200 dark:bg-zinc-700 px-1 rounded">http://10.0.0.51:1234</code>. Enable CORS in LM Studio → Developer → Server Settings.</p>
+        </div>
+      </div>
+
+      <!-- Unload helper (Python SDK) – reliable eject for Arena / model switching -->
+      <div class="border border-zinc-200 dark:border-zinc-600 rounded-lg overflow-hidden">
+        <div class="px-4 py-3 border-b border-zinc-200 dark:border-zinc-600 bg-zinc-50 dark:bg-zinc-800/80">
+          <span class="text-sm font-medium text-zinc-700 dark:text-zinc-300">Unload helper (Python SDK)</span>
+        </div>
+        <div class="px-4 py-3 space-y-1">
+          <label for="settings-unload-helper-url" class="block text-sm font-medium text-zinc-600 dark:text-zinc-400">Helper URL</label>
+          <input
+            id="settings-unload-helper-url"
+            type="url"
+            bind:value={$lmStudioUnloadHelperUrl}
+            placeholder="http://localhost:8766"
+            class="w-full rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-zinc-900 dark:text-zinc-100 text-sm font-mono placeholder:text-zinc-400" />
+          <p class="text-xs text-zinc-500 dark:text-zinc-400">Run <code class="bg-zinc-200 dark:bg-zinc-700 px-1 rounded">pip install flask flask-cors</code> then <code class="bg-zinc-200 dark:bg-zinc-700 px-1 rounded">python scripts/unload_helper_server.py</code>. Uses <code class="bg-zinc-200 dark:bg-zinc-700 px-1 rounded">lms unload --all</code> CLI to force-eject all models. Leave empty to disable.</p>
         </div>
       </div>
 

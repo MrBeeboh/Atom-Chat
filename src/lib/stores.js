@@ -69,8 +69,10 @@ export function confirm(options) {
   });
 }
 
-/** UI: sidebar collapsed to narrow strip on desktop (toggle via logo/icon). */
-export const sidebarCollapsed = writable(false);
+/** UI: sidebar collapsed to narrow strip on desktop (Arena layout). Persisted. */
+export const sidebarCollapsed = writable(
+  typeof localStorage !== 'undefined' && localStorage.getItem('sidebarCollapsed') === 'true'
+);
 
 /** Cockpit layout: right Intel panel open (toggle with ]). */
 export const cockpitIntelOpen = writable(true);
@@ -103,6 +105,13 @@ const getStoredVoiceServerUrl = () => (typeof localStorage !== 'undefined' ? loc
 export const voiceServerUrl = writable(getStoredVoiceServerUrl());
 if (typeof localStorage !== 'undefined') {
   voiceServerUrl.subscribe((v) => localStorage.setItem('voiceServerUrl', v ?? ''));
+}
+
+/** Unload helper URL (Python SDK server at e.g. http://localhost:8766). When set, eject uses POST /unload-all. */
+const getStoredUnloadHelperUrl = () => (typeof localStorage !== 'undefined' ? localStorage.getItem('lmStudioUnloadHelperUrl') : null) || '';
+export const lmStudioUnloadHelperUrl = writable(getStoredUnloadHelperUrl());
+if (typeof localStorage !== 'undefined') {
+  lmStudioUnloadHelperUrl.subscribe((v) => localStorage.setItem('lmStudioUnloadHelperUrl', v ?? ''));
 }
 
 /** Layout: cockpit | arena only (restore point). Old layouts migrate to cockpit. */

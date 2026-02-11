@@ -9,10 +9,13 @@
   viewBox="0 0 32 32"
   fill="none"
   xmlns="http://www.w3.org/2000/svg"
-  aria-hidden="true"
+  role="img"
+  aria-label="ATOM Logo"
 >
-  <circle cx="16" cy="16" r="3" class="thinking-atom-nucleus" />
-  <ellipse cx="16" cy="16" rx="10" ry="4" class="thinking-atom-orbit" />
-  <ellipse cx="16" cy="16" rx="12" ry="5" class="thinking-atom-orbit-2" />
-  <ellipse cx="16" cy="16" rx="11" ry="4.5" class="thinking-atom-orbit-3" />
+  <!-- Nucleus: small glowing center dot -->
+  <circle cx="16" cy="16" r="2" class="thinking-atom-nucleus" />
+  <!-- 3 orbital rings: perfect circles, non-overlapping radii -->
+  <circle cx="16" cy="16" r="6" class="thinking-atom-orbit" />
+  <circle cx="16" cy="16" r="9" class="thinking-atom-orbit-2" />
+  <circle cx="16" cy="16" r="12" class="thinking-atom-orbit-3" />
 </svg>

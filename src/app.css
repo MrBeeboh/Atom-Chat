@@ -75,58 +75,62 @@ html { --metrics-axis: #d4d4d4; --metrics-grid: #e5e5e5; }
   --atom-amber: #fbbf24;
 }
 
-/* Thinking indicator: vivid, fast atom – same pop colors in every theme */
+/* Thinking indicator: sleek minimal atom – theme accent, GPU-friendly animation */
 @keyframes atom-nucleus-pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 1; transform: scale(1.25); }
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
 }
 @keyframes atom-orbit-spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
-@keyframes atom-orbit-spin-60 {
-  from { transform: rotate(60deg); }
-  to { transform: rotate(420deg); }
-}
-@keyframes atom-orbit-spin-120 {
-  from { transform: rotate(120deg); }
-  to { transform: rotate(480deg); }
-}
-@keyframes atom-orbit-spin-120-reverse {
-  from { transform: rotate(120deg); }
-  to { transform: rotate(-240deg); }
+@keyframes atom-orbit-spin-reverse {
+  from { transform: rotate(360deg); }
+  to { transform: rotate(0deg); }
 }
 .thinking-atom-icon {
   display: block;
-  filter: drop-shadow(0 0 6px rgba(0, 217, 255, 0.4));
+  /* Nucleus glow uses theme accent so it contrasts with any background */
+  --atom-nucleus-glow: color-mix(in srgb, var(--ui-accent) 70%, transparent);
+  filter: drop-shadow(0 0 6px var(--atom-nucleus-glow)) drop-shadow(0 0 10px var(--atom-nucleus-glow));
 }
 .thinking-atom-nucleus {
-  fill: #ff3366;
+  fill: var(--ui-accent);
   transform-origin: 16px 16px;
-  animation: atom-nucleus-pulse 0.55s ease-in-out infinite;
+  animation: atom-nucleus-pulse 2s ease-in-out infinite;
+  filter: drop-shadow(0 0 4px var(--ui-accent));
 }
 .thinking-atom-orbit,
 .thinking-atom-orbit-2,
 .thinking-atom-orbit-3 {
   transform-origin: 16px 16px;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  fill: none;
+  opacity: 1;
 }
 .thinking-atom-orbit {
-  stroke: #ff3366;
-  stroke-width: 2;
-  opacity: 1;
-  animation: atom-orbit-spin 2s linear infinite;
+  stroke: #00f0ff;
+  animation: atom-orbit-spin 4s linear infinite;
 }
 .thinking-atom-orbit-2 {
-  stroke: #00e5ff;
-  stroke-width: 2;
-  opacity: 1;
-  animation: atom-orbit-spin-60 4s linear infinite;
+  stroke: #ff00ff;
+  animation: atom-orbit-spin-reverse 3s linear infinite;
 }
 .thinking-atom-orbit-3 {
-  stroke: #ffb800;
-  stroke-width: 2;
-  opacity: 1;
-  animation: atom-orbit-spin-120-reverse 2.5s linear infinite;
+  stroke: #00ff00;
+  animation: atom-orbit-spin 5s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .thinking-atom-icon .thinking-atom-nucleus,
+  .thinking-atom-icon .thinking-atom-orbit,
+  .thinking-atom-icon .thinking-atom-orbit-2,
+  .thinking-atom-icon .thinking-atom-orbit-3 {
+    animation: none;
+  }
+  .thinking-atom-icon .thinking-atom-nucleus {
+    opacity: 1;
+  }
 }
 
 /* ATOM logo (static, theme-aware – used next to wordmark in header and splash) */

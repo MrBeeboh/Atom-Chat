@@ -13,8 +13,12 @@ echo [ATOM] Clearing port 8765 if in use (voice server)...
 powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort 8765 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }" 2>nul
 echo [ATOM] Clearing port 5000 if in use (hardware metrics)...
 powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort 5000 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }" 2>nul
+echo [ATOM] Clearing port 8766 if in use (unload helper)...
+powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort 8766 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }" 2>nul
 ping 127.0.0.1 -n 2 >nul
 
+echo [ATOM] Starting Unload helper (Port 8766)...
+start "ATOM Unload Helper" cmd /k "cd /d "%~dp0" && pip install -r scripts/requirements-unload.txt -q && python scripts/unload_helper_server.py"
 echo [ATOM] Starting Hardware metrics server (Port 5000)...
 start "ATOM Hardware Metrics" cmd /k "cd /d "%~dp0" && pip install -r scripts/requirements-hardware.txt -q && python scripts/hardware_server.py"
 echo [ATOM] Starting Voice server (Port 8765)...
@@ -31,6 +35,6 @@ start http://localhost:5173
 
 echo.
 echo [ATOM] LM Studio: run on port 1234 for your models.
-echo [ATOM] Keep "ATOM Frontend", "ATOM Voice Server", and "ATOM Hardware Metrics" windows open.
+echo [ATOM] Keep "ATOM Frontend", "ATOM Unload Helper", "ATOM Voice Server", and "ATOM Hardware Metrics" windows open.
 echo [ATOM] First time metrics? pip install -r scripts/requirements-hardware.txt . First time voice? voice-server\README.md
 pause

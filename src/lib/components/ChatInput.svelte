@@ -49,8 +49,9 @@
   let attachProcessing = $state(false);
   let attachError = $state(null);
 
-  /** Clippy Easter egg: random smart-ass bubble, min 15s apart. */
+  /** Clippy Easter egg: random smart-ass bubble; first pop soon, then 15s+ apart; also on paperclip hover. */
   const CLIPPY_QUIPS = [
+    "I could whoop Clippy's ass. Don't @ me.",
     "It looks like you're trying to attach a file. I'm still better at that than Copilot.",
     "I'm not Clippy. I'm the paperclip that survived the purge.",
     "Sam Altman said AGI would be profound. He didn't say it would be this paperclip.",
@@ -80,34 +81,62 @@
   let clippyBubble = $state(/** @type {string | null} */ (null));
   let clippyTimeoutId = $state(/** @type {ReturnType<typeof setTimeout> | null} */ (null));
   let clippyScheduleId = $state(/** @type {ReturnType<typeof setTimeout> | null} */ (null));
+  let clippyHoverTimeoutId = $state(/** @type {ReturnType<typeof setTimeout> | null} */ (null));
   let lastClippyAt = 0;
+  let clippyHasShownOnce = $state(false);
+  const CLIPPY_FIRST_DELAY_MS = 4000;
   const CLIPPY_MIN_INTERVAL_MS = 15000;
   const CLIPPY_BUBBLE_DURATION_MS = 5000;
+  const CLIPPY_HOVER_DELAY_MS = 600;
+
+  function showClippyBubble() {
+    if (clippyBubble || attachProcessing || get(isStreaming)) return;
+    clippyBubble = CLIPPY_QUIPS[Math.floor(Math.random() * CLIPPY_QUIPS.length)];
+    lastClippyAt = Date.now();
+    clippyHasShownOnce = true;
+    if (clippyTimeoutId) clearTimeout(clippyTimeoutId);
+    clippyTimeoutId = setTimeout(() => {
+      clippyBubble = null;
+      clippyTimeoutId = null;
+      scheduleClippy();
+    }, CLIPPY_BUBBLE_DURATION_MS);
+  }
+
   function scheduleClippy() {
     if (clippyScheduleId) return;
-    const delay = CLIPPY_MIN_INTERVAL_MS + Math.random() * 30000;
+    const delay = clippyHasShownOnce
+      ? CLIPPY_MIN_INTERVAL_MS + Math.random() * 30000
+      : CLIPPY_FIRST_DELAY_MS + Math.random() * 2000;
     clippyScheduleId = setTimeout(() => {
       clippyScheduleId = null;
-      if (clippyBubble || attachProcessing || get(isStreaming)) {
-        scheduleClippy();
-        return;
-      }
-      clippyBubble = CLIPPY_QUIPS[Math.floor(Math.random() * CLIPPY_QUIPS.length)];
-      lastClippyAt = Date.now();
-      if (clippyTimeoutId) clearTimeout(clippyTimeoutId);
-      clippyTimeoutId = setTimeout(() => {
-        clippyBubble = null;
-        clippyTimeoutId = null;
-        scheduleClippy();
-      }, CLIPPY_BUBBLE_DURATION_MS);
+      showClippyBubble();
     }, delay);
   }
+
+  function onAttachHover() {
+    if (clippyBubble || attachProcessing || get(isStreaming)) return;
+    if (Date.now() - lastClippyAt < CLIPPY_MIN_INTERVAL_MS && clippyHasShownOnce) return;
+    if (clippyHoverTimeoutId) return;
+    clippyHoverTimeoutId = setTimeout(() => {
+      clippyHoverTimeoutId = null;
+      showClippyBubble();
+    }, CLIPPY_HOVER_DELAY_MS);
+  }
+
+  function onAttachLeave() {
+    if (clippyHoverTimeoutId) {
+      clearTimeout(clippyHoverTimeoutId);
+      clippyHoverTimeoutId = null;
+    }
+  }
+
   $effect(() => {
     if (typeof document === 'undefined') return;
     scheduleClippy();
     return () => {
       if (clippyScheduleId) clearTimeout(clippyScheduleId);
       if (clippyTimeoutId) clearTimeout(clippyTimeoutId);
+      if (clippyHoverTimeoutId) clearTimeout(clippyHoverTimeoutId);
     };
   });
 
@@ -383,6 +412,8 @@
       title="Attach image or PDF (or drag & drop, paste)"
       disabled={$isStreaming || attachProcessing}
       onclick={() => fileInputEl?.click()}
+      onmouseenter={onAttachHover}
+      onmouseleave={onAttachLeave}
       aria-label="Attach files"
     >
       {#if attachProcessing}

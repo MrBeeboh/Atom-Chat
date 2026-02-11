@@ -1,15 +1,10 @@
 /**
  * @file api.js
- * @description LM Studio API client for model listing, load/unload, and chat (streaming and non-streaming).
+ * @description LM Studio API client: list models, load/unload, chat (streaming and non-streaming).
  *
- * Endpoints used:
- * - GET  /api/v1/models        — list models (preferred)
- * - GET  /v1/models           — fallback (OpenAI-compat)
- * - POST /api/v1/models/load   — load model (context_length, eval_batch_size, flash_attention, offload_kv_cache_to_gpu)
- * - POST /api/v1/models/unload
- * - POST /v1/chat/completions  — chat (stream: true | false)
- *
- * Base URL: localStorage 'lmStudioBaseUrl' or dev proxy /api/lmstudio / production http://localhost:1234.
+ * Endpoints: GET /api/v1/models, POST /api/v1/models/load, POST /api/v1/models/unload (per-instance),
+ * POST /v1/chat/completions. Bulk eject: unload helper at http://localhost:8766 (POST /unload-all, runs lms unload --all).
+ * Base URL: localStorage lmStudioBaseUrl or dev proxy /api/lmstudio or http://localhost:1234.
  */
 
 const DEFAULT_BASE = typeof import.meta !== 'undefined' && import.meta.env?.DEV ? '/api/lmstudio' : 'http://localhost:1234';
@@ -20,6 +15,17 @@ function getLmStudioBase() {
   const v = localStorage.getItem('lmStudioBaseUrl');
   if (v != null && String(v).trim() !== '') return String(v).trim().replace(/\/$/, '');
   return DEFAULT_BASE;
+}
+
+/** Unload helper base URL (e.g. http://localhost:8766). Bulk eject uses POST {url}/unload-all. */
+function getUnloadHelperUrl() {
+  if (typeof localStorage === 'undefined') return '';
+  try {
+    const v = localStorage.getItem('lmStudioUnloadHelperUrl');
+    return v != null && String(v).trim() !== '' ? String(v).trim().replace(/\/$/, '') : '';
+  } catch (_) {
+    return '';
+  }
 }
 
 /**
@@ -90,6 +96,69 @@ export async function getModels() {
 }
 
 /**
+ * Get model keys that are currently loaded (have at least one instance in memory).
+ * Uses GET /api/v1/models and checks loaded_instances. Use to wait until unload is complete.
+ * @returns {Promise<string[]>} Model keys (ids) that are loaded
+ */
+export async function getLoadedModelKeys() {
+  const base = getLmStudioBase();
+  const res = await fetch(`${base}/api/v1/models`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  const raw = data.models ?? data.data?.models ?? (Array.isArray(data) ? data : []);
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((m) => {
+      const instances = m?.loaded_instances ?? m?.instances ?? m?.loaded;
+      return m && Array.isArray(instances) && instances.length > 0;
+    })
+    .map((m) => m.key ?? m.id ?? '')
+    .filter(Boolean);
+}
+
+/**
+ * Unload one model instance by instance_id (LM Studio REST: POST body is { instance_id }).
+ * @param {string} instanceId - From loaded_instances[].id in list response
+ * @returns {Promise<{ instance_id?: string }>}
+ */
+export async function unloadByInstanceId(instanceId) {
+  if (!instanceId || typeof instanceId !== 'string') return {};
+  const base = getLmStudioBase();
+  const res = await fetch(`${base}/api/v1/models/unload`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ instance_id: instanceId }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`LM Studio unload: ${res.status} ${text}`);
+  }
+  return res.json();
+}
+
+/**
+ * Wait until none of the given model IDs are loaded (VRAM freed). Polls getLoadedModelKeys.
+ * @param {string[]} modelIds - Model keys to wait until unloaded
+ * @param {Object} opts - { pollIntervalMs?: number, timeoutMs?: number }
+ * @returns {Promise<void>}
+ */
+export async function waitUntilUnloaded(modelIds, opts = {}) {
+  const { pollIntervalMs = 400, timeoutMs = 25000 } = opts;
+  if (!modelIds.length) return;
+  const ids = modelIds.map((id) => String(id).trim().toLowerCase());
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const loaded = await getLoadedModelKeys();
+    const loadedLower = loaded.map((k) => String(k).trim().toLowerCase());
+    const anyStillLoaded = ids.some((id) =>
+      loadedLower.some((k) => k === id || k.endsWith('/' + id) || id.endsWith('/' + k) || k.includes(id) || id.includes(k))
+    );
+    if (!anyStillLoaded) return;
+    await new Promise((r) => setTimeout(r, pollIntervalMs));
+  }
+}
+
+/**
  * Load a model with the given load config (LM Studio REST API v1).
  * Sends only params LM Studio accepts: context_length, eval_batch_size, flash_attention, offload_kv_cache_to_gpu.
  * GPU, CPU threads, Parallel are stored in our UI but not sent (LM Studio manages them).
@@ -123,24 +192,64 @@ export async function loadModel(modelId, loadConfig = {}) {
 }
 
 /**
- * Unload a model from memory (LM Studio 0.4+ REST API).
- * Frees VRAM/RAM when switching models or when idle.
- * @param {string} modelId - Model identifier
- * @returns {Promise<{ status?: string }>}
+ * Get loaded instance IDs for a single model key (from GET /api/v1/models: model.key + loaded_instances[].id).
+ * @param {string} modelKey - Model key to match (m.key ?? m.id)
+ * @returns {Promise<string[]>}
+ */
+export async function getLoadedInstanceIdsForModel(modelKey) {
+  if (!modelKey || typeof modelKey !== 'string') return [];
+  const base = getLmStudioBase();
+  const res = await fetch(`${base}/api/v1/models`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  const raw = data.models ?? data.data?.models ?? (Array.isArray(data) ? data : []);
+  const key = String(modelKey).trim().toLowerCase();
+  const ids = [];
+  for (const m of raw) {
+    const modelKeyCur = (m?.key ?? m?.id ?? '').toString().trim().toLowerCase();
+    if (!modelKeyCur || modelKeyCur !== key && !modelKeyCur.endsWith('/' + key) && !key.endsWith('/' + modelKeyCur))
+      continue;
+    const instances = m?.loaded_instances ?? m?.instances;
+    if (Array.isArray(instances)) for (const inst of instances) if (inst?.id != null) ids.push(String(inst.id));
+  }
+  return ids;
+}
+
+/**
+ * Unload a model from memory by model key. Resolves to instance IDs via list API and unloads each.
+ * @param {string} modelId - Model key (e.g. from load or list)
+ * @returns {Promise<void>}
  */
 export async function unloadModel(modelId) {
-  if (!modelId || typeof modelId !== 'string') return {};
-  const base = getLmStudioBase();
-  const res = await fetch(`${base}/api/v1/models/unload`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: modelId }),
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`LM Studio unload: ${res.status} ${text}`);
+  if (!modelId || typeof modelId !== 'string') return;
+  const instanceIds = await getLoadedInstanceIdsForModel(modelId);
+  await Promise.allSettled(instanceIds.map((id) => unloadByInstanceId(id).catch(() => {})));
+}
+
+const DEFAULT_UNLOAD_HELPER_URL = 'http://localhost:8766';
+
+/**
+ * Unload every currently loaded model instance (e.g. before Arena run to free VRAM).
+ * Calls the helper at helperUrlOrOverride, or from localStorage, or default http://localhost:8766.
+ * If the helper is not running, returns { ok: false } and does not throw — so Arena run is never blocked.
+ * @param {string} [helperUrlOrOverride] - Optional; if set, use this; else localStorage; else default.
+ * @returns {Promise<{ ok: boolean }>} - ok true if eject succeeded, false if helper unreachable or error.
+ */
+export async function unloadAllLoadedModels(helperUrlOrOverride) {
+  const fromOverride =
+    typeof helperUrlOrOverride === 'string' && helperUrlOrOverride.trim()
+      ? helperUrlOrOverride.trim().replace(/\/$/, '')
+      : '';
+  const helperUrl = fromOverride || getUnloadHelperUrl() || DEFAULT_UNLOAD_HELPER_URL;
+
+  try {
+    const res = await fetch(`${helperUrl}/unload-all`, { method: 'POST' });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data?.ok) return { ok: true };
+    return { ok: false };
+  } catch (_) {
+    return { ok: false };
   }
-  return res.json();
 }
 
 /**
