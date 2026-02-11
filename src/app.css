@@ -1067,6 +1067,23 @@ body {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
+/* Arena question bar: unified strip */
+.arena-question-bar {
+  --arena-bar-bg: var(--ui-input-bg);
+}
+.arena-web-tab {
+  color: var(--ui-text-secondary);
+  background: transparent;
+  transition: background 0.15s, color 0.15s;
+}
+.arena-web-tab:hover {
+  color: var(--ui-text-primary);
+}
+.arena-web-tab.active {
+  background: var(--ui-sidebar-active);
+  color: var(--ui-text-primary);
+}
+
 /* Streaming: pulsing border glow */
 .atom-streaming-glow {
   animation: atom-streaming-glow 1.5s ease-in-out infinite;

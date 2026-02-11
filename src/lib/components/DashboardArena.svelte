@@ -73,6 +73,14 @@
   );
   /** Arena settings panel (slide-out from right). */
   let arenaSettingsOpen = $state(false);
+  /** Answer key for judge (optional). Persisted to localStorage. */
+  let answerKey = $state(
+    typeof localStorage !== 'undefined' ? (localStorage.getItem('arenaAnswerKey') ?? '') : ''
+  );
+  $effect(() => {
+    if (typeof localStorage !== 'undefined' && answerKey !== undefined)
+      localStorage.setItem('arenaAnswerKey', answerKey);
+  });
   /** Accordion open state in settings panel. */
   let settingsRulesExpanded = $state(false);
   let settingsQuestionsExpanded = $state(false);
@@ -512,26 +520,31 @@
     if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume);
   }
 
-  /** Clear all panels and, if a numbered question list exists, post the next question to the models. */
-  function nextQuestion() {
+  /** Jump to a specific question by number (1-based). Does not send. */
+  function jumpToQuestion(num) {
+    const n = parseInt(num, 10);
+    if (Number.isNaN(n) || currentQuestionTotal === 0) return;
+    questionIndex = Math.max(0, Math.min(n - 1, currentQuestionTotal - 1));
+    if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume);
+  }
+
+  /** Ask: send the currently selected question to the models. (Standard test flow: select question, click Ask.) */
+  function askCurrentQuestion() {
     if ($isStreaming) return;
     const questions = parsedQuestions;
+    if (questions.length === 0) return;
+    const idx = questionIndex % questions.length;
+    const toSend = (questions[idx] && String(questions[idx]).trim()) || '';
+    if (!toSend) return;
     messagesA = [];
     messagesB = [];
     messagesC = [];
     messagesD = [];
     chatError.set(null);
     if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume);
-    if (questions.length > 0) {
-      const idx = questionIndex % questions.length;
-      const nextText = (questions[idx] && String(questions[idx]).trim()) || '';
-      questionIndex = idx + 1;
-      if (nextText) {
-        sendUserMessage(nextText, []).catch((e) => {
-          chatError.set(e?.message || 'Failed to send next question.');
-        });
-      }
-    }
+    sendUserMessage(toSend, []).catch((e) => {
+      chatError.set(e?.message || 'Failed to send question.');
+    });
   }
 
   async function confirmResetScores() {
@@ -640,6 +653,10 @@
     ];
     if (judgeWebContext) {
       parts.push('--- WEB SEARCH (use to fact-check) ---', judgeWebContext, '');
+    }
+    const answerKeyTrimmed = typeof answerKey === 'string' ? answerKey.trim() : '';
+    if (answerKeyTrimmed) {
+      parts.push('--- ANSWER KEY ---', answerKeyTrimmed, '', 'Use this to evaluate accuracy of responses.', '');
     }
     parts.push('--- ORIGINAL PROMPT ---', promptText || '(none)', '');
     for (const { slot, msgs } of slotsWithResponses) {
@@ -914,19 +931,66 @@
     {/if}
   </header>
 
-  <!-- One strip: nav + question + actions (tight, full width) -->
-  <div class="shrink-0 flex flex-wrap items-center gap-2 px-4 py-2 border-b" style="background-color: var(--ui-bg-sidebar); border-color: var(--ui-border);">
-    <button type="button" class="flex items-center gap-1 px-2 py-1.5 rounded border text-xs font-medium disabled:opacity-40" style="border-color: var(--ui-border); background: var(--ui-input-bg); color: var(--ui-text-secondary);" disabled={currentQuestionTotal === 0 || currentQuestionNum <= 1} onclick={prevQuestion} aria-label="Previous question">← Prev</button>
-    <span class="text-xs font-semibold tabular-nums" style="color: var(--ui-text-primary);">{#if currentQuestionTotal > 0}Q{currentQuestionNum}/{currentQuestionTotal}{:else}—{/if}</span>
-    <button type="button" class="flex items-center gap-1 px-2 py-1.5 rounded text-xs font-medium disabled:opacity-50" style="background-color: var(--ui-accent); color: var(--ui-bg-main);" disabled={$isStreaming} onclick={nextQuestion} aria-label="Send next question">Next →</button>
-    <button type="button" class="p-1.5 rounded border" style="border-color: var(--ui-border); background: var(--ui-input-bg); color: var(--ui-text-primary);" onclick={() => { arenaSettingsOpen = true; if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume); }} aria-label="Settings" title="Settings">⚙️</button>
+  <!-- Question bar: one strip (nav | action | web | judgment | … settings far right) -->
+  <div
+    class="arena-question-bar shrink-0 flex items-center gap-2 h-10 px-3 border-b"
+    style="background-color: var(--ui-bg-sidebar); border-color: var(--ui-border);">
+    <!-- Group 1: Question navigation -->
+    <div class="flex items-center h-8 rounded-md overflow-hidden border" style="border-color: var(--ui-border); background: var(--ui-input-bg);">
+      <button type="button" class="h-full px-2.5 text-xs font-medium disabled:opacity-40 transition-opacity" style="color: var(--ui-text-secondary);" disabled={currentQuestionTotal === 0 || currentQuestionNum <= 1} onclick={prevQuestion} aria-label="Previous question">←</button>
+      {#if currentQuestionTotal > 0}
+        <select
+          class="h-full min-w-[4.5rem] pl-2 pr-7 text-xs font-semibold tabular-nums border-l border-r bg-transparent cursor-pointer"
+          style="border-color: var(--ui-border); color: var(--ui-text-primary);"
+          aria-label="Current question"
+          value={currentQuestionNum}
+          onchange={(e) => jumpToQuestion(e.currentTarget.value)}>
+          {#each Array(currentQuestionTotal) as _, i}
+            <option value={i + 1}>Q{i + 1}</option>
+          {/each}
+        </select>
+        <span class="h-full flex items-center px-2 text-xs tabular-nums" style="color: var(--ui-text-secondary);">/ {currentQuestionTotal}</span>
+      {:else}
+        <span class="px-2 text-xs" style="color: var(--ui-text-secondary);">—</span>
+      {/if}
+      <button type="button" class="h-full px-2.5 text-xs font-medium disabled:opacity-40 transition-opacity" style="color: var(--ui-text-secondary);" disabled={currentQuestionTotal === 0 || currentQuestionNum >= currentQuestionTotal} onclick={advanceQuestionIndex} aria-label="Next question">→</button>
+    </div>
+    <!-- Group 2: Primary action -->
+    <button type="button" class="arena-bar-btn primary h-8 px-4 rounded-md text-xs font-semibold shrink-0 disabled:opacity-50 transition-opacity" style="background-color: var(--ui-accent); color: var(--ui-bg-main);" disabled={$isStreaming || currentQuestionTotal === 0} onclick={askCurrentQuestion} aria-label="Ask this question" title="Send this question to the models">Ask</button>
+    <!-- Group 3: Web only (None / All / Judge) -->
+    <div class="flex items-center h-8 rounded-md border" style="border-color: var(--ui-border); background: var(--ui-input-bg);">
+      <span class="pl-2.5 pr-1.5 text-[11px] font-medium" style="color: var(--ui-text-secondary);">Web</span>
+      <div class="flex h-full">
+        <button type="button" class="arena-web-tab h-full px-2.5 text-[11px] font-medium" class:active={$arenaWebSearchMode === 'none'} onclick={() => { arenaWebSearchMode.set('none'); if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume); }} title="No web">None</button>
+        <button type="button" class="arena-web-tab h-full px-2.5 text-[11px] font-medium border-l" class:active={$arenaWebSearchMode === 'all'} style="border-color: var(--ui-border);" onclick={() => { arenaWebSearchMode.set('all'); if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume); }} title="All get web">All</button>
+        <button type="button" class="arena-web-tab h-full px-2.5 text-[11px] font-medium border-l rounded-r-md" class:active={$arenaWebSearchMode === 'judge'} style="border-color: var(--ui-border);" onclick={() => { arenaWebSearchMode.set('judge'); if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume); }} title="Judge only">Judge</button>
+      </div>
+    </div>
     {#if $arenaSlotAIsJudge}
-      <button type="button" class="px-2 py-1.5 rounded text-xs font-medium shrink-0 disabled:opacity-50" style="background-color: var(--ui-accent); color: var(--ui-bg-main);" disabled={!canRunJudgment} onclick={() => { if (canRunJudgment) runJudgment(); if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume); }} title="Run judge">Judgment</button>
+      <button type="button" class="h-8 px-3 rounded-md text-xs font-semibold shrink-0 disabled:opacity-50 transition-opacity" style="background-color: var(--ui-accent); color: var(--ui-bg-main);" disabled={!canRunJudgment} onclick={() => { if (canRunJudgment) runJudgment(); if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume); }} title="Run judge">Judgment</button>
     {/if}
-    {#if currentQuestionText && currentQuestionTotal > 0}
-      <span class="flex-1 min-w-0 text-xs ml-2 truncate" style="color: var(--ui-text-secondary);" title={currentQuestionText}>— {currentQuestionText}</span>
-    {/if}
+    <!-- Spacer: push Settings to the right -->
+    <div class="flex-1 min-w-2"></div>
+    <!-- Settings: far right, labeled -->
+    <button
+      type="button"
+      class="flex items-center gap-1.5 h-8 px-3 rounded-md border text-xs font-medium shrink-0 transition-opacity hover:opacity-90"
+      style="border-color: var(--ui-border); background: var(--ui-input-bg); color: var(--ui-text-secondary);"
+      onclick={() => { arenaSettingsOpen = true; if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume); }}
+      aria-label="Arena settings"
+      title="Arena settings">
+      <span aria-hidden="true">⚙</span>
+      <span>Settings</span>
+    </button>
   </div>
+
+  <!-- Current question (the one selected / being asked) -->
+  {#if currentQuestionTotal > 0 && currentQuestionText}
+    <div class="shrink-0 px-4 py-2.5 border-b" style="background-color: var(--ui-bg-main); border-color: var(--ui-border);">
+      <p class="text-xs font-semibold mb-0.5" style="color: var(--ui-accent);">Question {currentQuestionNum}</p>
+      <p class="text-sm leading-snug" style="color: var(--ui-text-primary);">{currentQuestionText}</p>
+    </div>
+  {/if}
 
   <!-- Response panels: maximum space, minimal chrome -->
   <div
@@ -935,7 +999,7 @@
     style="grid-template-columns: {responsiveGridCols};">
     {#if $arenaPanelCount >= 1}
     <div class="flex flex-col min-h-0 h-full overflow-hidden rounded-lg atom-panel-wrap border" style="background-color: var(--ui-bg-main); border-color: var(--ui-border);" role="region" aria-label="Model A panel" in:fly={{ x: 200, duration: 800, easing: quintOut }}>
-      <div class="shrink-0 px-2 py-1 border-b text-[11px] font-medium truncate" style="color: var(--ui-text-secondary); border-color: var(--ui-border);">A · {$dashboardModelA || 'Select model'}</div>
+      <div class="shrink-0 px-2 py-1 border-b text-[11px] font-medium" style="color: var(--ui-text-secondary); border-color: var(--ui-border);">A</div>
       {#if slotErrors.A}<div class="shrink-0 px-2 py-0.5 text-[10px]" style="color: var(--ui-accent-hot);">{slotErrors.A}</div>{/if}
       {#if optionsOpenSlot === 'A'}
         <div class="shrink-0 p-2 border-b text-xs" style="border-color: var(--ui-border); background-color: var(--ui-input-bg);">
@@ -966,10 +1030,9 @@
           </div>
         {/if}
       </div>
-      <div class="shrink-0 flex justify-between items-center gap-1.5 px-2 py-1.5 border-t text-[11px]" style="border-color: var(--ui-border);">
-        <span class="text-[10px] opacity-70" style="color: var(--ui-text-secondary);">—</span>
+      <div class="shrink-0 flex justify-end items-center gap-1.5 px-2 py-1.5 border-t text-[11px]" style="border-color: var(--ui-border);">
         <div class="flex items-center gap-1">
-          <button type="button" class="p-0.5 rounded opacity-70 hover:opacity-100" style="color: var(--ui-text-secondary);" onclick={() => optionsOpenSlot = optionsOpenSlot === 'A' ? null : 'A'} aria-label="Model A options" aria-expanded={optionsOpenSlot === 'A'}>⚙</button>
+          <button type="button" class="arena-panel-options-btn flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border text-xs font-medium transition-opacity hover:opacity-90" style="border-color: var(--ui-border); background: var(--ui-input-bg); color: var(--ui-text-primary);" onclick={() => optionsOpenSlot = optionsOpenSlot === 'A' ? null : 'A'} aria-label="Model A options" aria-expanded={optionsOpenSlot === 'A'} title="Model A options">⚙ <span>Options</span></button>
           {#if running.A}<span style="color: var(--ui-accent);">Running…</span>{:else if tpsA}{@const c = Number(tpsA) >= 40 ? 'var(--atom-teal)' : Number(tpsA) >= 20 ? 'var(--atom-amber)' : 'var(--atom-accent)'}<span class="font-mono px-1.5 py-0.5 rounded" style="background: color-mix(in srgb, {c} 20%, transparent); color: {c};">{tpsA} t/s</span>{/if}
           {#if messagesA.length > 0}<button type="button" class="p-0.5 rounded opacity-50 hover:opacity-100" style="color: var(--ui-text-secondary);" onclick={() => { messagesA = []; }} aria-label="Clear slot A">✕</button>{/if}
         </div>
@@ -989,7 +1052,7 @@
 
     {#if $arenaPanelCount >= 2}
     <div class="flex flex-col min-h-0 h-full overflow-hidden rounded-lg atom-panel-wrap border" style="background-color: var(--ui-bg-main); border-color: var(--ui-border);" role="region" aria-label="Model B panel" in:fly={{ x: 200, duration: 800, easing: quintOut }}>
-      <div class="shrink-0 px-2 py-1 border-b text-[11px] font-medium truncate" style="color: var(--ui-text-secondary); border-color: var(--ui-border);">B · {$dashboardModelB || 'Select model'}</div>
+      <div class="shrink-0 px-2 py-1 border-b text-[11px] font-medium" style="color: var(--ui-text-secondary); border-color: var(--ui-border);">B</div>
       {#if slotErrors.B}<div class="shrink-0 px-2 py-0.5 text-[10px]" style="color: var(--ui-accent-hot);">{slotErrors.B}</div>{/if}
       {#if optionsOpenSlot === 'B'}
         <div class="shrink-0 p-2 border-b text-xs" style="border-color: var(--ui-border); background-color: var(--ui-input-bg);">
@@ -1018,10 +1081,9 @@
           </div>
         {/if}
       </div>
-      <div class="shrink-0 flex justify-between items-center gap-1.5 px-2 py-1.5 border-t text-[11px]" style="border-color: var(--ui-border);">
-        {#if arenaScores.B > 0}<span class="font-mono px-1 py-0.5 rounded text-[10px]" style="background: color-mix(in srgb, #10b981 20%, transparent); color: #10b981;">{arenaScores.B}</span>{:else}<span></span>{/if}
+      <div class="shrink-0 flex justify-end items-center gap-1.5 px-2 py-1.5 border-t text-[11px]" style="border-color: var(--ui-border);">
         <div class="flex items-center gap-1">
-          <button type="button" class="p-0.5 rounded opacity-70 hover:opacity-100" style="color: var(--ui-text-secondary);" onclick={() => optionsOpenSlot = optionsOpenSlot === 'B' ? null : 'B'} aria-label="Model B options" aria-expanded={optionsOpenSlot === 'B'}>⚙</button>
+          <button type="button" class="arena-panel-options-btn flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border text-xs font-medium transition-opacity hover:opacity-90" style="border-color: var(--ui-border); background: var(--ui-input-bg); color: var(--ui-text-primary);" onclick={() => optionsOpenSlot = optionsOpenSlot === 'B' ? null : 'B'} aria-label="Model B options" aria-expanded={optionsOpenSlot === 'B'} title="Model B options">⚙ <span>Options</span></button>
           {#if running.B}<span style="color: var(--ui-accent);">Running…</span>{:else if tpsB}{@const c = Number(tpsB) >= 40 ? 'var(--atom-teal)' : Number(tpsB) >= 20 ? 'var(--atom-amber)' : 'var(--atom-accent)'}<span class="font-mono px-1.5 py-0.5 rounded" style="background: color-mix(in srgb, {c} 20%, transparent); color: {c};">{tpsB} t/s</span>{/if}
           {#if messagesB.length > 0}<button type="button" class="p-0.5 rounded opacity-50 hover:opacity-100" style="color: var(--ui-text-secondary);" onclick={() => { messagesB = []; }} aria-label="Clear slot B">✕</button>{/if}
         </div>
@@ -1041,7 +1103,7 @@
 
     {#if $arenaPanelCount >= 3}
     <div class="flex flex-col min-h-0 h-full overflow-hidden rounded-lg atom-panel-wrap border" style="background-color: var(--ui-bg-main); border-color: var(--ui-border);" role="region" aria-label="Model C panel" in:fly={{ x: 200, duration: 800, easing: quintOut }}>
-      <div class="shrink-0 px-2 py-1 border-b text-[11px] font-medium truncate" style="color: var(--ui-text-secondary); border-color: var(--ui-border);">C · {$dashboardModelC || 'Select model'}</div>
+      <div class="shrink-0 px-2 py-1 border-b text-[11px] font-medium" style="color: var(--ui-text-secondary); border-color: var(--ui-border);">C</div>
       {#if slotErrors.C}<div class="shrink-0 px-2 py-0.5 text-[10px]" style="color: var(--ui-accent-hot);">{slotErrors.C}</div>{/if}
       {#if optionsOpenSlot === 'C'}
         <div class="shrink-0 p-2 border-b text-xs" style="border-color: var(--ui-border); background-color: var(--ui-input-bg);">
@@ -1070,10 +1132,9 @@
           </div>
         {/if}
       </div>
-      <div class="shrink-0 flex justify-between items-center gap-1.5 px-2 py-1.5 border-t text-[11px]" style="border-color: var(--ui-border);">
-        {#if arenaScores.C > 0}<span class="font-mono px-1 py-0.5 rounded text-[10px]" style="background: color-mix(in srgb, #f59e0b 20%, transparent); color: #f59e0b;">{arenaScores.C}</span>{:else}<span></span>{/if}
+      <div class="shrink-0 flex justify-end items-center gap-1.5 px-2 py-1.5 border-t text-[11px]" style="border-color: var(--ui-border);">
         <div class="flex items-center gap-1">
-          <button type="button" class="p-0.5 rounded opacity-70 hover:opacity-100" style="color: var(--ui-text-secondary);" onclick={() => optionsOpenSlot = optionsOpenSlot === 'C' ? null : 'C'} aria-label="Model C options" aria-expanded={optionsOpenSlot === 'C'}>⚙</button>
+          <button type="button" class="arena-panel-options-btn flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border text-xs font-medium transition-opacity hover:opacity-90" style="border-color: var(--ui-border); background: var(--ui-input-bg); color: var(--ui-text-primary);" onclick={() => optionsOpenSlot = optionsOpenSlot === 'C' ? null : 'C'} aria-label="Model C options" aria-expanded={optionsOpenSlot === 'C'} title="Model C options">⚙ <span>Options</span></button>
           {#if running.C}<span style="color: var(--ui-accent);">Running…</span>{:else if tpsC}{@const c = Number(tpsC) >= 40 ? 'var(--atom-teal)' : Number(tpsC) >= 20 ? 'var(--atom-amber)' : 'var(--atom-accent)'}<span class="font-mono px-1.5 py-0.5 rounded" style="background: color-mix(in srgb, {c} 20%, transparent); color: {c};">{tpsC} t/s</span>{/if}
           {#if messagesC.length > 0}<button type="button" class="p-0.5 rounded opacity-50 hover:opacity-100" style="color: var(--ui-text-secondary);" onclick={() => { messagesC = []; }} aria-label="Clear slot C">✕</button>{/if}
         </div>
@@ -1093,7 +1154,7 @@
 
     {#if $arenaPanelCount >= 4}
     <div class="flex flex-col min-h-0 h-full overflow-hidden rounded-lg atom-panel-wrap border" style="background-color: var(--ui-bg-main); border-color: var(--ui-border);" role="region" aria-label="Model D panel" in:fly={{ x: 200, duration: 800, easing: quintOut }}>
-      <div class="shrink-0 px-2 py-1 border-b text-[11px] font-medium truncate" style="color: var(--ui-text-secondary); border-color: var(--ui-border);">D · {$dashboardModelD || 'Select model'}</div>
+      <div class="shrink-0 px-2 py-1 border-b text-[11px] font-medium" style="color: var(--ui-text-secondary); border-color: var(--ui-border);">D</div>
       {#if slotErrors.D}<div class="shrink-0 px-2 py-0.5 text-[10px]" style="color: var(--ui-accent-hot);">{slotErrors.D}</div>{/if}
       {#if optionsOpenSlot === 'D'}
         <div class="shrink-0 p-2 border-b text-xs" style="border-color: var(--ui-border); background-color: var(--ui-input-bg);">
@@ -1122,10 +1183,9 @@
           </div>
         {/if}
       </div>
-      <div class="shrink-0 flex justify-between items-center gap-1.5 px-2 py-1.5 border-t text-[11px]" style="border-color: var(--ui-border);">
-        {#if arenaScores.D > 0}<span class="font-mono px-1 py-0.5 rounded text-[10px]" style="background: color-mix(in srgb, #8b5cf6 20%, transparent); color: #8b5cf6;">{arenaScores.D}</span>{:else}<span></span>{/if}
+      <div class="shrink-0 flex justify-end items-center gap-1.5 px-2 py-1.5 border-t text-[11px]" style="border-color: var(--ui-border);">
         <div class="flex items-center gap-1">
-          <button type="button" class="p-0.5 rounded opacity-70 hover:opacity-100" style="color: var(--ui-text-secondary);" onclick={() => optionsOpenSlot = optionsOpenSlot === 'D' ? null : 'D'} aria-label="Model D options" aria-expanded={optionsOpenSlot === 'D'}>⚙</button>
+          <button type="button" class="arena-panel-options-btn flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border text-xs font-medium transition-opacity hover:opacity-90" style="border-color: var(--ui-border); background: var(--ui-input-bg); color: var(--ui-text-primary);" onclick={() => optionsOpenSlot = optionsOpenSlot === 'D' ? null : 'D'} aria-label="Model D options" aria-expanded={optionsOpenSlot === 'D'} title="Model D options">⚙ <span>Options</span></button>
           {#if running.D}<span style="color: var(--ui-accent);">Running…</span>{:else if tpsD}{@const c = Number(tpsD) >= 40 ? 'var(--atom-teal)' : Number(tpsD) >= 20 ? 'var(--atom-amber)' : 'var(--atom-accent)'}<span class="font-mono px-1.5 py-0.5 rounded" style="background: color-mix(in srgb, {c} 20%, transparent); color: {c};">{tpsD} t/s</span>{/if}
           {#if messagesD.length > 0}<button type="button" class="p-0.5 rounded opacity-50 hover:opacity-100" style="color: var(--ui-text-secondary);" onclick={() => { messagesD = []; }} aria-label="Clear slot D">✕</button>{/if}
         </div>
@@ -1221,7 +1281,26 @@
           <button type="button" class="p-2 rounded-lg hover:opacity-80" style="color: var(--ui-text-secondary);" onclick={() => arenaSettingsOpen = false} aria-label="Close">×</button>
         </div>
         <div class="flex-1 overflow-y-auto px-4 py-4 space-y-6">
-          <!-- Contest rules -->
+          <!-- Answer Key (first section) -->
+          <section>
+            <h3 class="font-semibold text-sm mb-2" style="color: var(--ui-text-primary);">Answer Key</h3>
+            <p class="text-xs mb-3" style="color: var(--ui-text-secondary);">Optional: Judge will reference this when scoring. Can also use web search or own knowledge.</p>
+            <textarea
+              id="answer_key_input"
+              class="w-full rounded-md resize-y font-mono text-[13px]"
+              style="padding: 12px; background-color: var(--ui-input-bg); border: 1px solid var(--ui-border); color: var(--ui-text-primary); margin-bottom: 12px;"
+              placeholder="Paste answer key here (optional)
+
+Format:
+1. Answer to Q1
+2. Answer to Q2
+3. Answer to Q3
+..."
+              rows="10"
+              bind:value={answerKey}
+            ></textarea>
+          </section>
+          <!-- Contest rules (accordion, collapsed by default) -->
           <section>
             <button
               type="button"
