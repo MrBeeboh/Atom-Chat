@@ -1,10 +1,8 @@
 <script>
   import { tick } from 'svelte';
-  import { models, dashboardModelA, dashboardModelB, dashboardModelC, dashboardModelD, updateSettings, hardware, lmStudioBaseUrl } from '$lib/stores.js';
+  import { models, dashboardModelA, dashboardModelB, dashboardModelC, dashboardModelD, lmStudioBaseUrl } from '$lib/stores.js';
   import { getModels } from '$lib/api.js';
   import { getModelIcon, getQuantization, ensureModelIcons, modelIconOverrides } from '$lib/modelIcons.js';
-  import { getDefaultsForModel } from '$lib/modelDefaults.js';
-  import { getRecommendedFromHf } from '$lib/huggingface.js';
   import ModelCapabilityBadges from '$lib/components/ModelCapabilityBadges.svelte';
 
   let { slot = 'A' } = $props();
@@ -67,26 +65,8 @@
     return slot === 'B' ? dashboardModelB : slot === 'C' ? dashboardModelC : slot === 'D' ? dashboardModelD : dashboardModelA;
   }
 
-  async function applyDefaultsForModel(modelId) {
-    const hw = $hardware;
-    let hfOverrides = {};
-    try {
-      hfOverrides = await getRecommendedFromHf(modelId);
-    } catch (_) {}
-    const d = getDefaultsForModel(modelId, hw, hfOverrides);
-    updateSettings({
-      context_length: d.context_length,
-      eval_batch_size: d.eval_batch_size,
-      flash_attention: d.flash_attention,
-      offload_kv_cache_to_gpu: d.offload_kv_cache_to_gpu,
-      gpu_offload: d.gpu_offload ?? 'max',
-      cpu_threads: d.cpu_threads,
-      temperature: d.temperature,
-      max_tokens: d.max_tokens,
-      top_p: d.top_p,
-      top_k: d.top_k,
-      repeat_penalty: d.repeat_penalty,
-    });
+  async function applyDefaultsForModel(_modelId) {
+    // Generation params come from effective settings (global + recommended + per-model). No overwrite on select.
   }
 
   async function select(id) {

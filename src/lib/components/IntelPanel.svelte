@@ -5,7 +5,8 @@
     lastResponseTokPerSec,
     lastResponseTokens,
     activeMessages,
-    updateSettings,
+    updateGlobalDefault,
+    setPerModelOverride,
     settingsOpen,
     activeConversationId,
     conversations,
@@ -49,6 +50,7 @@
   let temperature = $state(0.7);
   let topP = $state(0.95);
   let topK = $state(64);
+  let sysPrompt = $state('You are a helpful assistant.');
   let currentModelId = $state('');
   let messagesList = $state([]);
 
@@ -64,6 +66,7 @@
       temperature = s?.temperature ?? 0.7;
       topP = s?.top_p ?? 0.95;
       topK = s?.top_k ?? 64;
+      sysPrompt = (s?.system_prompt ?? 'You are a helpful assistant.').toString();
     });
     return () => unsub();
   });
@@ -93,15 +96,23 @@
 
   function onTempInput(e) {
     const v = parseFloat(e.target.value);
-    if (Number.isFinite(v)) updateSettings({ temperature: v });
+    if (Number.isFinite(v)) temperature = v;
   }
   function onTopPInput(e) {
     const v = parseFloat(e.target.value);
-    if (Number.isFinite(v)) updateSettings({ top_p: v });
+    if (Number.isFinite(v)) topP = v;
   }
   function onTopKInput(e) {
     const v = parseInt(e.target.value, 10);
-    if (Number.isFinite(v)) updateSettings({ top_k: v });
+    if (Number.isFinite(v)) topK = v;
+  }
+
+  function saveForThisModel() {
+    if (!currentModelId) return;
+    setPerModelOverride(currentModelId, { temperature, top_p: topP, top_k: topK, system_prompt: sysPrompt.trim() || undefined });
+  }
+  function saveAsGlobalDefault() {
+    updateGlobalDefault({ temperature, top_p: topP, top_k: topK, system_prompt: sysPrompt.trim() || undefined });
   }
 
   function openSettings() {
@@ -196,6 +207,31 @@
           class="w-full h-1.5 rounded-full"
           style="background: var(--ui-input-bg); accent-color: var(--ui-accent);" />
       </div>
+      <div>
+        <label class="block text-[10px] mb-0.5" for="intel-sys-prompt">System prompt</label>
+        <textarea
+          id="intel-sys-prompt"
+          class="w-full px-1.5 py-1 rounded border text-xs resize-y min-h-[60px]"
+          style="border-color: var(--ui-border); background: var(--ui-input-bg); color: var(--ui-text-primary);"
+          placeholder="You are a helpful assistant."
+          bind:value={sysPrompt}
+          rows="2"></textarea>
+      </div>
+    </div>
+    <div class="mt-2 flex flex-wrap gap-1.5">
+      <button
+        type="button"
+        class="text-[10px] px-2 py-1 rounded border hover:opacity-90 disabled:opacity-50"
+        style="border-color: var(--ui-border); color: var(--ui-text-primary);"
+        onclick={saveForThisModel}
+        disabled={!currentModelId}
+        title="Save parameters and system prompt for this model only">Save for this model</button>
+      <button
+        type="button"
+        class="text-[10px] px-2 py-1 rounded border hover:opacity-90"
+        style="border-color: var(--ui-border); color: var(--ui-text-primary);"
+        onclick={saveAsGlobalDefault}
+        title="Save as default for all models that don't have a custom setting">Save as global default</button>
     </div>
   </div>
 

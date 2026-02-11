@@ -1,10 +1,8 @@
 <script>
   import { tick } from 'svelte';
-  import { models, selectedModelId, updateSettings, hardware, presetDefaultModels, lmStudioBaseUrl, modelSelectionNotification } from '$lib/stores.js';
+  import { models, selectedModelId, presetDefaultModels, lmStudioBaseUrl, modelSelectionNotification } from '$lib/stores.js';
   import { getModels } from '$lib/api.js';
   import { getModelIcon, getQuantization, ensureModelIcons, modelIconOverrides } from '$lib/modelIcons.js';
-  import { getDefaultsForModel } from '$lib/modelDefaults.js';
-  import { getRecommendedFromHf } from '$lib/huggingface.js';
   import { findSmallestModel } from '$lib/utils/modelSelection.js';
   import ModelCapabilityBadges from '$lib/components/ModelCapabilityBadges.svelte';
 
@@ -36,26 +34,9 @@
     return () => cancelAnimationFrame(id);
   });
 
-  async function applyDefaultsForModel(modelId) {
-    const hw = $hardware;
-    let hfOverrides = {};
-    try {
-      hfOverrides = await getRecommendedFromHf(modelId);
-    } catch (_) {}
-    const d = getDefaultsForModel(modelId, hw, hfOverrides);
-    updateSettings({
-      context_length: d.context_length,
-      eval_batch_size: d.eval_batch_size,
-      flash_attention: d.flash_attention,
-      offload_kv_cache_to_gpu: d.offload_kv_cache_to_gpu,
-      gpu_offload: d.gpu_offload ?? 'max',
-      cpu_threads: d.cpu_threads,
-      temperature: d.temperature,
-      max_tokens: d.max_tokens,
-      top_p: d.top_p,
-      top_k: d.top_k,
-      repeat_penalty: d.repeat_penalty,
-    });
+  async function applyDefaultsForModel(_modelId) {
+    // Generation params (temperature, etc.) now come from global + recommended + per-model overrides.
+    // Load config is applied in Settings when user clicks Load.
   }
 
   async function load() {

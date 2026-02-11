@@ -1,5 +1,6 @@
 import { writable, derived, get } from 'svelte/store';
 import { detectHardware } from '$lib/hardware.js';
+import { getRecommendedSettingsForModel } from '$lib/modelDefaults.js';
 
 /** Currently selected conversation id or null */
 export const activeConversationId = writable(null);
@@ -175,7 +176,7 @@ const readNum = (key, fallback) => {
   return Number.isFinite(n) ? n : fallback;
 };
 
-/** Default model parameters (one layout's worth). Per-layout settings merge over this. */
+/** Base defaults (app + generation). Used when no global or per-model override exists. */
 const DEFAULT_SETTINGS = {
   temperature: 0.7,
   max_tokens: 4096,
@@ -196,42 +197,101 @@ const DEFAULT_SETTINGS = {
   cpu_threads: 4,
 };
 
-/** Model parameters per layout. Key = layout id (cockpit | arena). Persisted to localStorage. Migrate old keys. */
-const loadSettingsByLayout = () => {
+/** Global default (single set of defaults for all models). Persisted. Migrate once from old settingsByLayout. */
+function loadGlobalDefault() {
   if (typeof localStorage === 'undefined') return {};
   try {
-    const raw = localStorage.getItem('settingsByLayout');
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    const out = typeof parsed === 'object' && parsed !== null ? { ...parsed } : {};
-    if (out.default != null && out.cockpit == null) out.cockpit = out.default;
-    if (out.flow != null && out.cockpit == null) out.cockpit = out.flow;
-    if (out.dashboard != null && out.arena == null) out.arena = out.dashboard;
-    return out;
-  } catch {
-    return {};
-  }
-};
-export const settingsByLayout = writable(loadSettingsByLayout());
+    const raw = localStorage.getItem('globalDefault');
+    if (raw) {
+      const p = JSON.parse(raw);
+      return typeof p === 'object' && p !== null ? p : {};
+    }
+    const byLayout = localStorage.getItem('settingsByLayout');
+    if (byLayout) {
+      const parsed = JSON.parse(byLayout);
+      const cockpit = parsed?.cockpit ?? parsed?.default ?? parsed?.flow ?? {};
+      if (typeof cockpit === 'object' && cockpit !== null && Object.keys(cockpit).length > 0) {
+        return cockpit;
+      }
+    }
+  } catch (_) {}
+  return {};
+}
+export const globalDefault = writable(loadGlobalDefault());
 if (typeof localStorage !== 'undefined') {
-  settingsByLayout.subscribe((by) => {
-    localStorage.setItem('settingsByLayout', JSON.stringify(by ?? {}));
+  globalDefault.subscribe((v) => {
+    localStorage.setItem('globalDefault', JSON.stringify(v ?? {}));
   });
 }
 
-/** Effective settings for the current layout (read-only). Use updateSettings() to change. */
+/** Per-model overrides (keyed by model id). Only stored when user explicitly saves for that model. Persisted. */
+function loadPerModelOverrides() {
+  if (typeof localStorage === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem('perModelOverrides');
+    if (!raw) return {};
+    const p = JSON.parse(raw);
+    return typeof p === 'object' && p !== null ? p : {};
+  } catch {
+    return {};
+  }
+}
+export const perModelOverrides = writable(loadPerModelOverrides());
+if (typeof localStorage !== 'undefined') {
+  perModelOverrides.subscribe((v) => {
+    localStorage.setItem('perModelOverrides', JSON.stringify(v ?? {}));
+  });
+}
+
+/** Update global default (used when no per-model override). */
+export function updateGlobalDefault(patch) {
+  globalDefault.update((g) => ({ ...g, ...patch }));
+}
+
+/** Set override for a model. Pass null for a key to clear it for that model. */
+export function setPerModelOverride(modelId, patch) {
+  if (!modelId) return;
+  perModelOverrides.update((by) => {
+    const next = { ...by };
+    const current = next[modelId] ?? {};
+    const merged = { ...current, ...patch };
+    Object.keys(merged).forEach((k) => {
+      if (merged[k] === undefined || merged[k] === '') delete merged[k];
+    });
+    if (Object.keys(merged).length === 0) delete next[modelId];
+    else next[modelId] = merged;
+    return next;
+  });
+}
+
+/** Effective settings for a given model id: base <- globalDefault <- recommended <- perModelOverrides. */
+export function getEffectiveSettingsForModel(modelId) {
+  const g = get(globalDefault);
+  const p = get(perModelOverrides);
+  return mergeEffectiveSettings(modelId, g, p);
+}
+
+/** Same as getEffectiveSettingsForModel but takes g,p so components can pass reactive store values. */
+export function mergeEffectiveSettings(modelId, globalDefaultVal, perModelOverridesVal) {
+  const g = globalDefaultVal ?? {};
+  const p = perModelOverridesVal ?? {};
+  const recommended = modelId ? getRecommendedSettingsForModel(modelId) : {};
+  const overrides = modelId ? (p[modelId] ?? {}) : {};
+  return { ...DEFAULT_SETTINGS, ...g, ...recommended, ...overrides };
+}
+
+/** Effective settings for the currently selected model (cockpit) or arena slot model. Reactive. */
 export const settings = derived(
-  [layout, settingsByLayout],
-  ([$layout, $by]) => ({ ...DEFAULT_SETTINGS, ...($by[$layout] ?? {}) })
+  [globalDefault, perModelOverrides, selectedModelId, layout, dashboardModelA],
+  ([$g, $p, $sid, $layout, $a]) => {
+    const modelId = $layout === 'arena' && $a ? $a : $sid;
+    return getEffectiveSettingsForModel(modelId || '');
+  }
 );
 
-/** Update model parameters for the current layout. */
+/** @deprecated Use updateGlobalDefault() or setPerModelOverride(). Kept for compatibility; writes global default. */
 export function updateSettings(patch) {
-  const l = get(layout);
-  settingsByLayout.update((by) => ({
-    ...by,
-    [l]: { ...(by[l] ?? {}), ...patch },
-  }));
+  updateGlobalDefault(patch);
 }
 
 /** Whether we're currently streaming a response */

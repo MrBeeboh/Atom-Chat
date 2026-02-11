@@ -106,6 +106,12 @@
           if (last && last.role === 'assistant') out[out.length - 1] = { ...last, content: fullContent, modelId: $effectiveModelId };
           return out;
         });
+      }, {
+        temperature: $settings.temperature,
+        max_tokens: $settings.max_tokens,
+        top_p: $settings.top_p,
+        top_k: $settings.top_k,
+        repeat_penalty: $settings.repeat_penalty,
       });
     } catch (err) {
       const raw = err?.message || '';

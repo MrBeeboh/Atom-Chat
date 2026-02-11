@@ -149,6 +149,43 @@ function inferFamily(modelId) {
   return 'default';
 }
 
+/** Recommended system prompts for vision/VLM models (model-card / creator style). Stops "text-only" self-description. */
+const VISION_SYSTEM_PROMPTS = {
+  minicpm: 'You are a vision-language model. You can see and discuss images, PDFs, and video. Describe and reason about visual content when the user sends it. Do not say you are text-only.',
+  'qwen2-vl': 'You are a vision-language model. You can see and discuss images, PDFs, and video. Describe and reason about visual content when the user sends it. Do not say you are text-only.',
+};
+
+function inferVisionFamily(modelId) {
+  if (!modelId || typeof modelId !== 'string') return null;
+  const lower = modelId.toLowerCase();
+  if (/minicpm-v|minicpm.*v\s*\d/i.test(lower)) return 'minicpm';
+  if (/qwen2-vl|qwen.*vl/i.test(lower)) return 'qwen2-vl';
+  return null;
+}
+
+/**
+ * Recommended generation settings for a model (from family defaults + vision prompt when applicable).
+ * Used as middle layer: globalDefault <- recommended <- perModelOverrides.
+ * @param {string} modelId
+ * @returns {{ temperature?: number, max_tokens?: number, top_p?: number, top_k?: number, repeat_penalty?: number, system_prompt?: string }}
+ */
+export function getRecommendedSettingsForModel(modelId) {
+  const family = inferFamily(modelId);
+  const d = FAMILY_DEFAULTS[family] ?? FAMILY_DEFAULTS.default;
+  const vision = inferVisionFamily(modelId);
+  const out = {
+    temperature: d.temperature,
+    max_tokens: d.max_tokens,
+    top_p: d.top_p,
+    top_k: d.top_k,
+    repeat_penalty: d.repeat_penalty,
+  };
+  if (vision && VISION_SYSTEM_PROMPTS[vision]) {
+    out.system_prompt = VISION_SYSTEM_PROMPTS[vision];
+  }
+  return out;
+}
+
 /**
  * Get full defaults (load + generation) for a model id.
  * Optionally cap cpu_threads by hardware and override context_length from HF.

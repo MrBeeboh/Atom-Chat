@@ -7,9 +7,13 @@ function getBaseUrl() {
 }
 
 /**
+ * @param {string} model
+ * @param {Array} messages
+ * @param {(chunk: string) => void} onChunk
+ * @param {{ temperature?: number, max_tokens?: number, top_p?: number, top_k?: number, repeat_penalty?: number }} [options]
  * @returns {Promise<{ usage?: { completion_tokens?: number, prompt_tokens?: number }, elapsedMs: number }>}
  */
-export async function sendMessage(model, messages, onChunk) {
+export async function sendMessage(model, messages, onChunk, options = {}) {
   const startTime = Date.now();
   const baseUrl = getBaseUrl();
   const response = await fetch(`${baseUrl}/v1/chat/completions`, {
@@ -20,8 +24,12 @@ export async function sendMessage(model, messages, onChunk) {
     body: JSON.stringify({
       model: model || 'local-model',
       messages,
-      temperature: 0.7,
       stream: true,
+      temperature: options.temperature ?? 0.7,
+      max_tokens: options.max_tokens ?? 4096,
+      ...(options.top_p != null && { top_p: options.top_p }),
+      ...(options.top_k != null && { top_k: options.top_k }),
+      ...(options.repeat_penalty != null && { repeat_penalty: options.repeat_penalty }),
     }),
   });
 

@@ -1,6 +1,6 @@
 <script>
   import { get } from 'svelte/store';
-  import { updateSettings, presetDefaultModels, selectedModelId, models, settings } from '$lib/stores.js';
+  import { setPerModelOverride, presetDefaultModels, selectedModelId, models, settings } from '$lib/stores.js';
 
   const PRESETS = [
     { name: 'General', prompt: 'You are a helpful assistant.' },
@@ -22,13 +22,12 @@
   function applyPreset(name) {
     const preset = PRESETS.find((p) => p.name === name);
     if (!preset) return;
-    updateSettings({ system_prompt: preset.prompt });
     const byPreset = get(presetDefaultModels) ?? {};
     const defaultModel = byPreset[name];
     const list = get(models) ?? [];
-    if (defaultModel && list.some((m) => m.id === defaultModel)) {
-      selectedModelId.set(defaultModel);
-    }
+    const modelId = defaultModel && list.some((m) => m.id === defaultModel) ? defaultModel : get(selectedModelId);
+    if (modelId) setPerModelOverride(modelId, { system_prompt: preset.prompt });
+    if (defaultModel && list.some((m) => m.id === defaultModel)) selectedModelId.set(defaultModel);
   }
 </script>
 

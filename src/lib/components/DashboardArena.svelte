@@ -1,7 +1,7 @@
 <script>
   import { get } from 'svelte/store';
   import { onMount } from 'svelte';
-  import { chatError, dashboardModelA, dashboardModelB, dashboardModelC, dashboardModelD, isStreaming, settings, liveTokens, pushTokSample, liveTokPerSec, arenaPanelCount, arenaSlotAIsJudge, arenaSlotOverrides, setArenaSlotOverride, pendingDroppedFiles, webSearchForNextMessage, webSearchInProgress, layout } from '$lib/stores.js';
+  import { chatError, dashboardModelA, dashboardModelB, dashboardModelC, dashboardModelD, isStreaming, settings, globalDefault, perModelOverrides, getEffectiveSettingsForModel, mergeEffectiveSettings, liveTokens, pushTokSample, liveTokPerSec, arenaPanelCount, arenaSlotAIsJudge, arenaSlotOverrides, setArenaSlotOverride, pendingDroppedFiles, webSearchForNextMessage, webSearchInProgress, layout } from '$lib/stores.js';
   import { playClick, playComplete } from '$lib/audio.js';
   import { streamChatCompletion } from '$lib/api.js';
   import { searchDuckDuckGo, formatSearchResultForChat } from '$lib/duckduckgo.js';
@@ -33,6 +33,11 @@
   let optionsOpenSlot = $state(null);
 
   const aborters = { A: null, B: null, C: null, D: null };
+
+  const effectiveForA = $derived(mergeEffectiveSettings($dashboardModelA || '', $globalDefault, $perModelOverrides));
+  const effectiveForB = $derived(mergeEffectiveSettings($dashboardModelB || '', $globalDefault, $perModelOverrides));
+  const effectiveForC = $derived(mergeEffectiveSettings($dashboardModelC || '', $globalDefault, $perModelOverrides));
+  const effectiveForD = $derived(mergeEffectiveSettings($dashboardModelD || '', $globalDefault, $perModelOverrides));
 
   onMount(() => {
     function onKeydown(e) {
@@ -105,9 +110,10 @@
     return count >= 2;
   }
 
-  /** Effective settings for one Arena slot (layout default + per-slot overrides). */
+  /** Effective settings for one Arena slot: per-model effective + per-slot session overrides. */
   function getSettingsForSlot(slot) {
-    const base = $settings;
+    const modelId = slot === 'A' ? $dashboardModelA : slot === 'B' ? $dashboardModelB : slot === 'C' ? $dashboardModelC : $dashboardModelD;
+    const base = getEffectiveSettingsForModel(modelId || '');
     const over = $arenaSlotOverrides[slot];
     if (!over || Object.keys(over).length === 0) return base;
     return {
@@ -545,9 +551,9 @@
             <p class="font-medium mb-1.5" style="color: var(--ui-text-secondary);">Model A settings (override Arena default)</p>
             <div class="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1.5 items-center">
               <label class="text-zinc-500 dark:text-zinc-400" for="arena-opt-a-temp">Temperature</label>
-              <input id="arena-opt-a-temp" type="number" step="0.1" min="0" max="2" class="w-20 px-1.5 py-0.5 rounded border text-right font-mono" style="border-color: var(--ui-border); background-color: var(--ui-bg-main); color: var(--ui-text-primary);" value={$arenaSlotOverrides.A?.temperature ?? $settings.temperature} oninput={slotOverrideInput('A', 'temperature')} />
+              <input id="arena-opt-a-temp" type="number" step="0.1" min="0" max="2" class="w-20 px-1.5 py-0.5 rounded border text-right font-mono" style="border-color: var(--ui-border); background-color: var(--ui-bg-main); color: var(--ui-text-primary);" value={$arenaSlotOverrides.A?.temperature ?? effectiveForA.temperature} oninput={slotOverrideInput('A', 'temperature')} />
               <label class="text-zinc-500 dark:text-zinc-400" for="arena-opt-a-max">Max tokens</label>
-              <input id="arena-opt-a-max" type="number" min="1" max="100000" step="1" class="w-20 px-1.5 py-0.5 rounded border text-right font-mono" style="border-color: var(--ui-border); background-color: var(--ui-bg-main); color: var(--ui-text-primary);" value={$arenaSlotOverrides.A?.max_tokens ?? $settings.max_tokens} oninput={slotOverrideInput('A', 'max_tokens')} />
+              <input id="arena-opt-a-max" type="number" min="1" max="100000" step="1" class="w-20 px-1.5 py-0.5 rounded border text-right font-mono" style="border-color: var(--ui-border); background-color: var(--ui-bg-main); color: var(--ui-text-primary);" value={$arenaSlotOverrides.A?.max_tokens ?? effectiveForA.max_tokens} oninput={slotOverrideInput('A', 'max_tokens')} />
             </div>
             <label class="block mt-1.5 text-zinc-500 dark:text-zinc-400" for="arena-opt-a-sys">System prompt (optional)</label>
             <textarea id="arena-opt-a-sys" rows="2" class="w-full mt-0.5 px-1.5 py-1 rounded border text-xs resize-y" style="border-color: var(--ui-border); background-color: var(--ui-bg-main); color: var(--ui-text-primary);" placeholder="Leave blank to use Arena default" value={$arenaSlotOverrides.A?.system_prompt ?? ''} oninput={slotOverrideInput('A', 'system_prompt')}></textarea>
@@ -603,9 +609,9 @@
             <p class="font-medium mb-1.5" style="color: var(--ui-text-secondary);">Model B settings (override Arena default)</p>
             <div class="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1.5 items-center">
               <label class="text-zinc-500 dark:text-zinc-400" for="arena-opt-b-temp">Temperature</label>
-              <input id="arena-opt-b-temp" type="number" step="0.1" min="0" max="2" class="w-20 px-1.5 py-0.5 rounded border text-right font-mono" style="border-color: var(--ui-border); background-color: var(--ui-bg-main); color: var(--ui-text-primary);" value={$arenaSlotOverrides.B?.temperature ?? $settings.temperature} oninput={slotOverrideInput('B', 'temperature')} />
+              <input id="arena-opt-b-temp" type="number" step="0.1" min="0" max="2" class="w-20 px-1.5 py-0.5 rounded border text-right font-mono" style="border-color: var(--ui-border); background-color: var(--ui-bg-main); color: var(--ui-text-primary);" value={$arenaSlotOverrides.B?.temperature ?? effectiveForB.temperature} oninput={slotOverrideInput('B', 'temperature')} />
               <label class="text-zinc-500 dark:text-zinc-400" for="arena-opt-b-max">Max tokens</label>
-              <input id="arena-opt-b-max" type="number" min="1" max="100000" step="1" class="w-20 px-1.5 py-0.5 rounded border text-right font-mono" style="border-color: var(--ui-border); background-color: var(--ui-bg-main); color: var(--ui-text-primary);" value={$arenaSlotOverrides.B?.max_tokens ?? $settings.max_tokens} oninput={slotOverrideInput('B', 'max_tokens')} />
+              <input id="arena-opt-b-max" type="number" min="1" max="100000" step="1" class="w-20 px-1.5 py-0.5 rounded border text-right font-mono" style="border-color: var(--ui-border); background-color: var(--ui-bg-main); color: var(--ui-text-primary);" value={$arenaSlotOverrides.B?.max_tokens ?? effectiveForB.max_tokens} oninput={slotOverrideInput('B', 'max_tokens')} />
             </div>
             <label class="block mt-1.5 text-zinc-500 dark:text-zinc-400" for="arena-opt-b-sys">System prompt (optional)</label>
             <textarea id="arena-opt-b-sys" rows="2" class="w-full mt-0.5 px-1.5 py-1 rounded border text-xs resize-y" style="border-color: var(--ui-border); background-color: var(--ui-bg-main); color: var(--ui-text-primary);" placeholder="Leave blank to use Arena default" value={$arenaSlotOverrides.B?.system_prompt ?? ''} oninput={slotOverrideInput('B', 'system_prompt')}></textarea>
@@ -659,9 +665,9 @@
             <p class="font-medium mb-1.5" style="color: var(--ui-text-secondary);">Model C settings (override Arena default)</p>
             <div class="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1.5 items-center">
               <label class="text-zinc-500 dark:text-zinc-400" for="arena-opt-c-temp">Temperature</label>
-              <input id="arena-opt-c-temp" type="number" step="0.1" min="0" max="2" class="w-20 px-1.5 py-0.5 rounded border text-right font-mono" style="border-color: var(--ui-border); background-color: var(--ui-bg-main); color: var(--ui-text-primary);" value={$arenaSlotOverrides.C?.temperature ?? $settings.temperature} oninput={slotOverrideInput('C', 'temperature')} />
+              <input id="arena-opt-c-temp" type="number" step="0.1" min="0" max="2" class="w-20 px-1.5 py-0.5 rounded border text-right font-mono" style="border-color: var(--ui-border); background-color: var(--ui-bg-main); color: var(--ui-text-primary);" value={$arenaSlotOverrides.C?.temperature ?? effectiveForC.temperature} oninput={slotOverrideInput('C', 'temperature')} />
               <label class="text-zinc-500 dark:text-zinc-400" for="arena-opt-c-max">Max tokens</label>
-              <input id="arena-opt-c-max" type="number" min="1" max="100000" step="1" class="w-20 px-1.5 py-0.5 rounded border text-right font-mono" style="border-color: var(--ui-border); background-color: var(--ui-bg-main); color: var(--ui-text-primary);" value={$arenaSlotOverrides.C?.max_tokens ?? $settings.max_tokens} oninput={slotOverrideInput('C', 'max_tokens')} />
+              <input id="arena-opt-c-max" type="number" min="1" max="100000" step="1" class="w-20 px-1.5 py-0.5 rounded border text-right font-mono" style="border-color: var(--ui-border); background-color: var(--ui-bg-main); color: var(--ui-text-primary);" value={$arenaSlotOverrides.C?.max_tokens ?? effectiveForC.max_tokens} oninput={slotOverrideInput('C', 'max_tokens')} />
             </div>
             <label class="block mt-1.5 text-zinc-500 dark:text-zinc-400" for="arena-opt-c-sys">System prompt (optional)</label>
             <textarea id="arena-opt-c-sys" rows="2" class="w-full mt-0.5 px-1.5 py-1 rounded border text-xs resize-y" style="border-color: var(--ui-border); background-color: var(--ui-bg-main); color: var(--ui-text-primary);" placeholder="Leave blank to use Arena default" value={$arenaSlotOverrides.C?.system_prompt ?? ''} oninput={slotOverrideInput('C', 'system_prompt')}></textarea>
@@ -715,9 +721,9 @@
             <p class="font-medium mb-1.5" style="color: var(--ui-text-secondary);">Model D settings (override Arena default)</p>
             <div class="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1.5 items-center">
               <label class="text-zinc-500 dark:text-zinc-400" for="arena-opt-d-temp">Temperature</label>
-              <input id="arena-opt-d-temp" type="number" step="0.1" min="0" max="2" class="w-20 px-1.5 py-0.5 rounded border text-right font-mono" style="border-color: var(--ui-border); background-color: var(--ui-bg-main); color: var(--ui-text-primary);" value={$arenaSlotOverrides.D?.temperature ?? $settings.temperature} oninput={slotOverrideInput('D', 'temperature')} />
+              <input id="arena-opt-d-temp" type="number" step="0.1" min="0" max="2" class="w-20 px-1.5 py-0.5 rounded border text-right font-mono" style="border-color: var(--ui-border); background-color: var(--ui-bg-main); color: var(--ui-text-primary);" value={$arenaSlotOverrides.D?.temperature ?? effectiveForD.temperature} oninput={slotOverrideInput('D', 'temperature')} />
               <label class="text-zinc-500 dark:text-zinc-400" for="arena-opt-d-max">Max tokens</label>
-              <input id="arena-opt-d-max" type="number" min="1" max="100000" step="1" class="w-20 px-1.5 py-0.5 rounded border text-right font-mono" style="border-color: var(--ui-border); background-color: var(--ui-bg-main); color: var(--ui-text-primary);" value={$arenaSlotOverrides.D?.max_tokens ?? $settings.max_tokens} oninput={slotOverrideInput('D', 'max_tokens')} />
+              <input id="arena-opt-d-max" type="number" min="1" max="100000" step="1" class="w-20 px-1.5 py-0.5 rounded border text-right font-mono" style="border-color: var(--ui-border); background-color: var(--ui-bg-main); color: var(--ui-text-primary);" value={$arenaSlotOverrides.D?.max_tokens ?? effectiveForD.max_tokens} oninput={slotOverrideInput('D', 'max_tokens')} />
             </div>
             <label class="block mt-1.5 text-zinc-500 dark:text-zinc-400" for="arena-opt-d-sys">System prompt (optional)</label>
             <textarea id="arena-opt-d-sys" rows="2" class="w-full mt-0.5 px-1.5 py-1 rounded border text-xs resize-y" style="border-color: var(--ui-border); background-color: var(--ui-bg-main); color: var(--ui-text-primary);" placeholder="Leave blank to use Arena default" value={$arenaSlotOverrides.D?.system_prompt ?? ''} oninput={slotOverrideInput('D', 'system_prompt')}></textarea>

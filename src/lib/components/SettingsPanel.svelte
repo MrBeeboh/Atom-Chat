@@ -1,7 +1,7 @@
 <script>
   import { fly } from 'svelte/transition';
   import { backOut, quintOut } from 'svelte/easing';
-  import { settings, layout, updateSettings, selectedModelId, hardware, models, presetDefaultModels, lmStudioBaseUrl, voiceServerUrl } from '$lib/stores.js';
+  import { settings, layout, globalDefault, updateGlobalDefault, selectedModelId, hardware, models, presetDefaultModels, lmStudioBaseUrl, voiceServerUrl } from '$lib/stores.js';
   import { loadModel } from '$lib/api.js';
   import { getDefaultsForModel, BATCH_SIZE_MIN, BATCH_SIZE_MAX } from '$lib/modelDefaults.js';
 
@@ -55,25 +55,25 @@
   let cpuThreads = $state(DEFAULTS.cpu_threads);
 
   $effect(() => {
-    const s = $settings;
+    const g = $globalDefault;
     $layout;
-    temp = s.temperature ?? DEFAULTS.temperature;
-    maxTok = s.max_tokens ?? DEFAULTS.max_tokens;
-    sysPrompt = s.system_prompt ?? DEFAULTS.system_prompt;
-    topP = s.top_p ?? DEFAULTS.top_p;
-    topK = s.top_k ?? DEFAULTS.top_k;
-    repeatPenalty = s.repeat_penalty ?? DEFAULTS.repeat_penalty;
-    stopStrings = Array.isArray(s.stop) ? [...s.stop] : [];
-    modelTtlSeconds = s.model_ttl_seconds ?? DEFAULTS.model_ttl_seconds;
-    audioEnabled = s.audio_enabled ?? DEFAULTS.audio_enabled;
-    audioClicks = s.audio_clicks ?? DEFAULTS.audio_clicks;
-    audioVolume = s.audio_volume ?? DEFAULTS.audio_volume;
-    contextLength = s.context_length ?? DEFAULTS.context_length;
-    evalBatchSize = s.eval_batch_size ?? DEFAULTS.eval_batch_size;
-    flashAttention = s.flash_attention ?? DEFAULTS.flash_attention;
-    offloadKvToGpu = s.offload_kv_cache_to_gpu ?? DEFAULTS.offload_kv_cache_to_gpu;
-    gpuOffload = s.gpu_offload ?? DEFAULTS.gpu_offload;
-    cpuThreads = s.cpu_threads ?? DEFAULTS.cpu_threads;
+    temp = g.temperature ?? DEFAULTS.temperature;
+    maxTok = g.max_tokens ?? DEFAULTS.max_tokens;
+    sysPrompt = g.system_prompt ?? DEFAULTS.system_prompt;
+    topP = g.top_p ?? DEFAULTS.top_p;
+    topK = g.top_k ?? DEFAULTS.top_k;
+    repeatPenalty = g.repeat_penalty ?? DEFAULTS.repeat_penalty;
+    stopStrings = Array.isArray(g.stop) ? [...g.stop] : [];
+    modelTtlSeconds = g.model_ttl_seconds ?? DEFAULTS.model_ttl_seconds;
+    audioEnabled = g.audio_enabled ?? DEFAULTS.audio_enabled;
+    audioClicks = g.audio_clicks ?? DEFAULTS.audio_clicks;
+    audioVolume = g.audio_volume ?? DEFAULTS.audio_volume;
+    contextLength = g.context_length ?? DEFAULTS.context_length;
+    evalBatchSize = g.eval_batch_size ?? DEFAULTS.eval_batch_size;
+    flashAttention = g.flash_attention ?? DEFAULTS.flash_attention;
+    offloadKvToGpu = g.offload_kv_cache_to_gpu ?? DEFAULTS.offload_kv_cache_to_gpu;
+    gpuOffload = g.gpu_offload ?? DEFAULTS.gpu_offload;
+    cpuThreads = g.cpu_threads ?? DEFAULTS.cpu_threads;
   });
 
   const maxCpuThreads = $derived(Math.max(1, $hardware?.cpuLogicalCores ?? 4));
@@ -98,6 +98,7 @@
     if (defaultModel && $models.some((m) => m.id === defaultModel)) {
       selectedModelId.set(defaultModel);
     }
+    updateGlobalDefault({ system_prompt: preset.prompt });
   }
 
   function setPresetDefaultModel(presetName, modelId) {
@@ -168,7 +169,7 @@
         gpu_offload: gpuOffload,
         cpu_threads: Math.min(maxCpuThreads, Math.max(1, cpuThreads)),
       });
-      updateSettings({
+      updateGlobalDefault({
         context_length: contextLength,
         eval_batch_size: evalBatchSize,
         flash_attention: flashAttention,
@@ -184,7 +185,7 @@
   }
 
   function save() {
-    updateSettings({
+    updateGlobalDefault({
       temperature: temp,
       max_tokens: maxTok,
       system_prompt: sysPrompt,
@@ -242,7 +243,7 @@
     <div class="shrink-0 px-6 pt-5 pb-2 border-b border-zinc-200 dark:border-zinc-700 flex items-start justify-between gap-2">
       <div>
         <h2 class="text-lg font-semibold text-zinc-900 dark:text-zinc-100">Settings</h2>
-        <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">Control temperature, sampling, and system prompt (LM Studio–compatible). Settings are per layout.</p>
+        <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">Global default for all models. To set options for one model only, use the Intel panel (right) and click <strong>Save for this model</strong>.</p>
       </div>
       <button type="button" class="shrink-0 p-1.5 rounded text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-700 dark:hover:text-zinc-200 text-xl leading-none" onclick={() => onclose?.()} title="Close" aria-label="Close">✕</button>
     </div>
