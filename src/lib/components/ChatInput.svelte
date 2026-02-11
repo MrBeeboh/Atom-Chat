@@ -27,21 +27,31 @@
   /** So we only auto-start warm-up once per "web search on"; avoid retry loop when warm-up fails. */
   let webSearchWarmUpAttempted = $state(false);
 
-  /** When web search is turned on from anywhere (globe or Command Palette), start warm-up so globe behavior is the same in all layouts. */
+  /** Start (or retry) web-search warm-up: spin the globe, hit CORS proxy, set green/red dot. */
+  function runWarmUp() {
+    webSearchWarmUpAttempted = true;
+    webSearchWarmingUp = true;
+    webSearchConnected.set(false);
+    warmUpSearchConnection().then((ok) => {
+      webSearchWarmingUp = false;
+      webSearchConnected.set(ok);
+    });
+  }
+
+  /**
+   * Auto-start warm-up when web search is turned on from anywhere (globe, Command Palette, etc.).
+   * IMPORTANT: uses $webSearchForNextMessage / $webSearchConnected (auto-subscriptions) so the
+   * effect is reactive in Svelte 5 runes mode. Using get() here would NOT re-run the effect.
+   */
   $effect(() => {
-    const on = get(webSearchForNextMessage);
-    const connected = get(webSearchConnected);
+    const on = $webSearchForNextMessage;
+    const connected = $webSearchConnected;
     if (!on) {
       webSearchWarmUpAttempted = false;
       return;
     }
     if (connected || webSearchWarmingUp || webSearchWarmUpAttempted) return;
-    webSearchWarmUpAttempted = true;
-    webSearchWarmingUp = true;
-    warmUpSearchConnection().then((ok) => {
-      webSearchWarmingUp = false;
-      if (ok) webSearchConnected.set(true);
-    });
+    runWarmUp();
   });
 
   /** Attachments: { dataUrl, label } for display; we send dataUrl list to onSend. */
@@ -446,14 +456,23 @@
     title={webSearchWarmingUp ? 'Connecting…' : $webSearchForNextMessage ? ($webSearchConnected ? 'Web search on – connected (click to turn off)' : 'Web search on – not connected yet (click globe again to retry)') : 'Search the web for next message'}
     disabled={$isStreaming}
     onclick={() => {
-      const next = !$webSearchForNextMessage;
-      webSearchForNextMessage.set(next);
-      if (!next) {
+      const on = $webSearchForNextMessage;
+      const connected = $webSearchConnected;
+      if (on && !connected && !webSearchWarmingUp) {
+        /* On but red dot: click = retry connection (don't toggle off). */
+        webSearchWarmUpAttempted = false;
+        runWarmUp();
+        return;
+      }
+      if (on) {
+        /* On + connected (green): click = turn off. */
+        webSearchForNextMessage.set(false);
         webSearchConnected.set(false);
         return;
       }
-      webSearchConnected.set(false);
-      /* Warm-up is started by $effect when webSearchForNextMessage becomes true (same for globe click or Command Palette). */
+      /* Off: click = turn on and immediately start connecting. */
+      webSearchForNextMessage.set(true);
+      runWarmUp();
     }}
     aria-label={webSearchWarmingUp ? 'Connecting' : $webSearchForNextMessage ? 'Web search on' : 'Search web for next message'}
     aria-pressed={$webSearchForNextMessage}

@@ -3,31 +3,45 @@
  * No API key. Uses CORS proxy in the browser.
  */
 
+/**
+ * CORS proxies for DuckDuckGo Lite. Browser can't fetch DDG directly (CORS).
+ * We try each in order; if one is down the next is used automatically.
+ * Tested 2026-02-09:
+ *   corsproxy.org  → 200 OK (returns HTML body directly)
+ *   allorigins /get → 200 OK (returns JSON { contents: "..." })
+ *   corsproxy.io   → 403 DEAD
+ *   allorigins /raw → 520 DEAD
+ */
 const PROXIES = [
-  (target) => `https://corsproxy.io/?${encodeURIComponent(target)}`,
-  (target) => `https://api.allorigins.win/raw?url=${encodeURIComponent(target)}`,
+  { url: (target) => `https://corsproxy.org/?url=${encodeURIComponent(target)}`, json: false },
+  { url: (target) => `https://api.allorigins.win/get?url=${encodeURIComponent(target)}`, json: true },
 ];
 
 const TIMEOUT_MS = 30000; // 30s – Lite HTML + proxy can be slow
 
 /**
  * Fetch HTML from a URL via CORS proxy.
- * Uses a fresh timeout signal per attempt so the second proxy gets a full timeout.
+ * Tries each proxy in order; each gets a fresh timeout so a slow/dead proxy
+ * doesn't eat the budget for the next one.
  */
 async function fetchViaProxy(targetUrl) {
   let lastErr;
-  for (const proxyFn of PROXIES) {
+  for (const proxy of PROXIES) {
     const signal =
       typeof AbortSignal?.timeout === 'function' ? AbortSignal.timeout(TIMEOUT_MS) : undefined;
     try {
-      const url = proxyFn(targetUrl);
+      const url = proxy.url(targetUrl);
       const res = await fetch(url, { signal });
       if (!res.ok) throw new Error(`Search failed: ${res.status}`);
       const text = await res.text();
-      // corsproxy returns the target body directly (HTML); allorigins returns JSON { contents: "..." }
-      if (text.trim().startsWith('{')) {
-        const parsed = JSON.parse(text);
-        if (parsed.contents != null) return typeof parsed.contents === 'string' ? parsed.contents : JSON.parse(parsed.contents);
+      if (proxy.json) {
+        // allorigins /get returns JSON { contents: "<html>..." }
+        try {
+          const parsed = JSON.parse(text);
+          if (parsed.contents != null) return String(parsed.contents);
+        } catch (_) {
+          return text; // fallback: treat as raw
+        }
       }
       return text;
     } catch (e) {
@@ -121,19 +135,19 @@ export async function searchDuckDuckGo(query) {
 }
 
 /**
- * Prime the CORS proxy/connection so the first real search is more likely to succeed.
- * Call when the user enables web search (globe button); do not wait for Send.
+ * Prime the CORS proxy/connection when the user turns on web search (globe click).
+ * Tries first proxy, then second on failure, so one down proxy doesn't block.
  * Resolves with true if warm-up succeeded, false otherwise (non-throwing).
  */
 export function warmUpSearchConnection() {
   const targetUrl = 'https://lite.duckduckgo.com/lite/?q=a';
-  const WARMUP_TIMEOUT_MS = 15000;
-  const signal =
-    typeof AbortSignal?.timeout === 'function' ? AbortSignal.timeout(WARMUP_TIMEOUT_MS) : undefined;
-  const url = PROXIES[0](targetUrl);
-  return fetch(url, { signal })
-    .then((res) => (res.ok ? true : false))
-    .catch(() => false);
+  const WARMUP_TIMEOUT_MS = 12000;
+  const getSignal = typeof AbortSignal?.timeout === 'function' ? () => AbortSignal.timeout(WARMUP_TIMEOUT_MS) : () => undefined;
+  function tryProxy(proxy) {
+    const url = proxy.url(targetUrl);
+    return fetch(url, { signal: getSignal() }).then((res) => res.ok);
+  }
+  return tryProxy(PROXIES[0]).catch(() => tryProxy(PROXIES[1])).then((ok) => !!ok).catch(() => false);
 }
 
 /**

@@ -1,4 +1,10 @@
 <script>
+  /**
+   * DashboardArena (ATOM Arena): head-to-head model comparison with optional judge scoring.
+   * Layout: header (model cards A–D) → question bar (Q selector, Ask, Web, Judgment, Reset, Settings) → response panels (resizable) → footer (ChatInput).
+   * Right slide-out: Arena settings (Questions, Answer key, Contest rules, Execution, Web search, Actions).
+   * Judge: slot A can be "Use as judge" (checkbox in panel A header); Judgment button runs A to score B/C/D and updates arenaScores.
+   */
   import { get } from 'svelte/store';
   import { onMount } from 'svelte';
   import { chatError, dashboardModelA, dashboardModelB, dashboardModelC, dashboardModelD, isStreaming, settings, globalDefault, perModelOverrides, getEffectiveSettingsForModel, mergeEffectiveSettings, liveTokens, pushTokSample, liveTokPerSec, arenaPanelCount, arenaSlotAIsJudge, arenaWebSearchMode, arenaSlotOverrides, setArenaSlotOverride, pendingDroppedFiles, webSearchForNextMessage, webSearchInProgress, webSearchConnected, layout, lmStudioUnloadHelperUrl, confirm } from '$lib/stores.js';
@@ -13,6 +19,7 @@
   import { fly } from 'svelte/transition';
   import { quintOut } from 'svelte/easing';
 
+  // ---------- State ----------
   let messagesA = $state([]);
   let messagesB = $state([]);
   let messagesC = $state([]);
@@ -60,11 +67,6 @@
       .filter((s) => s.length > 0);
   }
   const parsedQuestions = $derived(parseNumberedQuestions(questionsList));
-  const nextQuestionLabel = $derived(
-    parsedQuestions.length > 0
-      ? `Next: #${(questionIndex % parsedQuestions.length) + 1}`
-      : 'Next question'
-  );
   /** Current question index for display (1-based) and text for the prominent question box. */
   const currentQuestionNum = $derived(parsedQuestions.length > 0 ? (questionIndex % parsedQuestions.length) + 1 : 0);
   const currentQuestionTotal = $derived(parsedQuestions.length);
@@ -126,6 +128,8 @@
     if (typeof localStorage !== 'undefined' && arenaScores)
       localStorage.setItem('arenaScores', JSON.stringify(arenaScores));
   });
+
+  // ---------- Abort controllers (per-slot stream cancel) ----------
   const aborters = { A: null, B: null, C: null, D: null };
 
   const effectiveForA = $derived(mergeEffectiveSettings($dashboardModelA || '', $globalDefault, $perModelOverrides));
@@ -133,6 +137,7 @@
   const effectiveForC = $derived(mergeEffectiveSettings($dashboardModelC || '', $globalDefault, $perModelOverrides));
   const effectiveForD = $derived(mergeEffectiveSettings($dashboardModelD || '', $globalDefault, $perModelOverrides));
 
+  // ---------- Lifecycle ----------
   onMount(() => {
     function onKeydown(e) {
       if (get(layout) !== 'arena') return;
@@ -147,6 +152,7 @@
     return () => document.removeEventListener('keydown', onKeydown);
   });
 
+  // ---------- Judge / scores ----------
   /** Parse judge output for "Model B: 7/10" lines; return { B: 7, C: 5, ... }. */
   function parseJudgeScores(text) {
     if (!text || typeof text !== 'string') return {};
@@ -165,20 +171,7 @@
     arenaScores = { B: 0, C: 0, D: 0 };
   }
 
-  /** Standings line for UI or for inclusion in prompt (e.g. "Current standings: B 24 pts, C 18 pts. Leader: B."). */
-  const arenaStandingsLine = $derived.by(() => {
-    const s = arenaScores;
-    const parts = [];
-    if (s.B > 0 || s.C > 0 || s.D > 0) {
-      if (s.B > 0) parts.push(`B ${s.B} pts`);
-      if (s.C > 0) parts.push(`C ${s.C} pts`);
-      if (s.D > 0) parts.push(`D ${s.D} pts`);
-      const leader = ['B', 'C', 'D'].reduce((a, b) => (s[a] >= (s[b] ?? 0) ? a : b), 'B');
-      return parts.length ? `Current standings: ${parts.join(', ')}. Leader: Model ${leader}.` : '';
-    }
-    return '';
-  });
-  /** Standing label for a slot: "Leader" | "2nd" | "3rd" (for B/C/D only). */
+  /** Standing label for a slot: "Leader" | "2nd" | "3rd" (for B/C/D panel footers). */
   function arenaStandingLabel(slot) {
     const s = arenaScores;
     const order = ['B', 'C', 'D'].sort((a, b) => (s[b] ?? 0) - (s[a] ?? 0));
@@ -189,6 +182,7 @@
     return '—';
   }
 
+  // ---------- Per-slot overrides & system prompt templates ----------
   const ARENA_SYSTEM_PROMPT_TEMPLATES = [
     { name: '—', prompt: '' },
     { name: 'General', prompt: 'You are a helpful assistant.' },
@@ -241,6 +235,7 @@
     };
   }
 
+  // ---------- Message helpers (get/set/push/update per slot) ----------
   function getMessages(slot) {
     return slot === 'A' ? messagesA : slot === 'B' ? messagesB : slot === 'C' ? messagesC : messagesD;
   }
@@ -305,6 +300,7 @@
     return apiMessages;
   }
 
+  // ---------- Stream / send ----------
   async function sendToSlot(slot, modelId, content, onStreamDone) {
     setRunning(slot, true);
     setSlotError(slot, '');
@@ -614,6 +610,7 @@
     return '';
   }
 
+  // ---------- Judgment & eject ----------
   async function runJudgment() {
     if ($arenaSlotAIsJudge && $isStreaming) return;
     if (running.A) return;
@@ -802,7 +799,7 @@
   const tpsC = $derived(lastTps(messagesC));
   const tpsD = $derived(lastTps(messagesD));
 
-  /* ── Resizable panel widths (percentages) ── */
+  // ---------- Layout (resizable panel widths) ----------
   function loadPanelWidths() {
     if (typeof localStorage === 'undefined') return [25, 25, 25, 25];
     try { const r = JSON.parse(localStorage.getItem('arenaPanelWidths') || '[]'); return r.length === 4 ? r : [25, 25, 25, 25]; } catch { return [25, 25, 25, 25]; }
@@ -912,7 +909,7 @@
     if (files?.length) pendingDroppedFiles.set(files);
   }}
 >
-  <!-- One row: model cards are horizontal (label | dropdown | score) to save vertical space -->
+  <!-- === Header: model cards A–D (selector + score) === -->
   <header
     class="shrink-0 grid gap-2 px-3 py-1.5 border-b items-stretch"
     style="background-color: var(--ui-bg-sidebar); border-color: var(--ui-border); z-index: 100; grid-template-columns: {windowWidth < 1200 ? 'repeat(2, minmax(0, 1fr))' : 'repeat(' + $arenaPanelCount + ', minmax(0, 1fr))'};">
@@ -958,7 +955,7 @@
     {/if}
   </header>
 
-  <!-- Question + controls: one row (question left, controls right), saves vertical space -->
+  <!-- === Question bar: Q selector, Ask, Web (None/All/Judge only), Judgment, Reset scores, Settings === -->
   <div
     class="arena-question-bar shrink-0 flex items-center gap-4 h-10 px-4 border-b"
     style="background-color: var(--ui-bg-sidebar); border-color: var(--ui-border);">
@@ -993,13 +990,13 @@
     </div>
     <!-- Group 2: Primary action -->
     <button type="button" class="arena-bar-btn primary h-8 px-4 rounded-md text-xs font-semibold shrink-0 disabled:opacity-50 transition-opacity" style="background-color: var(--ui-accent); color: var(--ui-bg-main);" disabled={$isStreaming || currentQuestionTotal === 0} onclick={askCurrentQuestion} aria-label="Ask this question" title="Send this question to the models">Ask</button>
-    <!-- Group 3: Web = title; user picks None | Judge only | All (same three options as Settings panel) -->
-    <div class="flex items-center h-8 rounded-md border" style="border-color: var(--ui-border); background: var(--ui-input-bg);">
-      <span class="pl-2.5 pr-1.5 text-[11px] font-medium shrink-0" style="color: var(--ui-text-secondary);">Web</span>
-      <div class="flex h-full">
+    <!-- Group 3: Web = heading; options = None | All | Judge only (label outside the control so it's not a fourth option) -->
+    <div class="flex items-center gap-2">
+      <span class="text-[11px] font-medium shrink-0" style="color: var(--ui-text-secondary);" aria-hidden="true">Web</span>
+      <div class="flex h-8 rounded-md border overflow-hidden" style="border-color: var(--ui-border); background: var(--ui-input-bg);">
         <button type="button" class="arena-web-tab h-full px-2.5 text-[11px] font-medium" class:active={$arenaWebSearchMode === 'none'} onclick={() => { arenaWebSearchMode.set('none'); if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume); }} title="No web search">None</button>
         <button type="button" class="arena-web-tab h-full px-2.5 text-[11px] font-medium border-l" class:active={$arenaWebSearchMode === 'all'} style="border-color: var(--ui-border);" onclick={() => { arenaWebSearchMode.set('all'); if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume); }} title="All models get web search">All</button>
-        <button type="button" class="arena-web-tab h-full px-2.5 text-[11px] font-medium border-l rounded-r-md" class:active={$arenaWebSearchMode === 'judge'} style="border-color: var(--ui-border);" onclick={() => { arenaWebSearchMode.set('judge'); if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume); }} title="Only the judge (slot A) gets web search to fact-check">Judge only</button>
+        <button type="button" class="arena-web-tab h-full px-2.5 text-[11px] font-medium border-l" class:active={$arenaWebSearchMode === 'judge'} style="border-color: var(--ui-border);" onclick={() => { arenaWebSearchMode.set('judge'); if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume); }} title="Only the judge (slot A) gets web search to fact-check">Judge only</button>
       </div>
     </div>
     <!-- Spacer: Judging is its own group, not part of Web -->
@@ -1034,7 +1031,7 @@
     </button>
   </div>
 
-  <!-- Response panels: maximum space, minimal chrome -->
+  <!-- === Response panels A–D (resizable; panel A header has "Use as judge" checkbox) === -->
   <div
     bind:this={gridEl}
     class="flex-1 min-h-0 grid gap-2 p-3 atom-layout-transition relative grid-rows-[minmax(0,1fr)]"
@@ -1358,7 +1355,7 @@
     </div>
   {/if}
 
-  <!-- Settings panel: slide-out from right -->
+  <!-- === Arena settings: slide-out from right (Questions, Answer key, Contest rules, Execution, Web search, Actions) === -->
   {#if arenaSettingsOpen}
     <div
       class="fixed inset-0 z-[200] transition-opacity duration-300"
