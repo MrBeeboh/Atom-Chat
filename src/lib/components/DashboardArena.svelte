@@ -1,7 +1,7 @@
 <script>
   import { get } from 'svelte/store';
   import { onMount } from 'svelte';
-  import { chatError, dashboardModelA, dashboardModelB, dashboardModelC, dashboardModelD, isStreaming, settings, globalDefault, perModelOverrides, getEffectiveSettingsForModel, mergeEffectiveSettings, liveTokens, pushTokSample, liveTokPerSec, arenaPanelCount, arenaSlotAIsJudge, arenaWebSearchMode, arenaSlotOverrides, setArenaSlotOverride, pendingDroppedFiles, webSearchForNextMessage, webSearchInProgress, webSearchConnected, layout, lmStudioUnloadHelperUrl } from '$lib/stores.js';
+  import { chatError, dashboardModelA, dashboardModelB, dashboardModelC, dashboardModelD, isStreaming, settings, globalDefault, perModelOverrides, getEffectiveSettingsForModel, mergeEffectiveSettings, liveTokens, pushTokSample, liveTokPerSec, arenaPanelCount, arenaSlotAIsJudge, arenaWebSearchMode, arenaSlotOverrides, setArenaSlotOverride, pendingDroppedFiles, webSearchForNextMessage, webSearchInProgress, webSearchConnected, layout, lmStudioUnloadHelperUrl, confirm } from '$lib/stores.js';
   import { playClick, playComplete } from '$lib/audio.js';
   import { streamChatCompletion, unloadModel, loadModel, waitUntilUnloaded, unloadAllLoadedModels } from '$lib/api.js';
   import { searchDuckDuckGo, formatSearchResultForChat } from '$lib/duckduckgo.js';
@@ -64,6 +64,19 @@
       ? `Next: #${(questionIndex % parsedQuestions.length) + 1}`
       : 'Next question'
   );
+  /** Current question index for display (1-based) and text for the prominent question box. */
+  const currentQuestionNum = $derived(parsedQuestions.length > 0 ? (questionIndex % parsedQuestions.length) + 1 : 0);
+  const currentQuestionTotal = $derived(parsedQuestions.length);
+  const currentQuestionText = $derived(
+    parsedQuestions.length > 0 ? (parsedQuestions[questionIndex % parsedQuestions.length] || '').trim() : ''
+  );
+  /** Arena settings panel (slide-out from right). */
+  let arenaSettingsOpen = $state(false);
+  /** Accordion open state in settings panel. */
+  let settingsRulesExpanded = $state(false);
+  let settingsQuestionsExpanded = $state(false);
+  /** Judge feedback: collapsible panel bottom-left; default collapsed. */
+  let arenaJudgeFeedbackExpanded = $state(false);
   let runId = 0;
   let lastSampleAt = 0;
   let lastSampleTokens = 0;
@@ -484,6 +497,20 @@
     liveTokPerSec.set(null);
   }
 
+  /** Go to previous question index (display only; does not send). */
+  function prevQuestion() {
+    if (currentQuestionTotal === 0) return;
+    questionIndex = Math.max(0, questionIndex - 1);
+    if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume);
+  }
+
+  /** Advance question index without sending (for "next" arrow when only navigating). */
+  function advanceQuestionIndex() {
+    if (currentQuestionTotal === 0) return;
+    questionIndex = (questionIndex + 1) % currentQuestionTotal;
+    if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume);
+  }
+
   /** Clear all panels and, if a numbered question list exists, post the next question to the models. */
   function nextQuestion() {
     if ($isStreaming) return;
@@ -503,6 +530,34 @@
           chatError.set(e?.message || 'Failed to send next question.');
         });
       }
+    }
+  }
+
+  async function confirmResetScores() {
+    const ok = await confirm({
+      title: 'Reset all scores',
+      message: 'Clear B/C/D score totals? This cannot be undone.',
+      confirmLabel: 'Reset',
+      cancelLabel: 'Cancel',
+      danger: true
+    });
+    if (ok) {
+      resetArenaScores();
+      arenaSettingsOpen = false;
+    }
+  }
+
+  async function confirmEjectAll() {
+    const ok = await confirm({
+      title: 'Eject all models',
+      message: 'Unload all loaded models to free VRAM. You can load again from the sidebar.',
+      confirmLabel: 'Eject all',
+      cancelLabel: 'Cancel',
+      danger: false
+    });
+    if (ok) {
+      arenaSettingsOpen = false;
+      ejectAllModels();
     }
   }
 
@@ -806,14 +861,96 @@
     if (files?.length) pendingDroppedFiles.set(files);
   }}
 >
+  <!-- Arena top bar: question nav | scores | settings + Judgment time -->
+  <header
+    class="shrink-0 flex items-center justify-between px-6 h-[60px] border-b"
+    style="background-color: var(--ui-bg-sidebar); border-color: var(--ui-border);">
+    <div class="flex items-center gap-3" role="group" aria-label="Question navigation">
+      <button
+        type="button"
+        class="p-2 rounded-lg transition-colors hover:opacity-80 disabled:opacity-40"
+        style="color: var(--ui-text-secondary); background: var(--ui-input-bg);"
+        disabled={currentQuestionTotal === 0}
+        onclick={prevQuestion}
+        aria-label="Previous question">
+        <span aria-hidden="true">←</span>
+      </button>
+      <span class="text-sm font-medium min-w-32" style="color: var(--ui-text-primary);">
+        {#if currentQuestionTotal > 0}
+          Question {currentQuestionNum} of {currentQuestionTotal}
+        {:else}
+          No questions
+        {/if}
+      </span>
+      <button
+        type="button"
+        class="p-2 rounded-lg transition-colors hover:opacity-80 disabled:opacity-40"
+        style="color: var(--ui-text-secondary); background: var(--ui-input-bg);"
+        disabled={currentQuestionTotal === 0}
+        onclick={advanceQuestionIndex}
+        aria-label="Next question">
+        <span aria-hidden="true">→</span>
+      </button>
+      <button
+        type="button"
+        class="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-50"
+        style="background-color: var(--ui-accent); color: var(--ui-bg-main);"
+        disabled={$isStreaming}
+        onclick={nextQuestion}
+        title={parsedQuestions.length > 0 ? `Send question #${currentQuestionNum}` : 'Send next question'}>
+        {nextQuestionLabel}
+      </button>
+    </div>
+    <div class="flex items-center gap-4 px-4 py-2 rounded-lg" style="background-color: var(--ui-input-bg);" role="status" aria-label="Scores">
+      <span class="text-base font-bold" style="color: var(--ui-accent);">
+        B: <span class="font-mono">{arenaScores.B}</span>
+        <span class="mx-2 opacity-50">|</span>
+        C: <span class="font-mono">{arenaScores.C}</span>
+        <span class="mx-2 opacity-50">|</span>
+        D: <span class="font-mono">{arenaScores.D}</span>
+      </span>
+    </div>
+    <div class="flex items-center gap-4" role="group" aria-label="Primary actions">
+      <button
+        type="button"
+        class="p-2 rounded-lg border transition-colors hover:opacity-90"
+        style="border-color: var(--ui-border); background: var(--ui-input-bg); color: var(--ui-text-primary);"
+        onclick={() => { arenaSettingsOpen = true; if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume); }}
+        aria-label="Arena settings"
+        title="Arena settings">
+        <span aria-hidden="true">⚙️</span>
+      </button>
+      {#if $arenaSlotAIsJudge}
+        <button
+          type="button"
+          class="px-4 py-2 rounded-lg text-sm font-medium transition-colors shrink-0 disabled:opacity-50"
+          style="background-color: var(--ui-accent); color: var(--ui-bg-main);"
+          disabled={!canRunJudgment}
+          onclick={() => { if (canRunJudgment) runJudgment(); if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume); }}
+          title="Run judge on B/C/D responses">
+          Judgment time
+        </button>
+      {/if}
+    </div>
+  </header>
+
+  <!-- Current question (prominent, above grid) -->
+  {#if currentQuestionText && currentQuestionTotal > 0}
+    <div
+      class="shrink-0 mx-6 mt-4 mb-2 px-6 py-4 rounded-lg border shadow-sm"
+      style="background-color: var(--ui-bg-sidebar); border-color: var(--ui-border); color: var(--ui-text-primary); font-size: 18px; font-weight: 500;">
+      Question {currentQuestionNum}: {currentQuestionText}
+    </div>
+  {/if}
+
   <!-- Only the number of panels selected (1–4) are shown; model selector row in App.svelte matches this count. -->
   <div
     bind:this={gridEl}
-    class="flex-1 min-h-0 grid gap-2 p-2 atom-layout-transition relative grid-rows-[minmax(0,1fr)]"
+    class="flex-1 min-h-0 grid gap-4 p-6 atom-layout-transition relative grid-rows-[minmax(0,1fr)]"
     style="grid-template-columns: {responsiveGridCols};">
     {#if $arenaPanelCount >= 1}
     <div class="flex flex-col min-h-0 h-full overflow-hidden rounded-xl atom-panel-wrap" style="background-color: var(--ui-bg-main);" role="region" aria-label="Model A panel" in:fly={{ x: 200, duration: 800, easing: quintOut }}>
-      <div class="shrink-0 px-3 py-2">
+      <div class="shrink-0 px-3 py-2 border-b-2" style="background-color: var(--ui-bg-sidebar); border-color: var(--ui-accent);">
         <div class="flex items-center justify-between gap-2">
           <span class="text-xs font-medium" style="color: var(--ui-text-secondary);">Model A{$arenaSlotAIsJudge ? ' (Judge)' : ''}</span>
             {#if $arenaSlotAIsJudge && arenaStandingsLine}
@@ -874,7 +1011,7 @@
 
     {#if $arenaPanelCount >= 2}
     <div class="flex flex-col min-h-0 h-full overflow-hidden rounded-xl atom-panel-wrap" style="background-color: var(--ui-bg-main);" role="region" aria-label="Model B panel" in:fly={{ x: 200, duration: 800, easing: quintOut }}>
-      <div class="shrink-0 px-3 py-2">
+      <div class="shrink-0 px-3 py-2 border-b-2" style="background-color: var(--ui-bg-sidebar); border-color: var(--ui-accent);">
         <div class="flex items-center justify-between gap-2">
           <span class="text-xs font-medium" style="color: var(--ui-text-secondary);">Model B</span>
           <div class="flex items-center gap-1">
@@ -931,7 +1068,7 @@
 
     {#if $arenaPanelCount >= 3}
     <div class="flex flex-col min-h-0 h-full overflow-hidden rounded-xl atom-panel-wrap" style="background-color: var(--ui-bg-main);" role="region" aria-label="Model C panel" in:fly={{ x: 200, duration: 800, easing: quintOut }}>
-      <div class="shrink-0 px-3 py-2">
+      <div class="shrink-0 px-3 py-2 border-b-2" style="background-color: var(--ui-bg-sidebar); border-color: var(--ui-accent);">
         <div class="flex items-center justify-between gap-2">
           <span class="text-xs font-medium" style="color: var(--ui-text-secondary);">Model C</span>
           <div class="flex items-center gap-1">
@@ -988,7 +1125,7 @@
 
     {#if $arenaPanelCount >= 4}
     <div class="flex flex-col min-h-0 h-full overflow-hidden rounded-xl atom-panel-wrap" style="background-color: var(--ui-bg-main);" role="region" aria-label="Model D panel" in:fly={{ x: 200, duration: 800, easing: quintOut }}>
-      <div class="shrink-0 px-3 py-2">
+      <div class="shrink-0 px-3 py-2 border-b-2" style="background-color: var(--ui-bg-sidebar); border-color: var(--ui-accent);">
         <div class="flex items-center justify-between gap-2">
           <span class="text-xs font-medium" style="color: var(--ui-text-secondary);">Model D</span>
           <div class="flex items-center gap-1">
@@ -1054,135 +1191,164 @@
     </div>
   {/if}
 
-  <div class="shrink-0 border-t px-3 py-2" style="background-color: var(--ui-bg-sidebar); border-color: var(--ui-border);">
-    <div class="w-full max-w-[1600px] mx-auto flex flex-col gap-3">
-      <!-- Row 1: Feedback to judge (left) | Questions, Next, toggles (right) – in line with each other -->
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 items-end">
-        <div class="min-w-0">
-          {#if $arenaSlotAIsJudge}
-            <section class="flex flex-col gap-1.5" aria-label="Judge feedback and judgment">
-              <label for="arena-judge-feedback" class="text-xs font-medium" style="color: var(--ui-text-primary);">Feedback to judge (optional)</label>
-              <div class="flex gap-2 items-end flex-wrap">
-                <textarea
-                  id="arena-judge-feedback"
-                  class="flex-1 min-w-40 px-2.5 py-1.5 rounded-lg border text-xs resize-y min-h-10 max-h-20"
-                  style="border-color: var(--ui-border); background-color: var(--ui-input-bg); color: var(--ui-text-primary);"
-                  placeholder="Paste correction for judge. Then run judgment."
-                  rows="1"
-                  bind:value={judgeFeedback}
-                ></textarea>
-                <button
-                  type="button"
-                  class="px-3 py-2 rounded-lg text-xs font-medium transition-colors shrink-0 disabled:opacity-50"
-                  style="background-color: var(--ui-accent); color: var(--ui-bg-main);"
-                  disabled={!canRunJudgment}
-                  onclick={() => { if (canRunJudgment) runJudgment(); }}
-                  title="Run judge on B/C/D responses">
-                  Judgment time
-                </button>
-              </div>
-            </section>
-          {/if}
-        </div>
-        <div class="flex flex-wrap items-center gap-2 min-w-0">
-          <span class="text-xs font-medium shrink-0" style="color: var(--ui-text-secondary);" title="Running totals from judge (Judgment time).">Score tally: B {arenaScores.B} | C {arenaScores.C} | D {arenaScores.D}</span>
-          {#if arenaStandingsLine}
-            <button type="button" class="text-[10px] px-2 py-1 rounded border shrink-0" style="border-color: var(--ui-border); color: var(--ui-text-secondary); background: var(--ui-input-bg);" onclick={() => { resetArenaScores(); if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume); }} title="Clear score totals">Reset scores</button>
-          {/if}
-          <button
-            type="button"
-            class="flex items-center gap-1 text-xs font-medium rounded-lg px-2 py-1.5 transition-colors border shrink-0 disabled:opacity-50"
-            style="color: var(--ui-text-secondary); border-color: var(--ui-border); background-color: var(--ui-input-bg);"
-            disabled={ejectBusy}
-            onclick={ejectAllModels}
-            title="Eject all loaded models (free VRAM). Set Unload helper URL in Settings and run the Python helper for this to work.">
-            {ejectBusy ? 'Ejecting…' : 'Eject all'}
-          </button>
-          {#if ejectMessage}
-            <span class="text-xs shrink-0" style="color: var(--atom-teal);" role="status">{ejectMessage}</span>
-          {/if}
-          <button
-            type="button"
-            class="flex items-center gap-1 text-xs font-medium rounded-lg px-2 py-1.5 transition-colors border shrink-0"
-            style="color: var(--ui-text-secondary); border-color: var(--ui-border); background-color: var(--ui-input-bg);"
-            onclick={() => arenaSetupExpanded = !arenaSetupExpanded}
-            aria-expanded={arenaSetupExpanded}
-            aria-controls="arena-questions-block"
-            title={arenaSetupExpanded ? 'Collapse questions' : 'Expand questions'}>
-            <span aria-hidden="true">{arenaSetupExpanded ? '▼' : '▶'}</span>
-            Questions
-          </button>
-          <button
-            type="button"
-            class="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0 disabled:opacity-50"
-            style="background-color: var(--ui-accent); color: var(--ui-bg-main);"
-            disabled={$isStreaming}
-            onclick={nextQuestion}
-            title={parsedQuestions.length > 0 ? `Send question #${(questionIndex % parsedQuestions.length) + 1}` : 'Clear panels'}>
-            {nextQuestionLabel}
-          </button>
-          {#if parsedQuestions.length > 0}
-            <span class="text-xs shrink-0" style="color: var(--ui-text-secondary);">{parsedQuestions.length} question{parsedQuestions.length !== 1 ? 's' : ''}</span>
-          {/if}
-          <label class="flex items-center gap-1.5 cursor-pointer text-xs shrink-0" style="color: var(--ui-text-secondary);">
-            <input type="checkbox" bind:checked={sequential} class="rounded" style="accent-color: var(--ui-accent);" onchange={() => { if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume); }} />
-            <span title="Run one model at a time. Uncheck to run all models in parallel — faster but can overload VRAM/CPU.">Sequential</span>
-            <span class="opacity-75" style="color: var(--ui-text-secondary);" title="Uncheck to run all models at once; uses more VRAM and CPU.">(one at a time; off = parallel)</span>
-          </label>
-          <label class="flex items-center gap-1.5 cursor-pointer text-xs shrink-0" style="color: var(--ui-text-secondary);" title="Prepend current standings to the next question so models see how they're doing.">
-            <input type="checkbox" bind:checked={arenaIncludeStandingsInPrompt} class="rounded" style="accent-color: var(--ui-accent);" />
-            <span>Tell models standings</span>
-          </label>
-          <div class="flex items-center gap-1 shrink-0 text-xs" role="group" aria-label="Web search">
-            <span style="color: var(--ui-text-secondary);">Web:</span>
-            <div class="flex rounded-lg border overflow-hidden" style="border-color: var(--ui-border);">
-              <button type="button" class="px-2.5 py-1 text-xs font-medium transition-colors border-r" class:opacity-70={$arenaWebSearchMode !== 'none'} style="border-color: var(--ui-border); background: {$arenaWebSearchMode === 'none' ? 'var(--ui-sidebar-active)' : 'transparent'}; color: {$arenaWebSearchMode === 'none' ? 'var(--ui-text-primary)' : 'var(--ui-text-secondary)'}" onclick={() => { arenaWebSearchMode.set('none'); if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume); }} title="No web search">None</button>
-              <button type="button" class="px-2.5 py-1 text-xs font-medium transition-colors border-r" class:opacity-70={$arenaWebSearchMode !== 'all'} style="border-color: var(--ui-border); background: {$arenaWebSearchMode === 'all' ? 'var(--ui-sidebar-active)' : 'transparent'}; color: {$arenaWebSearchMode === 'all' ? 'var(--ui-text-primary)' : 'var(--ui-text-secondary)'}" onclick={() => { arenaWebSearchMode.set('all'); if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume); }} title="All models get web">All</button>
-              <button type="button" class="px-2.5 py-1 text-xs font-medium transition-colors" class:opacity-70={$arenaWebSearchMode !== 'judge'} style="border-color: var(--ui-border); background: {$arenaWebSearchMode === 'judge' ? 'var(--ui-sidebar-active)' : 'transparent'}; color: {$arenaWebSearchMode === 'judge' ? 'var(--ui-text-primary)' : 'var(--ui-text-secondary)'}" onclick={() => { arenaWebSearchMode.set('judge'); if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume); }} title="Judge only">Judge</button>
-            </div>
-          </div>
-        </div>
+  <!-- Minimal footer: chat error + send -->
+  <div class="shrink-0 border-t px-4 py-3" style="background-color: var(--ui-bg-sidebar); border-color: var(--ui-border);">
+    {#if $chatError}
+      <div class="mb-2 px-3 py-2 rounded-lg text-sm flex items-center justify-between gap-2" style="background: rgba(239,68,68,0.1); color: var(--ui-accent-hot); border: 1px solid var(--ui-border);" role="alert">
+        <span>{$chatError}</span>
+        <button type="button" class="shrink-0 p-1 rounded hover:opacity-80" onclick={() => chatError.set(null)} aria-label="Dismiss">×</button>
       </div>
+    {/if}
+    <section class="max-w-2xl mx-auto w-full" aria-label="Send prompt">
+      <ChatInput onSend={sendUserMessage} onStop={stopAll} />
+    </section>
+  </div>
 
-      <!-- Row 2: Contest rules (left) | Questions list (right) – aligned side by side -->
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-        <section class="flex flex-col gap-1.5 min-w-0" aria-label="Contest rules">
-          <label for="arena-contest-rules" class="text-xs font-medium" style="color: var(--ui-text-primary);">Contest rules</label>
+  <!-- Judge feedback: collapsible bottom-left -->
+  {#if $arenaSlotAIsJudge}
+    <div class="fixed bottom-20 left-4 z-30 flex flex-col items-start gap-1" style="max-width: min(360px, calc(100vw - 2rem));">
+      {#if arenaJudgeFeedbackExpanded}
+        <div class="rounded-lg border shadow-lg overflow-hidden transition-all duration-300" style="background-color: var(--ui-bg-sidebar); border-color: var(--ui-border);">
+          <div class="flex items-center justify-between px-3 py-2 border-b" style="border-color: var(--ui-border);">
+            <span class="text-xs font-medium" style="color: var(--ui-text-primary);">Feedback to judge (optional)</span>
+            <button type="button" class="p-1 rounded opacity-70 hover:opacity-100" style="color: var(--ui-text-secondary);" onclick={() => arenaJudgeFeedbackExpanded = false} aria-label="Collapse">×</button>
+          </div>
           <textarea
-            id="arena-contest-rules"
-            class="w-full px-2.5 py-1.5 rounded-lg border text-xs resize-y min-h-18 max-h-28"
-            style="border-color: var(--ui-border); background-color: var(--ui-input-bg); color: var(--ui-text-primary);"
-            placeholder="Paste contest rules. Sent with every question."
+            id="arena-judge-feedback"
+            class="w-full px-3 py-2 text-xs resize-y min-h-20 max-h-32"
+            style="background-color: var(--ui-input-bg); color: var(--ui-text-primary); border: none;"
+            placeholder="Paste correction for judge. Then run Judgment time."
             rows="3"
-            bind:value={contestRules}
+            bind:value={judgeFeedback}
           ></textarea>
-        </section>
-        <div class="flex flex-col gap-1.5 min-w-0">
-          <label for="arena-questions-list" class="text-xs font-medium" style="color: var(--ui-text-primary);">Questions (numbered 1. 2. …)</label>
-          <div id="arena-questions-block" class="overflow-hidden transition-[max-height] duration-200" style="max-height: {arenaSetupExpanded ? '20rem' : '0'};">
-            <textarea
-              id="arena-questions-list"
-              class="w-full px-2.5 py-1.5 rounded-lg border text-xs resize-y min-h-18 max-h-48"
-              style="border-color: var(--ui-border); background-color: var(--ui-input-bg); color: var(--ui-text-primary);"
-              placeholder="Paste numbered questions. Next sends the next one."
-              rows="3"
-              bind:value={questionsList}
-            ></textarea>
-          </div>
-        </div>
-      </div>
-
-      {#if $chatError}
-        <div class="px-3 py-2 rounded-lg text-sm flex items-center justify-between gap-2" style="background: rgba(239,68,68,0.1); color: var(--ui-accent-hot); border: 1px solid var(--ui-border);" role="alert">
-          <span>{$chatError}</span>
-          <button type="button" class="shrink-0 p-1 rounded hover:opacity-80" onclick={() => chatError.set(null)} aria-label="Dismiss">×</button>
         </div>
       {/if}
-
-      <section class="pt-0.5 max-w-2xl mx-auto w-full" aria-label="Send prompt">
-        <ChatInput onSend={sendUserMessage} onStop={stopAll} />
-        <p class="text-[10px] mt-1 text-center" style="color: var(--ui-text-secondary);">One prompt → all models. Left: rules &amp; judge. Right: questions &amp; Next.</p>
-      </section>
+      <button
+        type="button"
+        class="px-3 py-2 rounded-lg text-xs font-medium border shadow transition-colors"
+        style="background-color: var(--ui-bg-sidebar); border-color: var(--ui-border); color: var(--ui-text-primary);"
+        onclick={() => arenaJudgeFeedbackExpanded = !arenaJudgeFeedbackExpanded}
+        aria-expanded={arenaJudgeFeedbackExpanded}
+        aria-label="Judge feedback">
+        💬 Judge Feedback
+      </button>
     </div>
-  </div>
+  {/if}
+
+  <!-- Settings panel: slide-out from right -->
+  {#if arenaSettingsOpen}
+    <div
+      class="fixed inset-0 z-40 transition-opacity duration-300"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Arena settings">
+      <div
+        class="absolute inset-0 bg-black/30"
+        role="button"
+        tabindex="-1"
+        aria-label="Close settings"
+        onclick={() => arenaSettingsOpen = false}
+        onkeydown={(e) => e.key === 'Escape' && (arenaSettingsOpen = false)}
+      ></div>
+      <div
+        class="absolute top-0 right-0 bottom-0 w-[320px] flex flex-col border-l shadow-xl transition-transform duration-300"
+        style="background-color: var(--ui-bg-main); border-color: var(--ui-border);">
+        <div class="shrink-0 flex items-center justify-between px-4 py-4 border-b" style="border-color: var(--ui-border);">
+          <h2 class="text-base font-semibold" style="color: var(--ui-text-primary);">Arena settings</h2>
+          <button type="button" class="p-2 rounded-lg hover:opacity-80" style="color: var(--ui-text-secondary);" onclick={() => arenaSettingsOpen = false} aria-label="Close">×</button>
+        </div>
+        <div class="flex-1 overflow-y-auto px-4 py-4 space-y-6">
+          <!-- Contest rules -->
+          <section>
+            <button
+              type="button"
+              class="w-full flex items-center justify-between text-left font-semibold text-sm mb-3"
+              style="color: var(--ui-text-primary);"
+              onclick={() => settingsRulesExpanded = !settingsRulesExpanded}
+              aria-expanded={settingsRulesExpanded}>
+              Contest rules
+              <span aria-hidden="true">{settingsRulesExpanded ? '▼' : '▶'}</span>
+            </button>
+            {#if settingsRulesExpanded}
+              <textarea
+                id="arena-contest-rules-settings"
+                class="w-full px-3 py-2 rounded-lg border text-xs resize-y max-h-[200px]"
+                style="border-color: var(--ui-border); background-color: var(--ui-input-bg); color: var(--ui-text-primary);"
+                placeholder="Paste contest rules. Sent with every question."
+                rows="4"
+                bind:value={contestRules}
+              ></textarea>
+            {/if}
+          </section>
+          <!-- Browse questions -->
+          <section>
+            <button
+              type="button"
+              class="w-full flex items-center justify-between text-left font-semibold text-sm mb-3"
+              style="color: var(--ui-text-primary);"
+              onclick={() => settingsQuestionsExpanded = !settingsQuestionsExpanded}
+              aria-expanded={settingsQuestionsExpanded}>
+              Browse questions
+              <span aria-hidden="true">{settingsQuestionsExpanded ? '▼' : '▶'}</span>
+            </button>
+            {#if settingsQuestionsExpanded}
+              <textarea
+                id="arena-questions-list-settings"
+                class="w-full px-3 py-2 rounded-lg border text-xs resize-y max-h-[200px]"
+                style="border-color: var(--ui-border); background-color: var(--ui-input-bg); color: var(--ui-text-primary);"
+                placeholder="Paste numbered questions (1. … 2. …). Next sends the next one."
+                rows="4"
+                bind:value={questionsList}
+              ></textarea>
+            {/if}
+          </section>
+          <!-- Execution mode -->
+          <section>
+            <h3 class="font-semibold text-sm mb-3" style="color: var(--ui-text-primary);">Execution mode</h3>
+            <label class="flex items-start gap-2 cursor-pointer text-sm mb-2" style="color: var(--ui-text-secondary);">
+              <input type="checkbox" bind:checked={sequential} class="rounded mt-0.5" style="accent-color: var(--ui-accent);" onchange={() => { if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume); }} />
+              <span>Sequential (one at a time). Off = parallel.</span>
+            </label>
+            <label class="flex items-start gap-2 cursor-pointer text-sm" style="color: var(--ui-text-secondary);">
+              <input type="checkbox" bind:checked={arenaIncludeStandingsInPrompt} class="rounded mt-0.5" style="accent-color: var(--ui-accent);" />
+              <span>Tell models their standings</span>
+            </label>
+          </section>
+          <!-- Web search -->
+          <section>
+            <h3 class="font-semibold text-sm mb-3" style="color: var(--ui-text-primary);">Web search</h3>
+            <div class="flex rounded-lg border overflow-hidden" style="border-color: var(--ui-border);">
+              <button type="button" class="flex-1 px-2 py-1.5 text-xs font-medium transition-colors" class:opacity-70={$arenaWebSearchMode !== 'none'} style="border-color: var(--ui-border); background: {$arenaWebSearchMode === 'none' ? 'var(--ui-sidebar-active)' : 'transparent'}; color: {$arenaWebSearchMode === 'none' ? 'var(--ui-text-primary)' : 'var(--ui-text-secondary)'}" onclick={() => { arenaWebSearchMode.set('none'); if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume); }}>None</button>
+              <button type="button" class="flex-1 px-2 py-1.5 text-xs font-medium transition-colors border-l" class:opacity-70={$arenaWebSearchMode !== 'all'} style="border-color: var(--ui-border); background: {$arenaWebSearchMode === 'all' ? 'var(--ui-sidebar-active)' : 'transparent'}; color: {$arenaWebSearchMode === 'all' ? 'var(--ui-text-primary)' : 'var(--ui-text-secondary)'}" onclick={() => { arenaWebSearchMode.set('all'); if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume); }}>All</button>
+              <button type="button" class="flex-1 px-2 py-1.5 text-xs font-medium transition-colors border-l" class:opacity-70={$arenaWebSearchMode !== 'judge'} style="border-color: var(--ui-border); background: {$arenaWebSearchMode === 'judge' ? 'var(--ui-sidebar-active)' : 'transparent'}; color: {$arenaWebSearchMode === 'judge' ? 'var(--ui-text-primary)' : 'var(--ui-text-secondary)'}" onclick={() => { arenaWebSearchMode.set('judge'); if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume); }}>Judge</button>
+            </div>
+          </section>
+          <!-- Actions -->
+          <section>
+            <h3 class="font-semibold text-sm mb-3" style="color: var(--ui-text-primary);">Actions</h3>
+            <div class="flex flex-col gap-2">
+              <button
+                type="button"
+                class="w-full px-3 py-2 rounded-lg text-sm font-medium border"
+                style="border-color: var(--ui-border); background: var(--ui-input-bg); color: var(--ui-text-secondary);"
+                onclick={confirmResetScores}>
+                Reset all scores
+              </button>
+              <button
+                type="button"
+                class="w-full px-3 py-2 rounded-lg text-sm font-medium border disabled:opacity-50"
+                style="border-color: var(--ui-border); background: var(--ui-input-bg); color: var(--ui-text-secondary);"
+                disabled={ejectBusy}
+                onclick={confirmEjectAll}>
+                {ejectBusy ? 'Ejecting…' : 'Eject all models'}
+              </button>
+              {#if ejectMessage}
+                <span class="text-xs" style="color: var(--atom-teal);" role="status">{ejectMessage}</span>
+              {/if}
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+  {/if}
 </div>
