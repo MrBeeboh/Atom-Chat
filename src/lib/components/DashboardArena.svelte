@@ -493,14 +493,23 @@
   }
 
   // ---------- Stream / send ----------
-  async function sendToSlot(slot, modelId, content, onStreamDone) {
+  /**
+   * Send a message to one Arena slot. Streams response.
+   * @param {string} slot - 'A'|'B'|'C'|'D'
+   * @param {string} modelId
+   * @param {string|Array} apiContent - Full content sent to model API (includes rules, web context, etc.)
+   * @param {string|Array} [displayContent] - What shows in the UI bubble (question only, no rules). Falls back to apiContent.
+   * @param {Function} [onStreamDone]
+   */
+  async function sendToSlot(slot, modelId, apiContent, displayContent, onStreamDone) {
     setRunning(slot, true);
     setSlotError(slot, '');
 
+    // Display-friendly message: just the question (no rules clutter)
     const userMsg = {
       id: generateId(),
       role: 'user',
-      content,
+      content: displayContent || apiContent,
       createdAt: Date.now(),
     };
     pushMessage(slot, userMsg);
@@ -515,8 +524,17 @@
       createdAt: Date.now(),
     });
 
+    // API messages: use full content with rules for the user message
     const slotOpts = getSettingsForSlot(slot);
-    const apiMessages = buildApiMessages(getMessages(slot), slotOpts.system_prompt);
+    const displayMsgs = getMessages(slot);
+    const apiMsgs = displayMsgs.map((m) => {
+      // Replace the display user message with the full API content (rules + question)
+      if (m.id === userMsg.id) return { role: 'user', content: apiContent };
+      return { role: m.role, content: m.content };
+    });
+    const systemPrompt = (slotOpts.system_prompt ?? $settings.system_prompt)?.trim();
+    if (systemPrompt) apiMsgs.unshift({ role: 'system', content: systemPrompt });
+    const apiMessages = apiMsgs;
     const controller = new AbortController();
     aborters[slot] = controller;
 
@@ -650,19 +668,30 @@
 
     try {
       const rulesPrefix = (typeof contestRules === 'string' ? contestRules : '').trim() ? (contestRules.trim() + '\n\n---\n\n') : '';
-      const textBase = rulesPrefix + effectiveText;
+      const textWithRules = rulesPrefix + effectiveText;
       const urls = Array.isArray(imageDataUrls) ? imageDataUrls : [];
       const needResize = urls.length > 0 && !selected.every((s) => shouldSkipImageResizeForVision(s.modelId));
       const urlsForApi = urls.length ? (needResize ? await resizeImageDataUrlsForVision(urls) : urls) : [];
+      // API content: full text with rules (what the model sees)
       const content = urlsForApi.length
         ? [
-            { type: 'text', text: textBase },
+            { type: 'text', text: textWithRules },
             ...urlsForApi.map((url) => ({
               type: 'image_url',
               image_url: { url, ...(needResize ? { detail: 'low' } : {}) },
             })),
           ]
-        : textBase;
+        : textWithRules;
+      // Display content: question only, no rules (what the user sees in the panel)
+      const displayContent = urlsForApi.length
+        ? [
+            { type: 'text', text: effectiveText },
+            ...urlsForApi.map((url) => ({
+              type: 'image_url',
+              image_url: { url, ...(needResize ? { detail: 'low' } : {}) },
+            })),
+          ]
+        : effectiveText;
 
       if (runId !== currentRun) return;
 
@@ -687,7 +716,7 @@
           if (runId !== currentRun) break;
           const s = selected[i];
           try {
-            await sendToSlot(s.slot, s.modelId, content, onStreamDone);
+            await sendToSlot(s.slot, s.modelId, content, displayContent, onStreamDone);
             completedCount++;
           } catch (slotErr) {
             failedSlots.push(s.slot);
@@ -711,7 +740,7 @@
           chatError.set(`${completedCount}/${selected.length} models completed. Failed: ${failedSlots.join(', ')}.`);
         }
       } else {
-        await Promise.allSettled(selected.map((s) => sendToSlot(s.slot, s.modelId, content, onStreamDone)));
+        await Promise.allSettled(selected.map((s) => sendToSlot(s.slot, s.modelId, content, displayContent, onStreamDone)));
       }
     } catch (err) {
       if (err?.name !== 'AbortError') {
