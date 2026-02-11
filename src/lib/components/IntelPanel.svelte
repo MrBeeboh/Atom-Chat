@@ -28,6 +28,7 @@
   let settingsVal = $state({});
   let contextLength = $state(4096);
   let temperature = $state(0.7);
+  let maxTokens = $state(4096);
   let topP = $state(0.95);
   let topK = $state(64);
   let repeatPenalty = $state(1.15);
@@ -97,6 +98,7 @@
       nParallel = s?.n_parallel ?? DEFAULTS.n_parallel;
       modelTtlSeconds = s?.model_ttl_seconds ?? DEFAULTS.model_ttl_seconds;
       temperature = s?.temperature ?? 0.7;
+      maxTokens = s?.max_tokens ?? 4096;
       topP = s?.top_p ?? 0.95;
       topK = s?.top_k ?? 64;
       repeatPenalty = s?.repeat_penalty ?? 1.15;
@@ -131,6 +133,10 @@
   function onTempInput(e) {
     const v = parseFloat(e.target.value);
     if (Number.isFinite(v)) temperature = v;
+  }
+  function onMaxTokensInput(e) {
+    const v = parseInt(e.target.value, 10);
+    if (Number.isFinite(v)) maxTokens = Math.max(64, Math.min(131072, v));
   }
   function onTopPInput(e) {
     const v = parseFloat(e.target.value);
@@ -167,6 +173,7 @@
     try {
       const payload = {
         temperature,
+        max_tokens: maxTokens,
         top_p: topP,
         top_k: topK,
         repeat_penalty: repeatPenalty,
@@ -266,6 +273,7 @@
     if (!name) return;
     const payload = {
       temperature,
+      max_tokens: maxTokens,
       top_p: topP,
       top_k: topK,
       repeat_penalty: repeatPenalty,
@@ -570,6 +578,19 @@
           oninput={onTempInput}
           class="w-full h-1.5 rounded-full"
           style="background: var(--ui-input-bg); accent-color: var(--ui-accent);" />
+      </div>
+      <div>
+        <div class="flex justify-between text-xs mb-0.5"><span>Max tokens<InfoTooltip text="Maximum number of tokens the model can generate in one response. Higher = longer answers (50 JSON Q&A pairs ≈ 5000 tokens). Most models support up to 8192–32768. Uses more VRAM at higher values."><span class="ml-0.5 w-3 h-3 rounded-full border inline-flex items-center justify-center text-[8px] cursor-help opacity-60 hover:opacity-100" style="border-color: var(--ui-border);">i</span></InfoTooltip></span><span class="font-mono">{maxTokens}</span></div>
+        <input
+          type="range"
+          min="64"
+          max="32768"
+          step="64"
+          value={maxTokens}
+          oninput={onMaxTokensInput}
+          class="w-full h-1.5 rounded-full"
+          style="background: var(--ui-input-bg); accent-color: var(--ui-accent);" />
+        <div class="flex justify-between text-[10px] mt-0.5" style="color: var(--ui-text-secondary);"><span>64</span><span>32768</span></div>
       </div>
       <div>
         <div class="flex justify-between text-xs mb-0.5"><span>Top-P<InfoTooltip text="Nucleus sampling: only consider tokens whose cumulative probability is below this. 1 = no cutoff."><span class="ml-0.5 w-3 h-3 rounded-full border inline-flex items-center justify-center text-[8px] cursor-help opacity-60 hover:opacity-100" style="border-color: var(--ui-border);">i</span></InfoTooltip></span><span class="font-mono">{topP}</span></div>
