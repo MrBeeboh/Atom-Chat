@@ -1,3 +1,6 @@
+<!--
+  ConvoRail: compact conversation rail (collapsible). New chat, list grouped by date, Bulk erase with confirmation.
+-->
 <script>
   import { onMount } from 'svelte';
   import { activeConversationId, conversations, layout, confirm } from '$lib/stores.js';
@@ -70,7 +73,13 @@
   async function onBulkErase() {
     const n = convosList?.length ?? 0;
     if (n === 0) return;
-    if (!(await confirm({ title: 'Bulk erase', message: `Delete all ${n} conversation${n === 1 ? '' : 's'}? This cannot be undone.`, confirmLabel: 'Delete all', danger: true }))) return;
+    if (!(await confirm({
+      title: 'Are you sure?',
+      message: `This will permanently delete all ${n} conversation${n === 1 ? '' : 's'}. This cannot be undone.`,
+      confirmLabel: 'Yes, delete all',
+      cancelLabel: 'Cancel',
+      danger: true,
+    }))) return;
     await bulkEraseChats();
   }
 
@@ -84,8 +93,8 @@
 </script>
 
 <div
-  class="convo-rail flex flex-col shrink-0 border-r overflow-visible transition-[width] duration-200 relative"
-  style="width: {expanded ? '200px' : '44px'}; background-color: var(--ui-bg-sidebar); border-color: var(--ui-border);">
+  class="convo-rail flex flex-col shrink-0 border-r overflow-visible transition-[width] duration-200 relative min-w-0"
+  style="width: {expanded ? '200px' : '44px'}; max-width: {expanded ? '200px' : '44px'}; background-color: var(--ui-bg-sidebar); border-color: var(--ui-border);">
   <!-- Protruded arrow tab midway on right edge: out = expand, in = retract -->
   <button
     type="button"
@@ -100,9 +109,11 @@
       <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7" /></svg>
     {/if}
   </button>
+  <!-- Content wrapper: clips to rail width so buttons cannot overflow -->
+  <div class="flex flex-1 flex-col min-w-0 overflow-hidden">
   <button
     type="button"
-    class="shrink-0 py-1.5 px-2 rounded mx-1 text-xs font-medium flex items-center justify-center gap-1"
+    class="shrink-0 w-full min-w-0 py-1.5 px-2 rounded mx-1 text-xs font-medium flex items-center justify-center gap-1"
     style="background: var(--ui-accent); color: var(--ui-bg-main);"
     onclick={newChat}
     title="New chat">
@@ -111,14 +122,15 @@
   {#if expanded && (convosList?.length ?? 0) > 0}
     <button
       type="button"
-      class="shrink-0 py-1 px-2 rounded mx-1 text-[10px] border w-full text-left"
-      style="color: var(--ui-text-secondary); border-color: var(--ui-border);"
+      class="bulk-erase-link shrink-0 text-xs mt-1 mx-1 py-1 flex items-center gap-1.5 transition-opacity hover:opacity-80"
+      style="color: var(--ui-accent-hot, #dc2626); background: none; border: none;"
       onclick={onBulkErase}
-      title="Delete all conversations">
+      title="Permanently delete all conversations (you will be asked to confirm)">
+      <span aria-hidden="true">⚠</span>
       Bulk erase all
     </button>
   {/if}
-  <ul class="flex-1 overflow-y-auto mt-1 space-y-0.5 px-1 min-h-0">
+  <ul class="flex-1 overflow-y-auto overflow-x-hidden mt-1 space-y-0.5 px-1 min-h-0 min-w-0">
     {#each ['today', 'yesterday', 'week', 'older'] as key}
       {#if groups[key]?.length > 0}
         <li class="px-2 pt-2 pb-0.5 text-[10px] font-medium uppercase tracking-wider" style="color: var(--ui-text-secondary);">{key === 'today' ? 'Today' : key === 'yesterday' ? 'Yesterday' : key === 'week' ? 'This week' : 'Older'}</li>
@@ -145,4 +157,5 @@
       {/if}
     {/each}
   </ul>
+  </div>
 </div>

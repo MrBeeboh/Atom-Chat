@@ -4,6 +4,7 @@
   import { getModels } from '$lib/api.js';
   import { getModelIcon, getQuantization, ensureModelIcons, modelIconOverrides } from '$lib/modelIcons.js';
   import ModelCapabilityBadges from '$lib/components/ModelCapabilityBadges.svelte';
+  import ThinkingAtom from '$lib/components/ThinkingAtom.svelte';
 
   let { slot = 'A' } = $props();
   let open = $state(false);
@@ -93,7 +94,7 @@
       {#if open}
         <div id="model-listbox-A" class="fixed z-[100] rounded-xl border border-zinc-200 dark:border-zinc-600 bg-white dark:bg-zinc-800 shadow-lg py-1 overflow-y-auto overflow-x-visible min-w-[280px]" style="left: {dropdownPlace.left}px; width: {dropdownPlace.width}px; max-height: {dropdownPlace.maxHeight}px; {dropdownPlace.openUp ? 'bottom: ' + dropdownPlace.bottom + 'px; top: auto;' : 'top: ' + dropdownPlace.top + 'px;'}" role="listbox">
           {#if loading}
-            <div class="px-4 py-3 text-sm text-zinc-500 dark:text-zinc-400">Loading models…</div>
+            <div class="px-4 py-3 text-sm flex items-center gap-2 text-zinc-500 dark:text-zinc-400"><ThinkingAtom size={16} />Loading models…</div>
           {:else if $models.length === 0}
             <div class="px-4 py-3 text-sm">
               <p class="text-zinc-600 dark:text-zinc-400 mb-2">No models found. Is LM Studio running on port 1234? Have you downloaded any models?</p>
@@ -134,7 +135,7 @@
       {#if open}
         <div id="model-listbox-B" class="fixed z-[100] rounded-xl border border-zinc-200 dark:border-zinc-600 bg-white dark:bg-zinc-800 shadow-lg py-1 overflow-y-auto overflow-x-visible min-w-[280px]" style="left: {dropdownPlace.left}px; width: {dropdownPlace.width}px; max-height: {dropdownPlace.maxHeight}px; {dropdownPlace.openUp ? 'bottom: ' + dropdownPlace.bottom + 'px; top: auto;' : 'top: ' + dropdownPlace.top + 'px;'}" role="listbox">
           {#if loading}
-            <div class="px-4 py-3 text-sm text-zinc-500 dark:text-zinc-400">Loading models…</div>
+            <div class="px-4 py-3 text-sm flex items-center gap-2 text-zinc-500 dark:text-zinc-400"><ThinkingAtom size={16} />Loading models…</div>
           {:else if $models.length === 0}
             <div class="px-4 py-3 text-sm">
               <p class="text-zinc-600 dark:text-zinc-400 mb-2">No models found. Is LM Studio running on port 1234? Have you downloaded any models?</p>
@@ -175,7 +176,7 @@
       {#if open}
         <div id="model-listbox-C" class="fixed z-[100] rounded-xl border border-zinc-200 dark:border-zinc-600 bg-white dark:bg-zinc-800 shadow-lg py-1 overflow-y-auto overflow-x-visible min-w-[280px]" style="left: {dropdownPlace.left}px; width: {dropdownPlace.width}px; max-height: {dropdownPlace.maxHeight}px; {dropdownPlace.openUp ? 'bottom: ' + dropdownPlace.bottom + 'px; top: auto;' : 'top: ' + dropdownPlace.top + 'px;'}" role="listbox">
           {#if loading}
-            <div class="px-4 py-3 text-sm text-zinc-500 dark:text-zinc-400">Loading models…</div>
+            <div class="px-4 py-3 text-sm flex items-center gap-2 text-zinc-500 dark:text-zinc-400"><ThinkingAtom size={16} />Loading models…</div>
           {:else if $models.length === 0}
             <div class="px-4 py-3 text-sm">
               <p class="text-zinc-600 dark:text-zinc-400 mb-2">No models found. Is LM Studio running on port 1234? Have you downloaded any models?</p>
@@ -216,7 +217,7 @@
       {#if open}
         <div id="model-listbox-D" class="fixed z-[100] rounded-xl border border-zinc-200 dark:border-zinc-600 bg-white dark:bg-zinc-800 shadow-lg py-1 overflow-y-auto overflow-x-visible min-w-[280px]" style="left: {dropdownPlace.left}px; width: {dropdownPlace.width}px; max-height: {dropdownPlace.maxHeight}px; {dropdownPlace.openUp ? 'bottom: ' + dropdownPlace.bottom + 'px; top: auto;' : 'top: ' + dropdownPlace.top + 'px;'}" role="listbox">
           {#if loading}
-            <div class="px-4 py-3 text-sm text-zinc-500 dark:text-zinc-400">Loading models…</div>
+            <div class="px-4 py-3 text-sm flex items-center gap-2 text-zinc-500 dark:text-zinc-400"><ThinkingAtom size={16} />Loading models…</div>
           {:else if $models.length === 0}
             <div class="px-4 py-3 text-sm">
               <p class="text-zinc-600 dark:text-zinc-400 mb-2">No models found. Is LM Studio running on port 1234? Have you downloaded any models?</p>

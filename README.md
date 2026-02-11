@@ -28,6 +28,8 @@ Output is in `dist/`. Serve with any static host or open `dist/index.html` local
 
 - Chat with streaming responses
 - Model switching (uses models loaded in your server)
+- **Optimize**: fetch recommended settings from Hugging Face (or Ollama registry); optional AI fallback
+- **Intel panel**: system prompt, parameters (temperature, top_p, top_k, context), load settings, Save to LM Studio
 - Chat history stored in the browser (IndexedDB)
 - Markdown and code highlighting in replies
 - Image attachments for vision-capable models

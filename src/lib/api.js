@@ -1,11 +1,15 @@
 /**
- * LM Studio API client.
- * OpenAI-compat: base/v1 (e.g. chat/completions)
- * REST (load):   base/api/v1 (e.g. models, models/load)
+ * @file api.js
+ * @description LM Studio API client for model listing, load/unload, and chat (streaming and non-streaming).
  *
- * Base URL is configurable via localStorage 'lmStudioBaseUrl' (or Settings). Empty = default.
- * Default: dev uses proxy /api/lmstudio; production uses http://localhost:1234.
- * Compatible with LM Studio 0.4.x: GET /api/v1/models, POST /v1/chat/completions, POST /api/v1/models/load.
+ * Endpoints used:
+ * - GET  /api/v1/models        — list models (preferred)
+ * - GET  /v1/models           — fallback (OpenAI-compat)
+ * - POST /api/v1/models/load   — load model (context_length, eval_batch_size, flash_attention, offload_kv_cache_to_gpu)
+ * - POST /api/v1/models/unload
+ * - POST /v1/chat/completions  — chat (stream: true | false)
+ *
+ * Base URL: localStorage 'lmStudioBaseUrl' or dev proxy /api/lmstudio / production http://localhost:1234.
  */
 
 const DEFAULT_BASE = typeof import.meta !== 'undefined' && import.meta.env?.DEV ? '/api/lmstudio' : 'http://localhost:1234';
@@ -86,18 +90,15 @@ export async function getModels() {
 }
 
 /**
- * Load a model with the given load config (LM Studio REST API).
- * Applies context_length, eval_batch_size, flash_attention, offload_kv_cache_to_gpu.
- * Model will be unloaded and reloaded with the new config.
+ * Load a model with the given load config (LM Studio REST API v1).
+ * Sends only params LM Studio accepts: context_length, eval_batch_size, flash_attention, offload_kv_cache_to_gpu.
+ * GPU, CPU threads, Parallel are stored in our UI but not sent (LM Studio manages them).
  * @param {string} modelId - Model identifier (as in GET /v1/models)
  * @param {Object} loadConfig
  * @param {number} [loadConfig.context_length]
  * @param {number} [loadConfig.eval_batch_size]
  * @param {boolean} [loadConfig.flash_attention]
  * @param {boolean} [loadConfig.offload_kv_cache_to_gpu]
- * @param {string|number} [loadConfig.gpu_offload] - 'max' | 'off' | 0-1 (CLI: --gpu)
- * @param {number} [loadConfig.cpu_threads]
- * @param {number} [loadConfig.n_parallel] - Max parallel predictions (0.4+; default 4). Improves Arena throughput.
  * @returns {Promise<{ type: string, instance_id: string, load_time_seconds: number, status: string, load_config?: object }>}
  */
 export async function loadModel(modelId, loadConfig = {}) {
@@ -106,12 +107,6 @@ export async function loadModel(modelId, loadConfig = {}) {
   if (loadConfig.eval_batch_size != null) body.eval_batch_size = loadConfig.eval_batch_size;
   if (loadConfig.flash_attention != null) body.flash_attention = loadConfig.flash_attention;
   if (loadConfig.offload_kv_cache_to_gpu != null) body.offload_kv_cache_to_gpu = loadConfig.offload_kv_cache_to_gpu;
-  if (loadConfig.gpu_offload != null) {
-    const g = loadConfig.gpu_offload;
-    body.gpu = g === 'max' || g === 'off' ? g : Number(g);
-  }
-  if (loadConfig.cpu_threads != null) body.n_threads = loadConfig.cpu_threads;
-  if (loadConfig.n_parallel != null && loadConfig.n_parallel >= 1) body.n_parallel = Math.min(32, Math.max(1, loadConfig.n_parallel));
   body.echo_load_config = true;
 
   const base = getLmStudioBase();
@@ -146,6 +141,39 @@ export async function unloadModel(modelId) {
     throw new Error(`LM Studio unload: ${res.status} ${text}`);
   }
   return res.json();
+}
+
+/**
+ * Single request/response chat completion (non-streaming). Returns full assistant message.
+ * Use for short advisory requests (e.g. "suggest optimal settings").
+ * @param {Object} opts
+ * @param {string} opts.model - Model id
+ * @param {Array<{ role: string, content: string }>} opts.messages
+ * @param {Object} [opts.options] - temperature, max_tokens, etc.
+ * @returns {Promise<{ content: string, usage?: object }>}
+ */
+export async function requestChatCompletion({ model, messages, options = {} }) {
+  const base = getLmStudioBase();
+  const res = await fetch(`${base}/v1/chat/completions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model,
+      messages,
+      stream: false,
+      temperature: options.temperature ?? 0.3,
+      max_tokens: options.max_tokens ?? 1024,
+      ...(options.top_p != null && { top_p: options.top_p }),
+      ...(options.top_k != null && { top_k: options.top_k }),
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`LM Studio chat: ${res.status} ${text}`);
+  }
+  const data = await res.json();
+  const content = data.choices?.[0]?.message?.content ?? '';
+  return { content: String(content).trim(), usage: data.usage };
 }
 
 /**

@@ -23,6 +23,16 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/lmstudio/, ''),
       },
+      '/api/hf': {
+        target: 'https://huggingface.co',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/hf/, ''),
+      },
+      '/api/ollama': {
+        target: 'https://registry.ollama.ai',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/ollama/, ''),
+      },
     },
   },
 })

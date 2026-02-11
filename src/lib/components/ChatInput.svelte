@@ -1,6 +1,8 @@
 <script>
   import { get } from 'svelte/store';
-  import { isStreaming, voiceServerUrl, pendingDroppedFiles, webSearchForNextMessage, webSearchInProgress } from '$lib/stores.js';
+  import { isStreaming, voiceServerUrl, pendingDroppedFiles, webSearchForNextMessage, webSearchInProgress, webSearchConnected } from '$lib/stores.js';
+  import ThinkingAtom from '$lib/components/ThinkingAtom.svelte';
+  import { warmUpSearchConnection } from '$lib/duckduckgo.js';
   import { pdfToImageDataUrls } from '$lib/pdfToImages.js';
   import { videoToFrames } from '$lib/videoToFrames.js';
 
@@ -18,6 +20,29 @@
   let recordingStartMs = $state(0);
   const MAX_RECORDING_MS = 90_000; // 90 s cap
   let recordingTimerId = $state(null);
+
+  /** True while warming up web search connection (right after user turns on globe or when enabled via Command Palette). */
+  let webSearchWarmingUp = $state(false);
+
+  /** So we only auto-start warm-up once per "web search on"; avoid retry loop when warm-up fails. */
+  let webSearchWarmUpAttempted = $state(false);
+
+  /** When web search is turned on from anywhere (globe or Command Palette), start warm-up so globe behavior is the same in all layouts. */
+  $effect(() => {
+    const on = get(webSearchForNextMessage);
+    const connected = get(webSearchConnected);
+    if (!on) {
+      webSearchWarmUpAttempted = false;
+      return;
+    }
+    if (connected || webSearchWarmingUp || webSearchWarmUpAttempted) return;
+    webSearchWarmUpAttempted = true;
+    webSearchWarmingUp = true;
+    warmUpSearchConnection().then((ok) => {
+      webSearchWarmingUp = false;
+      if (ok) webSearchConnected.set(true);
+    });
+  });
 
   /** Attachments: { dataUrl, label } for display; we send dataUrl list to onSend. */
   let attachments = $state([]);
@@ -315,13 +340,35 @@
     type="button"
     class="web-search-button"
     class:active={$webSearchForNextMessage}
-    title={$webSearchForNextMessage ? 'Web search on for next message (click to turn off)' : 'Search the web for next message'}
+    title={webSearchWarmingUp ? 'Connecting…' : $webSearchForNextMessage ? ($webSearchConnected ? 'Web search on – connected (click to turn off)' : 'Web search on – not connected yet (click globe again to retry)') : 'Search the web for next message'}
     disabled={$isStreaming}
-    onclick={() => webSearchForNextMessage.update((v) => !v)}
-    aria-label={$webSearchForNextMessage ? 'Web search on' : 'Search web for next message'}
+    onclick={() => {
+      const next = !$webSearchForNextMessage;
+      webSearchForNextMessage.set(next);
+      if (!next) {
+        webSearchConnected.set(false);
+        return;
+      }
+      webSearchConnected.set(false);
+      /* Warm-up is started by $effect when webSearchForNextMessage becomes true (same for globe click or Command Palette). */
+    }}
+    aria-label={webSearchWarmingUp ? 'Connecting' : $webSearchForNextMessage ? 'Web search on' : 'Search web for next message'}
     aria-pressed={$webSearchForNextMessage}
+    aria-busy={webSearchWarmingUp}
   >
-    <span class="web-search-icon" aria-hidden="true" title="Internet">🌐</span>
+    <span
+      class="web-search-icon"
+      class:web-search-icon-spin={webSearchWarmingUp}
+      aria-hidden="true"
+      title="Internet"
+    >🌐</span>
+    {#if $webSearchForNextMessage}
+      {#if $webSearchConnected}
+        <span class="web-search-dot web-search-dot-green" aria-hidden="true" title="Connected"></span>
+      {:else}
+        <span class="web-search-dot web-search-dot-red" class:web-search-dot-pulse={webSearchWarmingUp} aria-hidden="true" title="Not connected"></span>
+      {/if}
+    {/if}
   </button>
   <div class="chat-input-main">
     {#if attachments.length > 0}
@@ -360,9 +407,9 @@
       class="send-button"
     >
       {#if $webSearchInProgress}
-        <span class="inline-flex items-center gap-1.5"><span aria-hidden="true">🌐</span> Searching…</span>
+        <span class="inline-flex items-center gap-1.5"><ThinkingAtom size={16} />Searching…</span>
       {:else if $isStreaming}
-        <span class="inline-flex items-center gap-1.5"><svg class="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>Sending...</span>
+        <span class="inline-flex items-center gap-1.5"><ThinkingAtom size={16} />Sending...</span>
       {:else}
         Send
       {/if}
@@ -536,6 +583,7 @@
     cursor: not-allowed;
   }
   .web-search-button {
+    position: relative;
     flex-shrink: 0;
     width: 44px;
     min-height: 44px;
@@ -564,6 +612,35 @@
   .web-search-icon {
     font-size: 1.25rem;
     line-height: 1;
+  }
+  .web-search-icon-spin {
+    animation: web-search-globe-spin 1.2s linear infinite;
+  }
+  @keyframes web-search-globe-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+  .web-search-dot {
+    position: absolute;
+    bottom: 5px;
+    left: 5px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    pointer-events: none;
+  }
+  .web-search-dot-green {
+    background: #22c55e;
+  }
+  .web-search-dot-red {
+    background: #dc2626;
+  }
+  .web-search-dot-pulse {
+    animation: web-search-dot-pulse 1.2s ease-in-out infinite;
+  }
+  @keyframes web-search-dot-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
   }
   .chat-input-main {
     flex: 1;

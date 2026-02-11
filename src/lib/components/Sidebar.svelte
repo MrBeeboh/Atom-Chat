@@ -1,3 +1,6 @@
+<!--
+  Sidebar: conversation list (+ New, Settings, Bulk erase), grouped by date. Uses confirm() before delete/bulk erase.
+-->
 <script>
   import { onMount } from 'svelte';
   import { activeConversationId, conversations, sidebarOpen, settingsOpen, confirm } from '$lib/stores.js';
@@ -45,34 +48,41 @@
   async function onBulkErase() {
     const n = $conversations?.length ?? 0;
     if (n === 0) return;
-    if (!(await confirm({ title: 'Bulk erase', message: `Delete all ${n} conversation${n === 1 ? '' : 's'}? This cannot be undone.`, confirmLabel: 'Delete all', danger: true }))) return;
+    if (!(await confirm({
+      title: 'Are you sure?',
+      message: `This will permanently delete all ${n} conversation${n === 1 ? '' : 's'}. This cannot be undone.`,
+      confirmLabel: 'Yes, delete all',
+      cancelLabel: 'Cancel',
+      danger: true,
+    }))) return;
     await bulkEraseChats();
   }
 </script>
 
-<div class="flex-1 overflow-y-auto p-2 flex flex-col min-h-0">
+<div class="flex-1 overflow-y-auto overflow-x-hidden p-2 flex flex-col min-h-0 min-w-0">
   <button
     type="button"
-    class="w-full py-3 px-3 rounded-lg text-left font-medium text-xs transition-opacity hover:opacity-90 shrink-0 min-h-[44px]"
+    class="w-full min-w-0 py-2.5 px-3 rounded-lg text-left font-medium text-xs transition-opacity hover:opacity-90 shrink-0"
     style="background: var(--ui-accent); color: var(--ui-bg-main);"
     onclick={newChat}>
     + New chat
   </button>
   <button
     type="button"
-    class="w-full mt-1.5 py-1.5 px-3 rounded-lg text-left text-xs transition-opacity hover:opacity-90 shrink-0 border flex items-center gap-2"
+    class="w-full min-w-0 mt-1.5 py-1.5 px-3 rounded-lg text-left text-xs transition-opacity hover:opacity-90 shrink-0 border flex items-center gap-2"
     style="color: var(--ui-text-secondary); border-color: var(--ui-border);"
     onclick={() => { settingsOpen.set(true); sidebarOpen.set(false); }}
     title="LM Studio URL, Voice server, Audio, Presets">
-    <span class="text-base">⚙</span> Settings
+    <span class="text-base shrink-0">⚙</span> Settings
   </button>
   {#if ($conversations?.length ?? 0) > 0}
     <button
       type="button"
-      class="w-full mt-1.5 py-1.5 px-3 rounded-lg text-left text-xs transition-opacity hover:opacity-90 shrink-0 border"
-      style="color: var(--ui-text-secondary); border-color: var(--ui-border);"
+      class="bulk-erase-link mt-1.5 py-1 text-xs font-medium transition-opacity hover:opacity-80 shrink-0 flex items-center gap-1.5"
+      style="color: var(--ui-accent-hot, #dc2626); background: none; border: none;"
       onclick={onBulkErase}
-      title="Delete all conversations">
+      title="Permanently delete all conversations (you will be asked to confirm)">
+      <span aria-hidden="true">⚠</span>
       Bulk erase all chats
     </button>
   {/if}

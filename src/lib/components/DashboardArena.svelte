@@ -1,7 +1,7 @@
 <script>
   import { get } from 'svelte/store';
   import { onMount } from 'svelte';
-  import { chatError, dashboardModelA, dashboardModelB, dashboardModelC, dashboardModelD, isStreaming, settings, globalDefault, perModelOverrides, getEffectiveSettingsForModel, mergeEffectiveSettings, liveTokens, pushTokSample, liveTokPerSec, arenaPanelCount, arenaSlotAIsJudge, arenaSlotOverrides, setArenaSlotOverride, pendingDroppedFiles, webSearchForNextMessage, webSearchInProgress, layout } from '$lib/stores.js';
+  import { chatError, dashboardModelA, dashboardModelB, dashboardModelC, dashboardModelD, isStreaming, settings, globalDefault, perModelOverrides, getEffectiveSettingsForModel, mergeEffectiveSettings, liveTokens, pushTokSample, liveTokPerSec, arenaPanelCount, arenaSlotAIsJudge, arenaWebSearchMode, arenaSlotOverrides, setArenaSlotOverride, pendingDroppedFiles, webSearchForNextMessage, webSearchInProgress, webSearchConnected, layout } from '$lib/stores.js';
   import { playClick, playComplete } from '$lib/audio.js';
   import { streamChatCompletion } from '$lib/api.js';
   import { searchDuckDuckGo, formatSearchResultForChat } from '$lib/duckduckgo.js';
@@ -231,14 +231,17 @@
     chatError.set(null);
 
     let effectiveText = text.trim();
-    if (get(webSearchForNextMessage)) {
+    const webMode = get(arenaWebSearchMode);
+    if (webMode === 'all' && get(webSearchForNextMessage)) {
       webSearchForNextMessage.set(false);
       webSearchInProgress.set(true);
       try {
         const searchResult = await searchDuckDuckGo(effectiveText);
+        webSearchConnected.set(true);
         const formatted = formatSearchResultForChat(effectiveText, searchResult);
         effectiveText = formatted + '\n\n---\nUser question: ' + effectiveText;
       } catch (e) {
+        webSearchConnected.set(false);
         chatError.set(e?.message || 'Web search failed. Try again or send without internet.');
         webSearchInProgress.set(false);
         return;
@@ -340,6 +343,18 @@
     }
     const lastUserMsg = slotsWithResponses[0].msgs.filter((m) => m.role === 'user').pop();
     const promptText = lastUserMsg ? contentToText(lastUserMsg.content) : '';
+    let judgeWebContext = '';
+    if (get(arenaWebSearchMode) === 'judge' && promptText.trim()) {
+      webSearchInProgress.set(true);
+      try {
+        const searchResult = await searchDuckDuckGo(promptText);
+        webSearchConnected.set(true);
+        judgeWebContext = formatSearchResultForChat(promptText, searchResult);
+      } catch (_) {
+        webSearchConnected.set(false);
+      }
+      webSearchInProgress.set(false);
+    }
     const parts = [
       'You are a judge. Score each model response 1-10 (10 = best) with one short reason (right or wrong).',
       '',
@@ -350,10 +365,11 @@
       'Model C: 5/10 - one short sentence why right or wrong',
       'If a response is missing: Model X: 0/10 - No response.',
       '',
-      '--- ORIGINAL PROMPT ---',
-      promptText || '(none)',
-      '',
     ];
+    if (judgeWebContext) {
+      parts.push('--- WEB SEARCH (use to fact-check) ---', judgeWebContext, '');
+    }
+    parts.push('--- ORIGINAL PROMPT ---', promptText || '(none)', '');
     for (const { slot, msgs } of slotsWithResponses) {
       const lastAssistant = [...msgs].reverse().find((m) => m.role === 'assistant');
       const text = lastAssistant ? contentToText(lastAssistant.content) : '';
@@ -766,6 +782,38 @@
           <span>Sequential (lower VRAM/CPU)</span>
         </label>
         <span class="text-xs">Parallel runs all models at once and uses more resources.</span>
+        <div class="flex items-center gap-2" role="group" aria-label="Who gets internet web search in Arena">
+          <span class="shrink-0 text-xs font-medium" style="color: var(--ui-text-primary);">Internet:</span>
+          <div class="flex rounded-lg border overflow-hidden" style="border-color: var(--ui-border);">
+            <button
+              type="button"
+              class="px-3 py-1.5 text-xs font-medium transition-colors border-r"
+              class:opacity-70={$arenaWebSearchMode !== 'none'}
+              style="border-color: var(--ui-border); background: {$arenaWebSearchMode === 'none' ? 'var(--ui-sidebar-active)' : 'transparent'}; color: {$arenaWebSearchMode === 'none' ? 'var(--ui-text-primary)' : 'var(--ui-text-secondary)'}"
+              onclick={() => { arenaWebSearchMode.set('none'); if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume); }}
+              title="No one gets web search. No internet for any model.">
+              None
+            </button>
+            <button
+              type="button"
+              class="px-3 py-1.5 text-xs font-medium transition-colors border-r"
+              class:opacity-70={$arenaWebSearchMode !== 'all'}
+              style="border-color: var(--ui-border); background: {$arenaWebSearchMode === 'all' ? 'var(--ui-sidebar-active)' : 'transparent'}; color: {$arenaWebSearchMode === 'all' ? 'var(--ui-text-primary)' : 'var(--ui-text-secondary)'}"
+              onclick={() => { arenaWebSearchMode.set('all'); if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume); }}
+              title="Turn on the globe above to add web search to the next send; all responding models see it.">
+              All
+            </button>
+            <button
+              type="button"
+              class="px-3 py-1.5 text-xs font-medium transition-colors"
+              class:opacity-70={$arenaWebSearchMode !== 'judge'}
+              style="border-color: var(--ui-border); background: {$arenaWebSearchMode === 'judge' ? 'var(--ui-sidebar-active)' : 'transparent'}; color: {$arenaWebSearchMode === 'judge' ? 'var(--ui-text-primary)' : 'var(--ui-text-secondary)'}"
+              onclick={() => { arenaWebSearchMode.set('judge'); if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume); }}
+              title="Only the judge gets web search when you click Judgment time (to fact-check). No web on send.">
+              Judge only
+            </button>
+          </div>
+        </div>
         {#if $arenaSlotAIsJudge}
           <div class="flex flex-wrap items-center gap-2">
             <button

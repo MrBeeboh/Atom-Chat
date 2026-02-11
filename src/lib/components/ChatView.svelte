@@ -1,6 +1,6 @@
 <script>
   import { get } from 'svelte/store';
-  import { activeConversationId, activeMessages, conversations, settings, effectiveModelId, isStreaming, chatError, chatCommand, pendingDroppedFiles, webSearchForNextMessage, webSearchInProgress } from '$lib/stores.js';
+  import { activeConversationId, activeMessages, conversations, settings, effectiveModelId, isStreaming, chatError, chatCommand, pendingDroppedFiles, webSearchForNextMessage, webSearchInProgress, webSearchConnected } from '$lib/stores.js';
   import { getMessages, addMessage, clearMessages, deleteMessage, getMessageCount } from '$lib/db.js';
   import { streamChatCompletion } from '$lib/api.js';
   import { searchDuckDuckGo, formatSearchResultForChat } from '$lib/duckduckgo.js';
@@ -75,9 +75,11 @@
       webSearchInProgress.set(true);
       try {
         const searchResult = await searchDuckDuckGo(effectiveText);
+        webSearchConnected.set(true);
         const formatted = formatSearchResultForChat(effectiveText, searchResult);
         effectiveText = formatted + '\n\n---\nUser question: ' + effectiveText;
       } catch (e) {
+        webSearchConnected.set(false);
         chatError.set(e?.message || 'Web search failed. Try again or send without internet.');
         webSearchInProgress.set(false);
         return;
@@ -99,11 +101,14 @@
           })),
         ]
       : effectiveText;
+
+    // Build payload from history + this message so the latest user message is always included
+    // (avoids any race where a post-write DB read might not yet see the new message)
+    const history = await getMessages(convId);
     await addMessage(convId, { role: 'user', content: userContent });
     await loadMessages();
-
-    const msgs = await getMessages(convId);
-    const apiMessages = buildApiMessages(msgs, $settings.system_prompt);
+    const msgsForApi = [...history, { role: 'user', content: userContent }];
+    const apiMessages = buildApiMessages(msgsForApi, $settings.system_prompt);
 
     const assistantMsgId = generateId();
     const assistantPlaceholder = {

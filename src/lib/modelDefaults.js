@@ -1,7 +1,8 @@
 /**
- * Model-family detection and default load/generation settings.
- * Defaults follow creator/Hugging Face–style recommendations where applicable.
- * LM Studio load API: context_length, eval_batch_size, flash_attention, offload_kv_cache_to_gpu.
+ * @file modelDefaults.js
+ * @description Model-family detection and default load/generation settings.
+ * LM Studio load API keys: context_length, eval_batch_size, flash_attention, offload_kv_cache_to_gpu.
+ * Exports getDefaultsForModel(), BATCH_SIZE_MIN/MAX, and family defaults used by IntelPanel and API.
  */
 
 /** Logical batch size bounds (same doubling/halving idea as max_tokens) */

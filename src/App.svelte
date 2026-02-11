@@ -19,7 +19,6 @@
   import ConvoRail from '$lib/components/ConvoRail.svelte';
   import IntelPanel from '$lib/components/IntelPanel.svelte';
   import DashboardArena from '$lib/components/DashboardArena.svelte';
-  import FloatingMetricsDashboard from '$lib/components/FloatingMetricsDashboard.svelte';
   import ConfirmModal from '$lib/components/ConfirmModal.svelte';
   import ShortcutsModal from '$lib/components/ShortcutsModal.svelte';
   import AtomLogo from '$lib/components/AtomLogo.svelte';
@@ -124,7 +123,6 @@
 <div class="h-screen overflow-hidden" style="background-color: var(--ui-bg-main);">
   <AudioManager />
   <CommandPalette />
-  <FloatingMetricsDashboard />
   <ConfirmModal />
   <ShortcutsModal />
 

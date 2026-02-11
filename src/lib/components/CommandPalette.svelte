@@ -12,7 +12,6 @@
     settingsOpen,
     chatCommand,
     webSearchForNextMessage,
-    floatingMetricsOpen,
     shortcutsModalOpen,
     cockpitIntelOpen,
     confirm,
@@ -73,7 +72,6 @@
     const actions = [
       { id: 'new-chat', label: 'New Chat', shortcut: 'Ctrl+N', category: 'Actions', run: () => runNewChat() },
       { id: 'search-web', label: 'Include web search for next message', shortcut: '', category: 'Actions', run: () => webSearchForNextMessage.set(true) },
-      { id: 'metrics-dashboard', label: 'Show metrics dashboard', shortcut: '', category: 'Actions', run: () => floatingMetricsOpen.set(true) },
       { id: 'export-chat', label: 'Export Chat', shortcut: 'Ctrl+Shift+E', category: 'Actions', run: () => chatCommand.set({ type: 'export', ts: Date.now() }) },
       { id: 'clear-chat', label: 'Clear Chat', shortcut: 'Ctrl+Shift+L', category: 'Actions', run: () => chatCommand.set({ type: 'clear', ts: Date.now() }) },
       { id: 'bulk-erase', label: 'Bulk erase all chats', shortcut: '', category: 'Actions', run: () => runBulkErase() },
@@ -134,7 +132,7 @@
       return;
     }
     closePalette();
-    if (!(await confirm({ title: 'Bulk erase', message: `Delete all ${n} conversation${n === 1 ? '' : 's'}? This cannot be undone.`, confirmLabel: 'Delete all', danger: true }))) return;
+    if (!(await confirm({ title: 'Are you sure?', message: `This will permanently delete all ${n} conversation${n === 1 ? '' : 's'}. This cannot be undone.`, confirmLabel: 'Yes, delete all', cancelLabel: 'Cancel', danger: true }))) return;
     await bulkEraseChats();
   }
 

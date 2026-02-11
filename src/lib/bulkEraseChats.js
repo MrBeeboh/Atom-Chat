@@ -1,3 +1,8 @@
+/**
+ * @file bulkEraseChats.js
+ * @description Single export: bulkEraseChats(). Clears all conversations and messages, creates one new chat, sets it active.
+ * Call only after user confirms (e.g. via confirm() in Sidebar/ConvoRail/CommandPalette).
+ */
 import { conversations, activeConversationId } from '$lib/stores.js';
 import { deleteAllConversations, createConversation, listConversations, getMessageCount } from '$lib/db.js';
 

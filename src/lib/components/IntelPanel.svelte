@@ -1,17 +1,27 @@
+<!--
+  IntelPanel: right-hand cockpit panel. System prompt, model display, Parameters (temp/top_p/top_k/context),
+  context usage bar, Load settings (batch, GPU, TTL, CPU thr, Parallel, Flash attn, KV→GPU), Optimize, Save.
+  Optimize fetches recommended settings from Hugging Face (with AI fallback); Save applies and loads model via LM Studio.
+-->
 <script>
+  import { get } from 'svelte/store';
   import {
     settings,
     selectedModelId,
     activeMessages,
+    models,
     updateGlobalDefault,
     setPerModelOverride,
     hardware,
     settingsOpen,
+    confirm,
   } from '$lib/stores.js';
   import { BATCH_SIZE_MIN, BATCH_SIZE_MAX } from '$lib/modelDefaults.js';
   import { getModelIcon, getQuantization, modelIconOverrides } from '$lib/modelIcons.js';
   import { loadModel } from '$lib/api.js';
+  import { fetchOptimalSettingsWithDelay, askModelForOptimalSettings, resolveHfModelId, getHfModelUrl, getHfSearchUrl } from '$lib/hfOptimize.js';
   import InfoTooltip from '$lib/components/InfoTooltip.svelte';
+  import ThinkingAtom from '$lib/components/ThinkingAtom.svelte';
 
   let settingsVal = $state({});
   let contextLength = $state(4096);
@@ -55,6 +65,11 @@
   let modelTtlSeconds = $state(DEFAULTS.model_ttl_seconds);
   let loadError = $state(null);
   let loadApplying = $state(false);
+  let optimizeApplying = $state(false);
+  let optimizeError = $state(null);
+  let hfLookupResolving = $state(false);
+  let modelCardReadme = $state(null);
+  let modelCardExpanded = $state(false);
 
   const maxCpuThreads = $derived(Math.max(1, $hardware?.cpuLogicalCores ?? 4));
 
@@ -138,9 +153,6 @@
         eval_batch_size: evalBatchSize,
         flash_attention: flashAttention,
         offload_kv_cache_to_gpu: offloadKvToGpu,
-        gpu_offload: gpuOffload,
-        cpu_threads: Math.min(maxCpuThreads, Math.max(1, cpuThreads)),
-        n_parallel: Math.min(32, Math.max(1, nParallel)),
       });
     } catch (e) {
       loadError = e?.message || 'Failed. Is LM Studio running?';
@@ -158,6 +170,156 @@
 
   function openSettings() {
     settingsOpen.set(true);
+  }
+
+  async function openHfLookup() {
+    if (!currentModelId) return;
+    hfLookupResolving = true;
+    try {
+      const hfId = await resolveHfModelId(currentModelId);
+      const url = hfId ? getHfModelUrl(hfId) : getHfSearchUrl(currentModelId);
+      if (url) window.open(url, '_blank', 'noopener');
+    } finally {
+      hfLookupResolving = false;
+    }
+  }
+
+  async function optimize() {
+    if (!currentModelId) {
+      optimizeError = 'Select a model first.';
+      return;
+    }
+    optimizeError = null;
+    modelCardReadme = null;
+    modelCardExpanded = false;
+    optimizeApplying = true;
+    try {
+      const { settings: optimal, prompt: optimalPrompt, source, readme, error } = await fetchOptimalSettingsWithDelay(currentModelId);
+      if (readme) modelCardReadme = readme;
+      if (error) {
+        const useAi = await confirm({
+          title: 'Ask AI for settings?',
+          message: `${error} Ask your smartest loaded model for recommended settings instead?`,
+          confirmLabel: 'Yes, ask model',
+          cancelLabel: 'No',
+        });
+        if (!useAi) {
+          optimizeError = error;
+          return;
+        }
+        const modelIds = (get(models) || []).map((m) => m?.id).filter(Boolean);
+        const { settings: aiSettings, prompt: aiPrompt, error: aiError } = await askModelForOptimalSettings(currentModelId, modelIds);
+        if (aiError || Object.keys(aiSettings).length === 0) {
+          optimizeError = aiError || 'Could not get settings from model.';
+          return;
+        }
+        const payload = { ...aiSettings };
+        setPerModelOverride(currentModelId, payload);
+        updateGlobalDefault(payload);
+        contextLength = payload.context_length ?? contextLength;
+        temperature = payload.temperature ?? temperature;
+        topP = payload.top_p ?? topP;
+        topK = payload.top_k ?? topK;
+        evalBatchSize = payload.eval_batch_size ?? evalBatchSize;
+        cpuThreads = payload.cpu_threads ?? cpuThreads;
+        nParallel = payload.n_parallel ?? nParallel;
+        const replacePrompt = await confirm({
+          title: 'Also optimize system prompt?',
+          message: aiPrompt ? 'Your model suggested a system prompt. Replace your current one?' : 'Ask your model for a suggested system prompt?',
+          confirmLabel: 'Yes',
+          cancelLabel: 'Keep existing',
+        });
+        if (replacePrompt) {
+          let promptToUse = aiPrompt;
+          if (!promptToUse) {
+            const res = await askModelForOptimalSettings(currentModelId, modelIds);
+            promptToUse = res.prompt;
+          }
+          if (promptToUse) {
+            setPerModelOverride(currentModelId, { system_prompt: promptToUse });
+            updateGlobalDefault({ system_prompt: promptToUse });
+            sysPrompt = promptToUse;
+          }
+        }
+        optimizeError = null;
+        return;
+      }
+
+      const payload = {};
+      if (typeof optimal.context_length === 'number') payload.context_length = optimal.context_length;
+      if (typeof optimal.eval_batch_size === 'number') payload.eval_batch_size = optimal.eval_batch_size;
+      if (typeof optimal.temperature === 'number') payload.temperature = optimal.temperature;
+      if (typeof optimal.top_p === 'number') payload.top_p = optimal.top_p;
+      if (typeof optimal.top_k === 'number') payload.top_k = optimal.top_k;
+      if (typeof optimal.repeat_penalty === 'number') payload.repeat_penalty = optimal.repeat_penalty;
+      if (typeof optimal.cpu_threads === 'number') payload.cpu_threads = optimal.cpu_threads;
+      if (typeof optimal.n_parallel === 'number') payload.n_parallel = optimal.n_parallel;
+      if (typeof optimal.flash_attention === 'boolean') payload.flash_attention = optimal.flash_attention;
+      if (typeof optimal.offload_kv_cache_to_gpu === 'boolean') payload.offload_kv_cache_to_gpu = optimal.offload_kv_cache_to_gpu;
+      if (optimal.gpu_offload != null) payload.gpu_offload = optimal.gpu_offload;
+
+      if (Object.keys(payload).length === 0) {
+        const useAi = await confirm({
+          title: 'Ask AI for settings?',
+          message: 'No optimal settings found on Hugging Face. Ask your smartest loaded model for recommended settings?',
+          confirmLabel: 'Yes, ask model',
+          cancelLabel: 'No',
+        });
+        if (!useAi) {
+          optimizeError = 'No optimal settings found. Use "Look up" to open the model card and find them manually.';
+          return;
+        }
+
+        const modelIds = (get(models) || []).map((m) => m?.id).filter(Boolean);
+        const { settings: aiSettings, error: aiError } = await askModelForOptimalSettings(currentModelId, modelIds);
+        if (aiError || Object.keys(aiSettings).length === 0) {
+          optimizeError = aiError || 'Could not get settings from model.';
+          return;
+        }
+
+        Object.assign(payload, aiSettings);
+      }
+
+      setPerModelOverride(currentModelId, payload);
+      updateGlobalDefault(payload);
+
+      contextLength = payload.context_length ?? contextLength;
+      temperature = payload.temperature ?? temperature;
+      topP = payload.top_p ?? topP;
+      topK = payload.top_k ?? topK;
+      evalBatchSize = payload.eval_batch_size ?? evalBatchSize;
+      cpuThreads = payload.cpu_threads ?? cpuThreads;
+      nParallel = payload.n_parallel ?? nParallel;
+      flashAttention = payload.flash_attention ?? flashAttention;
+      offloadKvToGpu = payload.offload_kv_cache_to_gpu ?? offloadKvToGpu;
+      if (payload.gpu_offload != null) gpuOffload = payload.gpu_offload;
+
+      const suggestedPrompt = optimalPrompt?.trim();
+      const replacePrompt = await confirm({
+        title: 'Also optimize system prompt?',
+        message: suggestedPrompt ? 'A suggested system prompt was found. Replace your current one?' : 'Ask your model for a suggested system prompt?',
+        confirmLabel: 'Yes',
+        cancelLabel: 'Keep existing',
+      });
+      if (replacePrompt) {
+        let promptToUse = suggestedPrompt;
+        if (!promptToUse) {
+          const { prompt: aiPrompt } = await askModelForOptimalSettings(currentModelId, (get(models) || []).map((m) => m?.id).filter(Boolean));
+          promptToUse = aiPrompt;
+        }
+        if (promptToUse) {
+          setPerModelOverride(currentModelId, { system_prompt: promptToUse });
+          updateGlobalDefault({ system_prompt: promptToUse });
+          sysPrompt = promptToUse;
+        }
+      }
+
+      optimizeError = null;
+    } catch (e) {
+      optimizeError = e?.message || 'Failed to fetch from Hugging Face.';
+    } finally {
+      optimizeApplying = false;
+    }
   }
 
 </script>
@@ -191,22 +353,38 @@
         <span class="w-3.5 h-3.5 rounded-full border flex items-center justify-center text-[9px] cursor-help opacity-60 hover:opacity-100" style="border-color: var(--ui-border);">i</span>
       </InfoTooltip>
     </div>
-    <div class="rounded-lg border p-2 flex items-center gap-2" style="border-color: var(--ui-border); background: var(--ui-input-bg);">
-      {#if currentModelId}
-        <img src={getModelIcon(currentModelId, $modelIconOverrides)} alt="" class="w-6 h-6 shrink-0 rounded object-contain" />
-        <span class="truncate flex-1 text-xs font-medium min-w-0" style="color: var(--ui-text-primary);">{currentModelId}</span>
-        {#if getQuantization(currentModelId)}
-          <span class="text-xs px-1.5 py-0.5 rounded font-mono opacity-80" style="background: var(--ui-border);">{getQuantization(currentModelId)}</span>
+    <div class="rounded-lg border p-2.5 flex flex-col gap-2 min-w-0 overflow-hidden" style="border-color: var(--ui-border); background: var(--ui-input-bg);">
+      <div class="flex items-start gap-2 min-w-0 min-h-9">
+        {#if currentModelId}
+          <img src={getModelIcon(currentModelId, $modelIconOverrides)} alt="" class="w-6 h-6 shrink-0 rounded object-contain mt-0.5" />
+          <div class="min-w-0 flex-1">
+            <div class="text-xs font-medium break-words leading-snug" style="color: var(--ui-text-primary);">{currentModelId}</div>
+            {#if getQuantization(currentModelId)}
+              <span class="inline-block mt-1 text-xs px-1.5 py-0.5 rounded font-mono opacity-80" style="background: var(--ui-border);">{getQuantization(currentModelId)}</span>
+            {/if}
+          </div>
+        {:else}
+          <span class="text-xs opacity-70">Select in header</span>
         {/if}
-      {:else}
-        <span class="text-xs opacity-70">Select in header</span>
-      {/if}
-      <button
-        type="button"
-        class="shrink-0 text-xs px-2 py-1 rounded border hover:opacity-90"
-        style="border-color: var(--ui-border); color: var(--ui-text-primary);"
-        onclick={openSettings}
-        title="Open settings">Settings</button>
+      </div>
+      <div class="flex items-center gap-2">
+        <button
+          type="button"
+          class="intel-model-btn flex-1 min-w-0 text-xs font-medium py-1.5 rounded border transition-opacity hover:opacity-90 disabled:opacity-50"
+          style="border-color: var(--ui-border); background: var(--ui-input-bg); color: var(--ui-text-primary);"
+          onclick={openSettings}
+          title="Open settings">Settings</button>
+        <button
+          type="button"
+          class="intel-model-btn flex-1 min-w-0 text-xs font-medium py-1.5 rounded border transition-opacity hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-1"
+          style="border-color: var(--ui-border); background: var(--ui-input-bg); color: var(--ui-text-primary);"
+          onclick={openHfLookup}
+          disabled={hfLookupResolving || !currentModelId}
+          title="Open Hugging Face model card in browser to look up optimal settings">
+          {#if hfLookupResolving}<ThinkingAtom size={12} />{/if}
+          {hfLookupResolving ? 'Looking up…' : 'Look up'}
+        </button>
+      </div>
     </div>
   </div>
 
@@ -344,15 +522,49 @@
   </div>
   </div>
 
-  <!-- Sticky Save footer -->
-  <div class="shrink-0 p-3 pt-2 border-t" style="border-color: var(--ui-border); background-color: var(--ui-bg-sidebar);">
+  <!-- Sticky footer: Optimize + Save -->
+  <div class="shrink-0 p-3 pt-2 border-t space-y-2" style="border-color: var(--ui-border); background-color: var(--ui-bg-sidebar);">
     <button
       type="button"
-      class="w-full py-2 px-4 rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+      class="w-full py-2 px-4 rounded-lg text-sm font-medium flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-50 transition-all duration-200 border"
+      style="border-color: var(--ui-accent); color: var(--ui-accent); background: transparent;"
+      onclick={optimize}
+      disabled={optimizeApplying || loadApplying || !currentModelId}
+      title="Fetch optimal settings from Hugging Face for this model">
+      {#if optimizeApplying}
+        <ThinkingAtom size={16} />
+        <span>Searching Hugging Face…</span>
+      {:else}
+        <span aria-hidden="true">◇</span>
+        <span>Optimize</span>
+      {/if}
+    </button>
+    {#if optimizeError}
+      <p class="text-xs text-amber-600 dark:text-amber-400">{optimizeError}</p>
+    {/if}
+    {#if modelCardReadme}
+      <div class="border rounded-lg overflow-hidden" style="border-color: var(--ui-border);">
+        <button
+          type="button"
+          class="w-full px-3 py-2 text-xs text-left flex items-center justify-between hover:opacity-90"
+          style="color: var(--ui-text-primary); background: var(--ui-input-bg);"
+          onclick={() => (modelCardExpanded = !modelCardExpanded)}>
+          <span>{modelCardExpanded ? 'Hide' : 'View'} model card (scroll to find settings)</span>
+          <span>{modelCardExpanded ? '▲' : '▼'}</span>
+        </button>
+        {#if modelCardExpanded}
+          <div class="max-h-48 overflow-y-auto p-2 text-xs font-mono whitespace-pre-wrap" style="background: var(--ui-bg-sidebar); color: var(--ui-text-secondary);">{modelCardReadme}</div>
+        {/if}
+      </div>
+    {/if}
+    <button
+      type="button"
+      class="w-full py-2 px-4 rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity flex items-center justify-center gap-2"
       style="background-color: var(--ui-accent); color: white;"
       onclick={save}
       disabled={loadApplying || !currentModelId}
       title="Save all settings for this model and load it with LM Studio">
+      {#if loadApplying}<ThinkingAtom size={14} />{/if}
       {loadApplying ? 'Saving…' : 'Save'}
     </button>
   </div>

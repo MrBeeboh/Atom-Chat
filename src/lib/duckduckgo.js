@@ -121,6 +121,22 @@ export async function searchDuckDuckGo(query) {
 }
 
 /**
+ * Prime the CORS proxy/connection so the first real search is more likely to succeed.
+ * Call when the user enables web search (globe button); do not wait for Send.
+ * Resolves with true if warm-up succeeded, false otherwise (non-throwing).
+ */
+export function warmUpSearchConnection() {
+  const targetUrl = 'https://lite.duckduckgo.com/lite/?q=a';
+  const WARMUP_TIMEOUT_MS = 15000;
+  const signal =
+    typeof AbortSignal?.timeout === 'function' ? AbortSignal.timeout(WARMUP_TIMEOUT_MS) : undefined;
+  const url = PROXIES[0](targetUrl);
+  return fetch(url, { signal })
+    .then((res) => (res.ok ? true : false))
+    .catch(() => false);
+}
+
+/**
  * Format search result as a single string for the chat (user message).
  */
 export function formatSearchResultForChat(query, result) {

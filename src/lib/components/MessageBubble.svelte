@@ -1,7 +1,7 @@
 <script>
   import { renderMarkdown, splitThinkingAndAnswer } from '$lib/markdown.js';
   import { fly } from 'svelte/transition';
-  import { bounceOut } from 'svelte/easing';
+  import { quintOut } from 'svelte/easing';
   import PerfStats from '$lib/components/PerfStats.svelte';
   import { pinnedContent } from '$lib/stores.js';
 
@@ -26,7 +26,7 @@
 
 <div
   class="flex {isUser ? 'justify-end' : 'justify-start'}"
-  in:fly={{ y: 56, duration: 1200, easing: bounceOut }}>
+  in:fly={{ y: 20, duration: 380, easing: quintOut }}>
   <div
     class="max-w-full rounded-2xl px-4 py-3 shadow-sm
       {isUser

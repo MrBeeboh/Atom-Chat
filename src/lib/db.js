@@ -1,3 +1,8 @@
+/**
+ * @file db.js
+ * @description IndexedDB schema and accessors for conversations and messages (Dexie).
+ * Used for sidebar conversation list, chat history, and bulk erase.
+ */
 import Dexie from 'dexie';
 
 const db = new Dexie('LMStudioChat');

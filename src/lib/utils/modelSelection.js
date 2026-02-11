@@ -1,6 +1,7 @@
 /**
- * Model selection helpers: smallest-model detection for smart defaults.
- * Parses model names for size indicators (e.g. 7b, 8b, 13b, 70b).
+ * @file modelSelection.js
+ * @description Model selection helpers by size: parseSizeFromName(), findSmallestModel(), findLargestModel().
+ * Used for smart defaults (e.g. pick smallest model) and for Optimize fallback (pick largest as advisor).
  */
 
 const SIZE_REGEX = /\d+[bB]/;
@@ -28,6 +29,22 @@ export function findSmallestModel(ids) {
     const sizeA = parseSizeFromName(a);
     const sizeB = parseSizeFromName(b);
     if (sizeA !== sizeB) return sizeA - sizeB;
+    return (a || '').localeCompare(b || '');
+  });
+  return sorted[0];
+}
+
+/**
+ * Pick the largest (smartest) model from a list for advisory tasks.
+ * @param {string[]} ids - Array of model id strings
+ * @returns {string|null} Largest model id, or null if list is empty
+ */
+export function findLargestModel(ids) {
+  if (!Array.isArray(ids) || ids.length === 0) return null;
+  const sorted = [...ids].sort((a, b) => {
+    const sizeA = parseSizeFromName(a);
+    const sizeB = parseSizeFromName(b);
+    if (sizeA !== sizeB) return sizeB - sizeA; // descending
     return (a || '').localeCompare(b || '');
   });
   return sorted[0];

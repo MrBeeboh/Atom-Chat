@@ -1,3 +1,9 @@
+/**
+ * @file stores.js
+ * @description Central Svelte stores and derived state for the app: conversations, models, settings,
+ * UI state, and persisted preferences (layout, theme, LM Studio URL, per-model overrides, etc.).
+ * Settings resolution: DEFAULT_SETTINGS ← globalDefault ← getRecommendedSettingsForModel ← perModelOverrides.
+ */
 import { writable, derived, get } from 'svelte/store';
 import { detectHardware } from '$lib/hardware.js';
 import { getRecommendedSettingsForModel } from '$lib/modelDefaults.js';
@@ -309,18 +315,15 @@ export const webSearchForNextMessage = writable(false);
 /** True while a web search is in progress (DuckDuckGo fetch). Show "Searching the web..." UI. */
 export const webSearchInProgress = writable(false);
 
-/** Last response metrics for header (set when a response completes) */
-export const lastResponseTokPerSec = writable(null);
+/** True only after a web search or warm-up fetch has succeeded. Drives the green dot on the globe – do not set true without a real successful fetch. */
+export const webSearchConnected = writable(false);
+
+/** Last response tokens (set when a response completes). */
 export const lastResponseTokens = writable(null);
 /** Live token estimate while streaming (approx, resets after stream ends) */
 export const liveTokens = writable(null);
-/** Live tokens/sec estimate (approx) */
+/** Live tokens/sec estimate (approx). Used by Arena. */
 export const liveTokPerSec = writable(null);
-/** Rolling 60s sparkline of tokens/sec */
-export const tokSeries = writable([]);
-
-/** Hardware metrics from Python bridge (localhost:5000): cpu_percent, ram_*, gpu_util, vram_*. Null when bridge offline. */
-export const hardwareMetrics = writable(null);
 
 /** Arena: number of model panels to show (1–4). Only this many slots/panels are shown. Saved to localStorage. */
 const arenaPanelCountStored = () => {
@@ -336,8 +339,18 @@ if (typeof localStorage !== 'undefined') {
 /** Arena: when true, Slot A is the judge — it does not answer the prompt; use "Judgment time" to rate B/C/D. */
 const arenaSlotAIsJudgeStored = () => readBool('arenaSlotAIsJudge', false);
 export const arenaSlotAIsJudge = writable(arenaSlotAIsJudgeStored());
+
+/** Arena: who gets web search. 'none' = no one; 'all' = use globe, all models get it on send; 'judge' = only judge gets it on Judgment time. */
+const arenaWebSearchModeStored = () => {
+  const v = typeof localStorage !== 'undefined' ? localStorage.getItem('arenaWebSearchMode') : null;
+  return v === 'none' || v === 'all' || v === 'judge' ? v : 'all';
+};
+export const arenaWebSearchMode = writable(arenaWebSearchModeStored());
 if (typeof localStorage !== 'undefined') {
   arenaSlotAIsJudge.subscribe((v) => localStorage.setItem('arenaSlotAIsJudge', v ? '1' : '0'));
+}
+if (typeof localStorage !== 'undefined') {
+  arenaWebSearchMode.subscribe((v) => localStorage.setItem('arenaWebSearchMode', v === 'none' || v === 'all' || v === 'judge' ? v : 'all'));
 }
 
 /** Arena: per-slot overrides for temperature, max_tokens, system_prompt. Key = 'A'|'B'|'C'|'D'. Empty = use layout default. */
