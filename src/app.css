@@ -1062,6 +1062,10 @@ body {
 .atom-panel-wrap {
   transition: width 300ms ease, min-width 300ms ease, grid-template-columns 300ms ease, opacity 300ms ease;
 }
+/* Arena model card when that slot is currently responding */
+.model-card-active {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
 
 /* Streaming: pulsing border glow */
 .atom-streaming-glow {

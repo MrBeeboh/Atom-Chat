@@ -12,7 +12,6 @@
   import UiThemeSelect from '$lib/components/UiThemeSelect.svelte';
   import PresetSelect from '$lib/components/PresetSelect.svelte';
   import ModelSelector from '$lib/components/ModelSelector.svelte';
-  import ModelSelectorSlot from '$lib/components/ModelSelectorSlot.svelte';
   import SettingsPanel from '$lib/components/SettingsPanel.svelte';
   import AudioManager from '$lib/components/AudioManager.svelte';
   import CommandPalette from '$lib/components/CommandPalette.svelte';
@@ -266,40 +265,8 @@
             <aside class="absolute left-0 top-0 bottom-0 w-64 bg-white dark:bg-zinc-900 border-r shadow-xl" style="background-color: var(--ui-bg-sidebar); border-color: var(--ui-border);"><Sidebar /></aside>
           </div>
         {/if}
-        <div class="flex-1 flex flex-col min-w-0">
-          <div class="grid gap-2 p-2 border-b" style="border-color: var(--ui-border); grid-template-columns: repeat({$arenaPanelCount}, minmax(0, 1fr));">
-            {#if $arenaPanelCount >= 1}
-              <div class="rounded-lg border p-2 flex flex-col gap-1.5" style="border-color: var(--ui-border); background-color: var(--ui-input-bg);">
-                <div class="flex items-center justify-between gap-2">
-                  <span class="text-xs font-medium" style="color: var(--ui-text-secondary);">Model A</span>
-                  <label class="flex items-center gap-1.5 cursor-pointer" title="Use Slot A as judge: it won't answer the prompt; click Judgment time to rate B/C/D">
-                    <input type="checkbox" bind:checked={$arenaSlotAIsJudge} class="rounded border-zinc-300 dark:border-zinc-600" style="accent-color: var(--ui-accent);" />
-                    <span class="text-[10px]" style="color: var(--ui-text-secondary);">Use as judge</span>
-                  </label>
-                </div>
-                <ModelSelectorSlot slot="A" />
-              </div>
-            {/if}
-            {#if $arenaPanelCount >= 2}
-              <div class="rounded-lg border p-2 flex flex-col gap-1.5" style="border-color: var(--ui-border); background-color: var(--ui-input-bg);">
-                <span class="text-xs font-medium" style="color: var(--ui-text-secondary);">Model B</span>
-                <ModelSelectorSlot slot="B" />
-              </div>
-            {/if}
-            {#if $arenaPanelCount >= 3}
-              <div class="rounded-lg border p-2 flex flex-col gap-1.5" style="border-color: var(--ui-border); background-color: var(--ui-input-bg);">
-                <span class="text-xs font-medium" style="color: var(--ui-text-secondary);">Model C</span>
-                <ModelSelectorSlot slot="C" />
-              </div>
-            {/if}
-            {#if $arenaPanelCount >= 4}
-              <div class="rounded-lg border p-2 flex flex-col gap-1.5" style="border-color: var(--ui-border); background-color: var(--ui-input-bg);">
-                <span class="text-xs font-medium" style="color: var(--ui-text-secondary);">Model D</span>
-                <ModelSelectorSlot slot="D" />
-              </div>
-            {/if}
-          </div>
-          <div class="flex-1 min-h-0 h-full"><DashboardArena /></div>
+        <div class="flex-1 flex flex-col min-w-0 min-h-0">
+          <DashboardArena />
         </div>
       </div>
     </div>
