@@ -1083,16 +1083,17 @@ body {
 .arena-web-tab {
   color: var(--ui-text-secondary);
   background: transparent;
-  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 .arena-web-tab:hover:not(.active) {
   color: var(--ui-text-primary);
   background: color-mix(in srgb, var(--ui-accent) 8%, transparent);
 }
 .arena-web-tab.active {
-  background: var(--ui-accent);
-  color: var(--ui-bg-main);
-  font-weight: 600;
+  background: color-mix(in srgb, var(--ui-accent) 18%, transparent);
+  color: var(--ui-accent);
+  font-weight: 700;
+  box-shadow: inset 0 -2px 0 var(--ui-accent);
 }
 
 /* Arena globe button (web connect/disconnect) */
