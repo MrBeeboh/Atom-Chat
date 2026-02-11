@@ -596,6 +596,27 @@
     });
   }
 
+  /** Next: advance to the next question AND immediately send it. One-click to keep the competition moving. */
+  function askNextQuestion() {
+    if ($isStreaming) return;
+    const questions = parsedQuestions;
+    if (questions.length === 0) return;
+    // Advance to next question
+    questionIndex = (questionIndex + 1) % questions.length;
+    const idx = questionIndex % questions.length;
+    const toSend = (questions[idx] && String(questions[idx]).trim()) || '';
+    if (!toSend) return;
+    messagesA = [];
+    messagesB = [];
+    messagesC = [];
+    messagesD = [];
+    chatError.set(null);
+    if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume);
+    sendUserMessage(toSend, []).catch((e) => {
+      chatError.set(e?.message || 'Failed to send question.');
+    });
+  }
+
   async function confirmResetScores() {
     const ok = await confirm({
       title: 'Reset all scores',
@@ -1010,8 +1031,9 @@
       {/if}
       <button type="button" class="h-full px-2.5 text-xs font-medium disabled:opacity-40 transition-opacity" style="color: var(--ui-text-secondary);" disabled={currentQuestionTotal === 0 || currentQuestionNum >= currentQuestionTotal} onclick={advanceQuestionIndex} aria-label="Next question">→</button>
     </div>
-    <!-- Group 2: Primary action -->
-    <button type="button" class="arena-bar-btn primary h-8 px-4 rounded-md text-xs font-semibold shrink-0 disabled:opacity-50 transition-opacity" style="background-color: var(--ui-accent); color: var(--ui-bg-main);" disabled={$isStreaming || currentQuestionTotal === 0} onclick={askCurrentQuestion} aria-label="Ask this question" title="Send this question to the models">Ask</button>
+    <!-- Group 2: Primary actions (Ask = send current; Next = advance + send) -->
+    <button type="button" class="arena-bar-btn primary h-8 px-4 rounded-md text-xs font-semibold shrink-0 disabled:opacity-50 transition-opacity" style="background-color: var(--ui-accent); color: var(--ui-bg-main);" disabled={$isStreaming || currentQuestionTotal === 0} onclick={askCurrentQuestion} aria-label="Ask this question" title="Send the currently selected question to the models">Ask</button>
+    <button type="button" class="h-8 px-3 rounded-md text-xs font-semibold shrink-0 disabled:opacity-50 transition-opacity border" style="border-color: var(--ui-accent); color: var(--ui-accent); background: transparent;" disabled={$isStreaming || currentQuestionTotal === 0 || currentQuestionNum >= currentQuestionTotal} onclick={askNextQuestion} aria-label="Next question and ask" title="Advance to the next question and send it immediately">Next</button>
     <!-- Group 3: Globe (connect/disconnect) + mode buttons (None | All | Judge only) -->
     <div class="flex items-center gap-2">
       <!-- Globe: click to connect/disconnect; same as cockpit -->
