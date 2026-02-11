@@ -2,9 +2,10 @@
   import { get } from 'svelte/store';
   import { isStreaming, voiceServerUrl, pendingDroppedFiles, webSearchForNextMessage, webSearchInProgress } from '$lib/stores.js';
   import { pdfToImageDataUrls } from '$lib/pdfToImages.js';
+  import { videoToFrames } from '$lib/videoToFrames.js';
 
   let { onSend, onStop, placeholder: placeholderOverride = undefined } = $props();
-  const placeholderText = $derived(placeholderOverride ?? 'Type your message or drop/paste images or PDFs... (Ctrl+Enter to send)');
+  const placeholderText = $derived(placeholderOverride ?? 'Type your message or drop/paste images, video, or PDFs... (Ctrl+Enter to send)');
   let text = $state('');
   let textareaEl = $state(null);
   let fileInputEl = $state(/** @type {HTMLInputElement | null} */ (null));
@@ -24,7 +25,9 @@
   let attachError = $state(null);
   const ACCEPT_IMAGE = 'image/jpeg,image/png,image/webp,image/gif';
   const ACCEPT_PDF = 'application/pdf';
+  const ACCEPT_VIDEO = 'video/mp4,video/webm,video/quicktime';
   const MAX_FILE_MB = 25;
+  const MAX_VIDEO_MB = 100;
   const MAX_TOTAL_MB = 80;
 
   async function handleSubmit() {
@@ -55,8 +58,10 @@
     try {
       for (const file of Array.from(files)) {
         const fileMb = file.size / 1024 / 1024;
-        if (fileMb > MAX_FILE_MB) {
-          attachError = `"${file.name}" is too large (max ${MAX_FILE_MB} MB per file).`;
+        const type = (file.type || '').toLowerCase();
+        const limitMb = type.startsWith('video/') ? MAX_VIDEO_MB : MAX_FILE_MB;
+        if (fileMb > limitMb) {
+          attachError = `"${file.name}" is too large (max ${limitMb} MB).`;
           continue;
         }
         if (totalMb + fileMb > MAX_TOTAL_MB) {
@@ -64,7 +69,6 @@
           break;
         }
 
-        const type = (file.type || '').toLowerCase();
         if (type === 'application/pdf') {
           const urls = await pdfToImageDataUrls(file);
           if (urls.length === 0) {
@@ -82,8 +86,20 @@
           });
           addImageDataUrls([url], file.name);
           totalMb += fileMb;
+        } else if (type.startsWith('video/')) {
+          try {
+            const urls = await videoToFrames(file, { count: 8, maxDurationSec: 60 });
+            if (urls.length === 0) {
+              attachError = `Could not extract frames from "${file.name}".`;
+              continue;
+            }
+            addImageDataUrls(urls, `${file.name} (${urls.length} frames)`);
+            totalMb += urls.reduce((sum, u) => sum + (u.length * 3 / 4 / 1024 / 1024), 0);
+          } catch (e) {
+            attachError = e?.message || `Could not read video "${file.name}".`;
+          }
         } else {
-          attachError = `Unsupported: ${file.name}. Use images (JPEG, PNG, WebP, GIF) or PDF.`;
+          attachError = `Unsupported: ${file.name}. Use images (JPEG, PNG, WebP, GIF), video (MP4, WebM), or PDF.`;
         }
       }
     } catch (e) {
@@ -259,7 +275,7 @@
   <input
     bind:this={fileInputEl}
     type="file"
-    accept="{ACCEPT_IMAGE},{ACCEPT_PDF}"
+    accept="{ACCEPT_IMAGE},{ACCEPT_PDF},{ACCEPT_VIDEO}"
     multiple
     class="hidden-file-input"
     onchange={onFileInputChange}
