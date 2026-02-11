@@ -17,6 +17,7 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
+    host: true, // listen on 0.0.0.0 so you can open the UI from other devices (e.g. bedroom mini at http://<this-pc-ip>:5173)
     proxy: {
       '/api/lmstudio': {
         target: 'http://localhost:1234',

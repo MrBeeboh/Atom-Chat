@@ -931,10 +931,19 @@
     {/if}
   </header>
 
-  <!-- Question bar: one strip (nav | action | web | judgment | … settings far right) -->
+  <!-- Question + controls: one row (question left, controls right), saves vertical space -->
   <div
-    class="arena-question-bar shrink-0 flex items-center gap-2 h-10 px-3 border-b"
+    class="arena-question-bar shrink-0 flex items-center gap-4 h-10 px-4 border-b"
     style="background-color: var(--ui-bg-sidebar); border-color: var(--ui-border);">
+    <!-- Question (flex, truncates); when none, show placeholder -->
+    <div class="flex-1 min-w-0 flex items-center gap-2 overflow-hidden">
+      {#if currentQuestionTotal > 0 && currentQuestionText}
+        <span class="text-xs font-semibold shrink-0" style="color: var(--ui-accent);">Q{currentQuestionNum}:</span>
+        <span class="text-sm truncate" style="color: var(--ui-text-primary);" title={currentQuestionText}>{currentQuestionText}</span>
+      {:else}
+        <span class="text-xs" style="color: var(--ui-text-secondary);">No question selected</span>
+      {/if}
+    </div>
     <!-- Group 1: Question navigation -->
     <div class="flex items-center h-8 rounded-md overflow-hidden border" style="border-color: var(--ui-border); background: var(--ui-input-bg);">
       <button type="button" class="h-full px-2.5 text-xs font-medium disabled:opacity-40 transition-opacity" style="color: var(--ui-text-secondary);" disabled={currentQuestionTotal === 0 || currentQuestionNum <= 1} onclick={prevQuestion} aria-label="Previous question">←</button>
@@ -969,8 +978,8 @@
     {#if $arenaSlotAIsJudge}
       <button type="button" class="h-8 px-3 rounded-md text-xs font-semibold shrink-0 disabled:opacity-50 transition-opacity" style="background-color: var(--ui-accent); color: var(--ui-bg-main);" disabled={!canRunJudgment} onclick={() => { if (canRunJudgment) runJudgment(); if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume); }} title="Run judge">Judgment</button>
     {/if}
-    <!-- Spacer: push Settings to the right -->
-    <div class="flex-1 min-w-2"></div>
+    <!-- Right spacer: keeps Settings on the right, balances left spacer -->
+    <div class="flex-1 min-w-4"></div>
     <!-- Settings: far right, labeled -->
     <button
       type="button"
@@ -983,14 +992,6 @@
       <span>Settings</span>
     </button>
   </div>
-
-  <!-- Current question (the one selected / being asked) -->
-  {#if currentQuestionTotal > 0 && currentQuestionText}
-    <div class="shrink-0 px-4 py-2.5 border-b" style="background-color: var(--ui-bg-main); border-color: var(--ui-border);">
-      <p class="text-xs font-semibold mb-0.5" style="color: var(--ui-accent);">Question {currentQuestionNum}</p>
-      <p class="text-sm leading-snug" style="color: var(--ui-text-primary);">{currentQuestionText}</p>
-    </div>
-  {/if}
 
   <!-- Response panels: maximum space, minimal chrome -->
   <div
@@ -1046,7 +1047,7 @@
       style="left: calc({panelWidths[0] / (panelWidths.slice(0, $arenaPanelCount).reduce((a,b)=>a+b,0) || 100) * 100}% - 4px);"
       onmousedown={(e) => startResize(0, e)}
       role="presentation">
-      <div class="w-px h-full mx-auto transition-colors {resizing === 0 ? 'w-0.5' : ''}" style="background: {resizing === 0 ? 'var(--ui-accent)' : 'var(--ui-border)'};"></div>
+      <div class="w-px h-full mx-auto" style="background: transparent;"></div>
     </div>
     {/if}
 
@@ -1097,7 +1098,7 @@
       style="left: calc({(panelWidths[0] + panelWidths[1]) / (panelWidths.slice(0, $arenaPanelCount).reduce((a,b)=>a+b,0) || 100) * 100}% - 4px);"
       onmousedown={(e) => startResize(1, e)}
       role="presentation">
-      <div class="w-px h-full mx-auto transition-colors {resizing === 1 ? 'w-0.5' : ''}" style="background: {resizing === 1 ? 'var(--ui-accent)' : 'var(--ui-border)'};"></div>
+      <div class="w-px h-full mx-auto" style="background: transparent;"></div>
     </div>
     {/if}
 
@@ -1148,7 +1149,7 @@
       style="left: calc({(panelWidths[0] + panelWidths[1] + panelWidths[2]) / (panelWidths.slice(0, $arenaPanelCount).reduce((a,b)=>a+b,0) || 100) * 100}% - 4px);"
       onmousedown={(e) => startResize(2, e)}
       role="presentation">
-      <div class="w-px h-full mx-auto transition-colors {resizing === 2 ? 'w-0.5' : ''}" style="background: {resizing === 2 ? 'var(--ui-accent)' : 'var(--ui-border)'};"></div>
+      <div class="w-px h-full mx-auto" style="background: transparent;"></div>
     </div>
     {/if}
 
