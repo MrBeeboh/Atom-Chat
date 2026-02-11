@@ -1,6 +1,6 @@
 <script>
   import { get } from 'svelte/store';
-  import { isStreaming, voiceServerUrl, pendingDroppedFiles, webSearchForNextMessage, webSearchInProgress, webSearchConnected } from '$lib/stores.js';
+  import { isStreaming, voiceServerUrl, pendingDroppedFiles, webSearchForNextMessage, webSearchInProgress, webSearchConnected, layout } from '$lib/stores.js';
   import ThinkingAtom from '$lib/components/ThinkingAtom.svelte';
   import { warmUpSearchConnection } from '$lib/duckduckgo.js';
   import { pdfToImageDataUrls } from '$lib/pdfToImages.js';
@@ -39,17 +39,15 @@
   }
 
   /**
-   * Auto-start warm-up when web search is turned on from anywhere (globe, Command Palette, etc.).
-   * IMPORTANT: uses $webSearchForNextMessage / $webSearchConnected (auto-subscriptions) so the
-   * effect is reactive in Svelte 5 runes mode. Using get() here would NOT re-run the effect.
+   * Auto-start warm-up when web search is turned on (globe, Command Palette, etc.).
+   * IMPORTANT: uses $store auto-subscriptions for Svelte 5 reactivity (get() is NOT tracked).
+   * SKIP when Arena is active — DashboardArena runs its own warm-up to avoid double attempts.
    */
   $effect(() => {
     const on = $webSearchForNextMessage;
     const connected = $webSearchConnected;
-    if (!on) {
-      webSearchWarmUpAttempted = false;
-      return;
-    }
+    if ($layout === 'arena') { webSearchWarmUpAttempted = false; return; }
+    if (!on) { webSearchWarmUpAttempted = false; return; }
     if (connected || webSearchWarmingUp || webSearchWarmUpAttempted) return;
     runWarmUp();
   });
@@ -163,11 +161,20 @@
     const imageDataUrls = attachments.map((a) => a.dataUrl);
     if (!userMessage && imageDataUrls.length === 0) return;
 
+    // Save text so we can restore it if send fails (e.g. web search error).
+    const savedText = text;
+    const savedAttachments = [...attachments];
     text = '';
     attachments = [];
     attachError = null;
 
-    if (onSend) await onSend(userMessage, imageDataUrls);
+    try {
+      if (onSend) await onSend(userMessage, imageDataUrls);
+    } catch (err) {
+      // Send failed — restore the user's message so they don't lose it.
+      text = savedText;
+      attachments = savedAttachments;
+    }
   }
 
   function addImageDataUrls(dataUrls, label) {

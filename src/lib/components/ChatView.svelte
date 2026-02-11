@@ -81,9 +81,9 @@
         effectiveText = formatted + '\n\n---\nUser question: ' + effectiveText;
       } catch (e) {
         webSearchConnected.set(false);
-        chatError.set(e?.message || 'Web search failed. Try again or send without internet.');
+        chatError.set(e?.message || 'Web search failed. Click the globe to retry or send without internet.');
         webSearchInProgress.set(false);
-        return;
+        throw e; // Propagate so ChatInput restores the user's typed message.
       }
       webSearchInProgress.set(false);
     }

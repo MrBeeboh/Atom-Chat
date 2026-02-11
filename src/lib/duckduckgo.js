@@ -120,7 +120,20 @@ export async function searchDuckDuckGo(query) {
   const q = String(query || '').trim();
   if (!q) return { abstract: '', abstractUrl: '', abstractSource: '', related: [] };
 
-  const liteResults = await searchDuckDuckGoLite(q);
+  // Retry once on failure: first attempt may fail on cold proxy connection.
+  let liteResults;
+  try {
+    liteResults = await searchDuckDuckGoLite(q);
+  } catch (firstErr) {
+    // Wait briefly, then retry the full proxy chain.
+    await new Promise((r) => setTimeout(r, 1500));
+    try {
+      liteResults = await searchDuckDuckGoLite(q);
+    } catch (secondErr) {
+      throw new Error('Web search failed after retry. Check your internet connection and click the globe to reconnect.');
+    }
+  }
+
   const related = liteResults.map((r) => ({
     text: r.snippet ? `${r.title} — ${r.snippet}` : r.title,
     url: r.url,
@@ -145,9 +158,16 @@ export function warmUpSearchConnection() {
   const getSignal = typeof AbortSignal?.timeout === 'function' ? () => AbortSignal.timeout(WARMUP_TIMEOUT_MS) : () => undefined;
   function tryProxy(proxy) {
     const url = proxy.url(targetUrl);
-    return fetch(url, { signal: getSignal() }).then((res) => res.ok);
+    return fetch(url, { signal: getSignal() }).then((res) => {
+      if (!res.ok) throw new Error(res.status);  // MUST reject so .catch tries next proxy
+      return true;
+    });
   }
-  return tryProxy(PROXIES[0]).catch(() => tryProxy(PROXIES[1])).then((ok) => !!ok).catch(() => false);
+  // Try first proxy; if it fails (network error OR non-200), try second.
+  // Overall timeout: whichever finishes first, or false after 15s hard cap.
+  const attempt = tryProxy(PROXIES[0]).catch(() => tryProxy(PROXIES[1])).catch(() => false);
+  const hardTimeout = new Promise((r) => setTimeout(() => r(false), 15000));
+  return Promise.race([attempt, hardTimeout]);
 }
 
 /**
