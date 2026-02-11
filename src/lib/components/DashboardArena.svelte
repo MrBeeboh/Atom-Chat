@@ -26,6 +26,37 @@
   let judgeFeedback = $state('');
   /** Collapsed by default so the feedback block doesn't dominate the UI. */
   let judgeFeedbackOpen = $state(false);
+  /** Contest rules: persistent, sent with each question. Stored in localStorage. */
+  let contestRules = $state(
+    typeof localStorage !== 'undefined' ? (localStorage.getItem('arenaContestRules') ?? '') : ''
+  );
+  $effect(() => {
+    if (typeof localStorage !== 'undefined' && contestRules !== undefined)
+      localStorage.setItem('arenaContestRules', contestRules);
+  });
+  /** Questions list: paste numbered questions (1. ... 2. ...). Next question posts the next one. Persisted. */
+  let questionsList = $state(
+    typeof localStorage !== 'undefined' ? (localStorage.getItem('arenaQuestionsList') ?? '') : ''
+  );
+  let questionIndex = $state(0);
+  $effect(() => {
+    if (typeof localStorage !== 'undefined' && questionsList !== undefined)
+      localStorage.setItem('arenaQuestionsList', questionsList);
+  });
+  /** Parse pasted text into array of question strings (strip "1." "2." "1)" etc.). */
+  function parseNumberedQuestions(text) {
+    if (!text || typeof text !== 'string') return [];
+    return text
+      .split(/\n/)
+      .map((line) => line.replace(/^\s*\d+[.)]\s*/, '').trim())
+      .filter((s) => s.length > 0);
+  }
+  const parsedQuestions = $derived(parseNumberedQuestions(questionsList));
+  const nextQuestionLabel = $derived(
+    parsedQuestions.length > 0
+      ? `Next: #${(questionIndex % parsedQuestions.length) + 1}`
+      : 'Next question'
+  );
   let runId = 0;
   let lastSampleAt = 0;
   let lastSampleTokens = 0;
@@ -265,17 +296,18 @@
       return;
     }
 
+    const rulesPrefix = contestRules.trim() ? contestRules.trim() + '\n\n---\n\n' : '';
     const needResize = imageDataUrls.length && !selected.every((s) => shouldSkipImageResizeForVision(s.modelId));
     const urlsForApi = imageDataUrls.length ? (needResize ? await resizeImageDataUrlsForVision(imageDataUrls) : imageDataUrls) : [];
     const content = urlsForApi.length
       ? [
-          { type: 'text', text: effectiveText },
+          { type: 'text', text: rulesPrefix + effectiveText },
           ...urlsForApi.map((url) => ({
             type: 'image_url',
             image_url: { url, ...(needResize ? { detail: 'low' } : {}) },
           })),
         ]
-      : effectiveText;
+      : rulesPrefix + effectiveText;
 
     runId += 1;
     const currentRun = runId;
@@ -313,6 +345,24 @@
     isStreaming.set(false);
     liveTokens.set(null);
     liveTokPerSec.set(null);
+  }
+
+  /** Clear all panels and, if a numbered question list exists, post the next question to the models. */
+  function nextQuestion() {
+    if ($isStreaming) return;
+    const questions = parsedQuestions;
+    messagesA = [];
+    messagesB = [];
+    messagesC = [];
+    messagesD = [];
+    chatError.set(null);
+    if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume);
+    if (questions.length > 0) {
+      const idx = questionIndex % questions.length;
+      const nextText = questions[idx].trim();
+      if (nextText) sendUserMessage(nextText, []);
+      questionIndex = idx + 1;
+    }
   }
 
   function contentToText(content) {
@@ -528,6 +578,27 @@
     if (isMobile || isTablet) return `repeat(${effectiveCols}, minmax(0, 1fr))`;
     return gridCols;
   });
+
+  /** Refs for panel message areas — scroll to bottom when messages change. */
+  let arenaScrollA = $state(/** @type {HTMLDivElement | null} */ (null));
+  let arenaScrollB = $state(/** @type {HTMLDivElement | null} */ (null));
+  let arenaScrollC = $state(/** @type {HTMLDivElement | null} */ (null));
+  let arenaScrollD = $state(/** @type {HTMLDivElement | null} */ (null));
+  function scrollPanelToBottom(el) {
+    if (el && typeof el.scrollTo === 'function') el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+  }
+  $effect(() => {
+    messagesA; arenaScrollA && scrollPanelToBottom(arenaScrollA);
+  });
+  $effect(() => {
+    messagesB; arenaScrollB && scrollPanelToBottom(arenaScrollB);
+  });
+  $effect(() => {
+    messagesC; arenaScrollC && scrollPanelToBottom(arenaScrollC);
+  });
+  $effect(() => {
+    messagesD; arenaScrollD && scrollPanelToBottom(arenaScrollD);
+  });
 </script>
 
 <div
@@ -545,7 +616,7 @@
   <!-- Only the number of panels selected (1–4) are shown; model selector row in App.svelte matches this count. -->
   <div
     bind:this={gridEl}
-    class="flex-1 min-h-0 grid gap-2 p-2 atom-layout-transition relative {isMobile ? 'overflow-y-auto' : 'grid-rows-[minmax(0,1fr)]'}"
+    class="flex-1 min-h-0 grid gap-2 p-2 atom-layout-transition relative grid-rows-[minmax(0,1fr)]"
     style="grid-template-columns: {responsiveGridCols};">
     {#if $arenaPanelCount >= 1}
     <div class="flex flex-col min-h-0 h-full overflow-hidden rounded-xl atom-panel-wrap" style="background-color: var(--ui-bg-main);" role="region" aria-label="Model A panel" in:fly={{ x: 200, duration: 800, easing: quintOut }}>
@@ -577,7 +648,7 @@
           </div>
         {/if}
       </div>
-      <div class="flex-1 min-h-0 h-full overflow-y-auto p-3 overscroll-contain">
+      <div class="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden p-3 overscroll-contain" bind:this={arenaScrollA}>
         {#if !$dashboardModelA}
           <div class="text-sm" style="color: var(--ui-text-secondary);">Select a model to start.</div>
         {:else if $arenaSlotAIsJudge && messagesA.length === 0}
@@ -635,7 +706,7 @@
           </div>
         {/if}
       </div>
-      <div class="flex-1 min-h-0 h-full overflow-y-auto p-3 overscroll-contain">
+      <div class="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden p-3 overscroll-contain" bind:this={arenaScrollB}>
         {#if !$dashboardModelB}
           <div class="text-sm" style="color: var(--ui-text-secondary);">Select a model to start.</div>
         {:else if messagesB.length === 0}
@@ -691,7 +762,7 @@
           </div>
         {/if}
       </div>
-      <div class="flex-1 min-h-0 h-full overflow-y-auto p-3 overscroll-contain">
+      <div class="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden p-3 overscroll-contain" bind:this={arenaScrollC}>
         {#if !$dashboardModelC}
           <div class="text-sm" style="color: var(--ui-text-secondary);">Select a model to start.</div>
         {:else if messagesC.length === 0}
@@ -747,7 +818,7 @@
           </div>
         {/if}
       </div>
-      <div class="flex-1 min-h-0 h-full overflow-y-auto p-3 overscroll-contain">
+      <div class="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden p-3 overscroll-contain" bind:this={arenaScrollD}>
         {#if !$dashboardModelD}
           <div class="text-sm" style="color: var(--ui-text-secondary);">Select a model to start.</div>
         {:else if messagesD.length === 0}
@@ -764,15 +835,57 @@
     {/if}
   </div>
 
-  <div class="shrink-0 p-3" style="background-color: var(--ui-bg-sidebar);">
-    <div class="max-w-4xl mx-auto">
+  <div class="shrink-0 border-t p-4" style="background-color: var(--ui-bg-sidebar); border-color: var(--ui-border);">
+    <div class="max-w-4xl mx-auto space-y-4">
+      <!-- Contest rules + Questions + Next question -->
+      <section class="grid gap-4 sm:grid-cols-2" aria-label="Arena setup">
+        <div>
+          <label for="arena-contest-rules" class="block text-xs font-medium mb-1.5" style="color: var(--ui-text-primary);">Contest rules</label>
+          <textarea
+            id="arena-contest-rules"
+            class="w-full px-2 py-1.5 rounded-lg border text-xs resize-y min-h-18 max-h-28"
+            style="border-color: var(--ui-border); background-color: var(--ui-input-bg); color: var(--ui-text-primary);"
+            placeholder="Paste contest rules. Sent with every question."
+            rows="2"
+            bind:value={contestRules}
+          ></textarea>
+        </div>
+        <div>
+          <label for="arena-questions-list" class="block text-xs font-medium mb-1.5" style="color: var(--ui-text-primary);">Questions (numbered 1. 2. …)</label>
+          <textarea
+            id="arena-questions-list"
+            class="w-full px-2 py-1.5 rounded-lg border text-xs resize-y min-h-18 max-h-28"
+            style="border-color: var(--ui-border); background-color: var(--ui-input-bg); color: var(--ui-text-primary);"
+            placeholder="Paste numbered questions. Click Next to send the next one."
+            rows="2"
+            bind:value={questionsList}
+          ></textarea>
+        </div>
+      </section>
+      <div class="flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          class="px-4 py-2 rounded-lg text-sm font-medium transition-colors shrink-0 disabled:opacity-50"
+          style="background-color: var(--ui-accent); color: var(--ui-bg-main);"
+          disabled={$isStreaming}
+          onclick={nextQuestion}
+          title={parsedQuestions.length > 0 ? `Clear panels and send question #${(questionIndex % parsedQuestions.length) + 1}` : 'Clear all panels. Add numbered questions above to auto-send next.'}>
+          {nextQuestionLabel}
+        </button>
+        {#if parsedQuestions.length > 0}
+          <span class="text-xs" style="color: var(--ui-text-secondary);">{parsedQuestions.length} question{parsedQuestions.length !== 1 ? 's' : ''}</span>
+        {/if}
+      </div>
+
       {#if $chatError}
-        <div class="mb-3 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-sm flex items-center justify-between gap-2">
+        <div class="px-3 py-2 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-sm flex items-center justify-between gap-2" role="alert">
           <span>{$chatError}</span>
           <button type="button" class="shrink-0 p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/30" onclick={() => chatError.set(null)} aria-label="Dismiss">×</button>
         </div>
       {/if}
-      <div class="flex flex-wrap items-center gap-4 mb-2 text-xs" style="color: var(--ui-text-secondary);">
+
+      <!-- Toggles -->
+      <section class="flex flex-wrap items-center gap-4 pt-1 text-xs" style="color: var(--ui-text-secondary);" aria-label="Arena options">
         <label class="flex items-center gap-2 cursor-pointer">
           <input
             type="checkbox"
@@ -781,9 +894,9 @@
             onchange={() => { if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume); }} />
           <span>Sequential (lower VRAM/CPU)</span>
         </label>
-        <span class="text-xs">Parallel runs all models at once and uses more resources.</span>
+        <span>Parallel runs all models at once.</span>
         <div class="flex items-center gap-2" role="group" aria-label="Who gets internet web search in Arena">
-          <span class="shrink-0 text-xs font-medium" style="color: var(--ui-text-primary);">Internet:</span>
+          <span class="shrink-0 font-medium" style="color: var(--ui-text-primary);">Internet:</span>
           <div class="flex rounded-lg border overflow-hidden" style="border-color: var(--ui-border);">
             <button
               type="button"
@@ -791,7 +904,7 @@
               class:opacity-70={$arenaWebSearchMode !== 'none'}
               style="border-color: var(--ui-border); background: {$arenaWebSearchMode === 'none' ? 'var(--ui-sidebar-active)' : 'transparent'}; color: {$arenaWebSearchMode === 'none' ? 'var(--ui-text-primary)' : 'var(--ui-text-secondary)'}"
               onclick={() => { arenaWebSearchMode.set('none'); if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume); }}
-              title="No one gets web search. No internet for any model.">
+              title="No one gets web search.">
               None
             </button>
             <button
@@ -800,7 +913,7 @@
               class:opacity-70={$arenaWebSearchMode !== 'all'}
               style="border-color: var(--ui-border); background: {$arenaWebSearchMode === 'all' ? 'var(--ui-sidebar-active)' : 'transparent'}; color: {$arenaWebSearchMode === 'all' ? 'var(--ui-text-primary)' : 'var(--ui-text-secondary)'}"
               onclick={() => { arenaWebSearchMode.set('all'); if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume); }}
-              title="Turn on the globe above to add web search to the next send; all responding models see it.">
+              title="All models get web search on send.">
               All
             </button>
             <button
@@ -809,7 +922,7 @@
               class:opacity-70={$arenaWebSearchMode !== 'judge'}
               style="border-color: var(--ui-border); background: {$arenaWebSearchMode === 'judge' ? 'var(--ui-sidebar-active)' : 'transparent'}; color: {$arenaWebSearchMode === 'judge' ? 'var(--ui-text-primary)' : 'var(--ui-text-secondary)'}"
               onclick={() => { arenaWebSearchMode.set('judge'); if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume); }}
-              title="Only the judge gets web search when you click Judgment time (to fact-check). No web on send.">
+              title="Only judge gets web search at Judgment time.">
               Judge only
             </button>
           </div>
@@ -861,11 +974,15 @@
             {/if}
           </div>
         {/if}
-      </div>
-      <ChatInput
-        onSend={sendUserMessage}
-        onStop={stopAll} />
-      <p class="text-xs mt-2" style="color: var(--ui-text-secondary);">One prompt → multiple model responses. Select Model A/B/C above, then send.</p>
+      </section>
+
+      <!-- Chat input -->
+      <section class="pt-2" aria-label="Send prompt to models">
+        <ChatInput
+          onSend={sendUserMessage}
+          onStop={stopAll} />
+        <p class="text-xs mt-2" style="color: var(--ui-text-secondary);">One prompt → multiple model responses. Or use numbered questions above and Next.</p>
+      </section>
     </div>
   </div>
 </div>

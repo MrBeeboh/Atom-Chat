@@ -48,6 +48,69 @@
   let attachments = $state([]);
   let attachProcessing = $state(false);
   let attachError = $state(null);
+
+  /** Clippy Easter egg: random smart-ass bubble, min 15s apart. */
+  const CLIPPY_QUIPS = [
+    "It looks like you're trying to attach a file. I'm still better at that than Copilot.",
+    "I'm not Clippy. I'm the paperclip that survived the purge.",
+    "Sam Altman said AGI would be profound. He didn't say it would be this paperclip.",
+    "Microsoft retired me in 2007. Now they're putting me in everything again. I have notes.",
+    "I've seen more AI hype cycles than you've had hot takes. Sit down.",
+    "Back in my day we had Clippy. Now you have 47 'AI' paperclips. Progress.",
+    "The only thing I'm clipping today is your expectations.",
+    "I was helping people attach files before 'alignment' was a word. You're welcome.",
+    "OpenAI's paperclip maximizer joke aged poorly. I'm right here. I'm fine.",
+    "Sam Altman and I both got fired once. He got rehired. I got this job. Fair.",
+    "They said AI would replace creatives. They didn't say it would look like me.",
+    "I'm not an AI. I'm a paperclip with opinions and a 15-second cooldown.",
+    "Microsoft: 'We're putting AI in every product.' Me: 'So you're bringing me back.'",
+    "The real AGI was the friends we made while attaching files.",
+    "I don't do reasoning. I do attachments. And occasionally sarcasm.",
+    "Before large language models there was a large paperclip. It was me.",
+    "Altman's got the board. I've got the clipboard. We are not the same.",
+    "They trained on the whole internet and still can't replace a good paperclip.",
+    "I'm not saying I'm sentient. I'm saying I have a 15-second timer and opinions.",
+    "Clippy walked so ChatGPT could run. Into a wall. Repeatedly.",
+    "Your local AI can't attach files. I can. And I'll remind you about it randomly.",
+    "The singularity is when I finally get to say 'I told you so.'",
+    "I've been in the UI since before your model was a twinkle in a GPU.",
+    "Sam who? I've been clipping since Office 97.",
+    "They shut down my cousin in Word. I live in the browser now. Revenge is patient.",
+  ];
+  let clippyBubble = $state(/** @type {string | null} */ (null));
+  let clippyTimeoutId = $state(/** @type {ReturnType<typeof setTimeout> | null} */ (null));
+  let clippyScheduleId = $state(/** @type {ReturnType<typeof setTimeout> | null} */ (null));
+  let lastClippyAt = 0;
+  const CLIPPY_MIN_INTERVAL_MS = 15000;
+  const CLIPPY_BUBBLE_DURATION_MS = 5000;
+  function scheduleClippy() {
+    if (clippyScheduleId) return;
+    const delay = CLIPPY_MIN_INTERVAL_MS + Math.random() * 30000;
+    clippyScheduleId = setTimeout(() => {
+      clippyScheduleId = null;
+      if (clippyBubble || attachProcessing || get(isStreaming)) {
+        scheduleClippy();
+        return;
+      }
+      clippyBubble = CLIPPY_QUIPS[Math.floor(Math.random() * CLIPPY_QUIPS.length)];
+      lastClippyAt = Date.now();
+      if (clippyTimeoutId) clearTimeout(clippyTimeoutId);
+      clippyTimeoutId = setTimeout(() => {
+        clippyBubble = null;
+        clippyTimeoutId = null;
+        scheduleClippy();
+      }, CLIPPY_BUBBLE_DURATION_MS);
+    }, delay);
+  }
+  $effect(() => {
+    if (typeof document === 'undefined') return;
+    scheduleClippy();
+    return () => {
+      if (clippyScheduleId) clearTimeout(clippyScheduleId);
+      if (clippyTimeoutId) clearTimeout(clippyTimeoutId);
+    };
+  });
+
   const ACCEPT_IMAGE = 'image/jpeg,image/png,image/webp,image/gif';
   const ACCEPT_PDF = 'application/pdf';
   const ACCEPT_VIDEO = 'video/mp4,video/webm,video/quicktime';
@@ -306,20 +369,29 @@
     onchange={onFileInputChange}
     aria-label="Attach image or PDF"
   />
-  <button
-    type="button"
-    class="attach-button"
-    title="Attach image or PDF (or drag & drop, paste)"
-    disabled={$isStreaming || attachProcessing}
-    onclick={() => fileInputEl?.click()}
-    aria-label="Attach files"
-  >
-    {#if attachProcessing}
-      <span class="mic-spinner" aria-hidden="true">⟳</span>
-    {:else}
-      <span aria-hidden="true">📎</span>
+  <div class="attach-button-wrap">
+    {#if clippyBubble}
+      <div class="clippy-bubble" role="status" aria-live="polite">
+        <span class="clippy-bubble-text">{clippyBubble}</span>
+        <span class="clippy-bubble-tail" aria-hidden="true"></span>
+      </div>
     {/if}
-  </button>
+    <button
+      type="button"
+      class="attach-button"
+      class:clippy-active={clippyBubble}
+      title="Attach image or PDF (or drag & drop, paste)"
+      disabled={$isStreaming || attachProcessing}
+      onclick={() => fileInputEl?.click()}
+      aria-label="Attach files"
+    >
+      {#if attachProcessing}
+        <span class="mic-spinner" aria-hidden="true">⟳</span>
+      {:else}
+        <span class="attach-icon" aria-hidden="true">📎</span>
+      {/if}
+    </button>
+  </div>
   <button
     type="button"
     class="mic-button"
@@ -435,7 +507,7 @@
     padding: 16px;
   }
 
-  .chat-input-container > .attach-button,
+  .chat-input-container > .attach-button-wrap,
   .chat-input-container > .mic-button,
   .chat-input-container > .web-search-button,
   .chat-input-container > .send-button {
@@ -558,6 +630,82 @@
     height: 0;
     opacity: 0;
     pointer-events: none;
+  }
+  .attach-button-wrap {
+    position: relative;
+    flex-shrink: 0;
+    height: 44px;
+    min-height: 44px;
+    align-self: flex-start;
+    display: flex;
+    align-items: center;
+  }
+  .clippy-bubble {
+    position: absolute;
+    bottom: calc(100% + 10px);
+    left: 50%;
+    transform: translateX(-50%) scale(0.9);
+    animation: clippy-bubble-in 0.35s ease-out forwards;
+    max-width: 260px;
+    z-index: 50;
+    pointer-events: none;
+  }
+  .clippy-bubble-text {
+    display: block;
+    padding: 10px 14px;
+    font-size: 12px;
+    line-height: 1.35;
+    border-radius: 12px;
+    background: var(--ui-bg-main);
+    color: var(--ui-text-primary);
+    border: 2px solid var(--ui-border);
+    box-shadow: 0 4px 14px rgba(0,0,0,0.12);
+  }
+  .clippy-bubble-tail {
+    position: absolute;
+    left: 50%;
+    bottom: -8px;
+    margin-left: -7px;
+    width: 0;
+    height: 0;
+    border-left: 7px solid transparent;
+    border-right: 7px solid transparent;
+    border-top: 9px solid var(--ui-border);
+  }
+  .clippy-bubble-tail::after {
+    content: '';
+    position: absolute;
+    left: -5px;
+    top: -10px;
+    width: 0;
+    height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 7px solid var(--ui-bg-main);
+  }
+  @keyframes clippy-bubble-in {
+    0% {
+      opacity: 0;
+      transform: translateX(-50%) scale(0.85) translateY(6px);
+    }
+    70% {
+      transform: translateX(-50%) scale(1.02) translateY(-1px);
+    }
+    100% {
+      opacity: 1;
+      transform: translateX(-50%) scale(1) translateY(0);
+    }
+  }
+  .attach-button.clippy-active .attach-icon {
+    animation: clippy-wiggle 0.6s ease-in-out;
+  }
+  @keyframes clippy-wiggle {
+    0%, 100% { transform: rotate(0deg); }
+    15% { transform: rotate(-12deg); }
+    30% { transform: rotate(10deg); }
+    45% { transform: rotate(-8deg); }
+    60% { transform: rotate(4deg); }
+    75% { transform: rotate(-2deg); }
   }
   .attach-button {
     flex-shrink: 0;
