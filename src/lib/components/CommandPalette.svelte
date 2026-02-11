@@ -11,7 +11,6 @@
     models,
     settingsOpen,
     chatCommand,
-    insertIntoInput,
     webSearchForNextMessage,
     floatingMetricsOpen,
     shortcutsModalOpen,

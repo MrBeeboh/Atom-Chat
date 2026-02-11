@@ -299,11 +299,8 @@ export const isStreaming = writable(false);
 
 /** Error message to show near chat input (e.g. API or model error) */
 export const chatError = writable(null);
-/** One-shot chat command (regen/export/clear) */
+/** One-shot chat command (regen/export/clear). ChatView subscribes and handles. */
 export const chatCommand = writable(null);
-
-/** When set, ChatInput inserts this text into the input (then clears). Used by suggestion buttons. */
-export const insertIntoInput = writable('');
 
 /** When true, the next Send will run a web search (DuckDuckGo) with the message text, then send. Toggle via globe button. */
 export const webSearchForNextMessage = writable(false);

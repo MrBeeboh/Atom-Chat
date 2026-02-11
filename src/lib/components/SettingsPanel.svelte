@@ -241,7 +241,7 @@
                   min={BATCH_SIZE_MIN}
                   max={BATCH_SIZE_MAX}
                   bind:value={evalBatchSize}
-                  onfocus={(e) => e.target.select()}
+                  onfocus={(e) => e.target instanceof HTMLInputElement && e.target.select()}
                   class="batch-size-step-input flex-1 rounded-l border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-zinc-900 dark:text-zinc-100 text-sm min-w-0" />
                 <div class="flex flex-col border border-l-0 border-zinc-300 dark:border-zinc-600 rounded-r overflow-hidden">
                   <button type="button" class="flex-1 px-2 py-0.5 border-b border-zinc-300 dark:border-zinc-600 bg-zinc-100 dark:bg-zinc-700 hover:bg-zinc-200 dark:hover:bg-zinc-600 text-zinc-700 dark:text-zinc-300 text-xs font-medium transition-colors" onclick={stepBatchUp} title="Double" aria-label="Double batch size">▲</button>

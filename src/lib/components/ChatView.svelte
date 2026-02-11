@@ -1,9 +1,8 @@
 <script>
-  import { onMount } from 'svelte';
   import { get } from 'svelte/store';
-  import { activeConversationId, activeMessages, conversations, settings, effectiveModelId, isStreaming, chatError, pendingDroppedFiles, webSearchForNextMessage, webSearchInProgress } from '$lib/stores.js';
+  import { activeConversationId, activeMessages, conversations, settings, effectiveModelId, isStreaming, chatError, chatCommand, pendingDroppedFiles, webSearchForNextMessage, webSearchInProgress } from '$lib/stores.js';
   import { getMessages, addMessage, clearMessages, deleteMessage, getMessageCount } from '$lib/db.js';
-  import { sendMessage } from '$lib/api/lmstudio.js';
+  import { streamChatCompletion } from '$lib/api.js';
   import { searchDuckDuckGo, formatSearchResultForChat } from '$lib/duckduckgo.js';
   import MessageList from '$lib/components/MessageList.svelte';
   import ChatInput from '$lib/components/ChatInput.svelte';
@@ -11,6 +10,7 @@
   import { generateId, resizeImageDataUrlsForVision, shouldSkipImageResizeForVision } from '$lib/utils.js';
 
   const convId = $derived($activeConversationId);
+  let chatAbortController = $state(null);
 
   async function loadMessages(id = convId) {
     if (!id) {
@@ -24,6 +24,29 @@
   $effect(() => {
     loadMessages(convId);
   });
+
+  $effect(() => {
+    const cmd = $chatCommand;
+    if (!cmd?.type || !convId) return;
+    if (cmd.type === 'clear') {
+      clearChat();
+    } else if (cmd.type === 'export') {
+      exportChat();
+    }
+    chatCommand.set(null);
+  });
+
+  async function exportChat() {
+    if (!convId) return;
+    const msgs = await getMessages(convId);
+    const lines = msgs.map((m) => `**${m.role}:**\n${typeof m.content === 'string' ? m.content : JSON.stringify(m.content)}`).join('\n\n---\n\n');
+    const blob = new Blob([lines], { type: 'text/markdown' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `chat-${convId.slice(0, 8)}.md`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
 
   function buildApiMessages(msgs, systemPrompt) {
     const out = msgs.map((m) => ({ role: m.role, content: m.content })).filter((m) => {
@@ -95,23 +118,36 @@
 
     isStreaming.set(true);
     let fullContent = '';
+    const controller = new AbortController();
+    chatAbortController = controller;
 
     let streamResult;
     try {
-      streamResult = await sendMessage($effectiveModelId, apiMessages, (chunk) => {
-        fullContent += chunk;
-        activeMessages.update((arr) => {
-          const out = [...arr];
-          const last = out[out.length - 1];
-          if (last && last.role === 'assistant') out[out.length - 1] = { ...last, content: fullContent, modelId: $effectiveModelId };
-          return out;
-        });
-      }, {
-        temperature: $settings.temperature,
-        max_tokens: $settings.max_tokens,
-        top_p: $settings.top_p,
-        top_k: $settings.top_k,
-        repeat_penalty: $settings.repeat_penalty,
+      streamResult = await streamChatCompletion({
+        model: $effectiveModelId,
+        messages: apiMessages,
+        options: {
+          temperature: $settings.temperature,
+          max_tokens: $settings.max_tokens,
+          top_p: $settings.top_p,
+          top_k: $settings.top_k,
+          repeat_penalty: $settings.repeat_penalty,
+          stop: $settings.stop?.length ? $settings.stop : undefined,
+          ttl: $settings.model_ttl_seconds,
+        },
+        signal: controller.signal,
+        onChunk(chunk) {
+          fullContent += chunk;
+          activeMessages.update((arr) => {
+            const out = [...arr];
+            const last = out[out.length - 1];
+            if (last && last.role === 'assistant') out[out.length - 1] = { ...last, content: fullContent, modelId: $effectiveModelId };
+            return out;
+          });
+        },
+        onDone() {
+          chatAbortController = null;
+        },
       });
     } catch (err) {
       const raw = err?.message || '';
@@ -123,8 +159,11 @@
       activeMessages.update((arr) => arr.filter((m) => m.id !== assistantMsgId));
       return;
     } finally {
+      chatAbortController = null;
       isStreaming.set(false);
     }
+
+    if (streamResult?.aborted) return;
 
     const completionTokens = streamResult?.usage?.completion_tokens ?? Math.max(1, Math.ceil(fullContent.length / 4));
     const elapsedMs = streamResult?.elapsedMs ?? 0;
@@ -187,7 +226,7 @@
           <div class="w-full min-w-0">
             <ChatInput
               onSend={sendUserMessage}
-              onStop={() => {}}
+              onStop={() => chatAbortController?.abort?.()}
               placeholder="Ask anything. Type or paste here... (Ctrl+Enter to send)"
             />
           </div>
@@ -211,7 +250,7 @@
               <button type="button" class="shrink-0 p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/30" onclick={() => chatError.set(null)} aria-label="Dismiss">×</button>
             </div>
           {/if}
-          <ChatInput onSend={sendUserMessage} onStop={() => {}} />
+          <ChatInput onSend={sendUserMessage} onStop={() => chatAbortController?.abort?.()} />
         </div>
       </div>
     {/if}
