@@ -88,16 +88,30 @@ export function migrateOldQuestionsAndAnswers(oldQuestions, oldAnswers) {
 // ---------- Judge score parser ----------
 
 /**
+ * Strip <think>...</think> blocks from text (some models emit them despite instructions).
+ * @param {string} text
+ * @returns {string}
+ */
+export function stripThinkBlocks(text) {
+  if (!text || typeof text !== 'string') return text || '';
+  // Remove <think>...</think> blocks (greedy, handles multi-line)
+  return text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+}
+
+/**
  * Parse judge output for "Model B: 7/10" lines; return { B: 7, C: 5, ... }.
+ * Strips <think> blocks before parsing (some models emit them despite instructions).
  * @param {string} text
  * @returns {Record<string, number>}
  */
 export function parseJudgeScores(text) {
   if (!text || typeof text !== 'string') return {};
+  // Strip <think> blocks so they don't interfere with score parsing
+  const cleaned = stripThinkBlocks(text);
   const out = {};
   const re = /Model\s+([B-D]):\s*(\d+)\s*\/\s*10/gi;
   let m;
-  while ((m = re.exec(text)) !== null) {
+  while ((m = re.exec(cleaned)) !== null) {
     const slot = m[1].toUpperCase();
     const n = parseInt(m[2], 10);
     if (slot >= 'B' && slot <= 'D' && n >= 0 && n <= 10) out[slot] = n;
@@ -228,17 +242,15 @@ export function buildJudgePrompt({ slotsWithResponses, answerKeyTrimmed, judgeWe
   const customInstr = typeof judgeInstructions === 'string' ? judgeInstructions.trim() : '';
 
   const parts = [
-    customInstr || 'You are a judge. Score each model response 1-10 (10 = best) with one short reason (right or wrong).',
+    customInstr || 'You are a judge. Score each model response 1-10 (10 = best) with one short reason.',
     '',
     `COMPETING MODELS (authoritative—do not guess): This round has exactly ${competingSlots.length} model(s): ${competingList}. You must output exactly one line for each of these, in this order: ${competingList}. Do not score Model A (the judge). Do not add or mention Model E or any other model. Only ${competingList}. If a model has no response below, write: Model X: 0/10 - No response.`,
     '',
     answerKeyTrimmed
-      ? 'BASIS FOR SCORING: An ANSWER KEY is provided below. Use it. Compare each model\'s response to the answer key and score accordingly. Do not overthink—match the response to the key and give a score plus one short reason.'
-      : 'BASIS FOR SCORING: No answer key was provided. Use the WEB SEARCH section below (if present) to fact-check, or use your own knowledge to evaluate correctness.',
+      ? 'BASIS FOR SCORING: An ANSWER KEY is provided below. Judge whether each model\'s response is SUBSTANTIVELY CORRECT—meaning the factual content matches the answer key. Ignore trivial differences like capitalization, punctuation, phrasing, formatting, or word order. "ampere" and "Ampere" are the same answer. "Electromagnetic force" and "electromagnetic force" are the same answer. Focus ONLY on whether the model gave the right factual answer. A correct answer = 8-10. A partially correct answer = 4-7. A wrong answer = 1-3. No response = 0.'
+      : 'BASIS FOR SCORING: No answer key was provided. Use the WEB SEARCH section below (if present) to fact-check, or use your own knowledge to evaluate correctness. Focus on factual accuracy. Ignore trivial formatting differences.',
     '',
-    answerKeyTrimmed
-      ? `CRITICAL—NO RAMBLING: Do NOT output <think>, chain-of-thought, or any analysis. Do NOT write paragraphs. Your reply must be ONLY the score lines below—nothing before them, nothing after. Start your very first character with "Model ${firstSlot}:". If you write anything before the first Model line, the response is wrong.`
-      : 'RULES: Your entire reply must be ONLY the score lines—no reasoning, no preamble, no <think>. Start directly with the first Model line.',
+    `CRITICAL OUTPUT FORMAT: Do NOT output <think> tags, chain-of-thought, reasoning, or any analysis. Do NOT write paragraphs. Your ENTIRE reply must be ONLY the score lines—nothing before them, nothing after. Start your very first character with "Model ${firstSlot}:". Any text before the first "Model" line is a format violation.`,
     '',
     `Output exactly these lines, in this order (${competingSlots.length} line(s)):`,
     ...competingSlots.map((slot) => `Model ${slot}: X/10 - one short sentence why right or wrong`),
@@ -260,7 +272,7 @@ export function buildJudgePrompt({ slotsWithResponses, answerKeyTrimmed, judgeWe
   const userContent = parts.join('\n');
 
   const systemWithAnswerKey = answerKeyTrimmed
-    ? `You are a judge. An answer key is provided. Use it. You are scoring exactly ${competingSlots.length} model(s): ${competingList}. Output exactly one line for each, in that order. No other models. No <think>, no chain-of-thought, no analysis. Start with "Model ${firstSlot}:".`
+    ? `You are a judge. An answer key is provided. A response is CORRECT if it gives the same factual answer as the key, regardless of capitalization, phrasing, or formatting. "ampere" = "Ampere" = correct. Score exactly ${competingSlots.length} model(s): ${competingList}. Output exactly one line for each, in that order. No other models. No <think>, no chain-of-thought, no analysis. Start with "Model ${firstSlot}:".`
     : null;
 
   const messages = feedback

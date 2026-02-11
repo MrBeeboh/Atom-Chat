@@ -22,7 +22,7 @@
   import { fly } from 'svelte/transition';
   import { quintOut } from 'svelte/easing';
   import {
-    parseQuestionsAndAnswers, parseJudgeScores, detectLoop, contentToText,
+    parseQuestionsAndAnswers, parseJudgeScores, stripThinkBlocks, detectLoop, contentToText,
     ARENA_SYSTEM_PROMPT_TEMPLATES, JUDGE_WEB_LINES, arenaStandingLabel, buildJudgePrompt,
     loadScoreHistory, saveScoreHistory, addScoreRound, computeTotals, clearScoreHistory,
     migrateOldQuestionsAndAnswers,

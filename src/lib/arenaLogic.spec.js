@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   parseQuestionsAndAnswers,
   parseJudgeScores,
+  stripThinkBlocks,
   detectLoop,
   contentToText,
   arenaStandingLabel,
@@ -88,6 +89,41 @@ describe('parseJudgeScores', () => {
     const text = 'Model B: 0/10 - terrible';
     expect(parseJudgeScores(text)).toEqual({ B: 0 });
   });
+
+  it('strips <think> blocks before parsing', () => {
+    const text = '<think>\nLet me analyze this carefully...\nModel B seems to have...\n</think>\nModel B: 8/10 - Good\nModel C: 6/10 - OK';
+    expect(parseJudgeScores(text)).toEqual({ B: 8, C: 6 });
+  });
+
+  it('handles <think> blocks with scores mentioned inside (should ignore those)', () => {
+    const text = '<think>Model B deserves a 3/10 because... but wait, actually 7/10</think>\nModel B: 7/10 - Correct\nModel C: 5/10 - Partial';
+    expect(parseJudgeScores(text)).toEqual({ B: 7, C: 5 });
+  });
+
+  it('handles multiple <think> blocks', () => {
+    const text = '<think>thinking 1</think>\n<think>thinking 2</think>\nModel B: 9/10 - Great';
+    expect(parseJudgeScores(text)).toEqual({ B: 9 });
+  });
+});
+
+// ---------- stripThinkBlocks ----------
+describe('stripThinkBlocks', () => {
+  it('removes <think> blocks', () => {
+    expect(stripThinkBlocks('<think>internal reasoning</think>Model B: 8/10')).toBe('Model B: 8/10');
+  });
+
+  it('handles multi-line think blocks', () => {
+    expect(stripThinkBlocks('<think>\nline 1\nline 2\n</think>\nResult')).toBe('Result');
+  });
+
+  it('passes through text without think blocks', () => {
+    expect(stripThinkBlocks('Model B: 7/10 - Good')).toBe('Model B: 7/10 - Good');
+  });
+
+  it('handles empty/null input', () => {
+    expect(stripThinkBlocks('')).toBe('');
+    expect(stripThinkBlocks(null)).toBe('');
+  });
 });
 
 // ---------- detectLoop ----------
@@ -170,6 +206,9 @@ describe('buildJudgePrompt', () => {
     expect(content).toContain('ANSWER KEY');
     expect(content).toContain('Model B');
     expect(content).toContain('Model C');
+    // Should instruct judge to ignore capitalization/formatting
+    expect(content).toContain('SUBSTANTIVELY CORRECT');
+    expect(content).toContain('capitalization');
   });
 
   it('builds messages without answer key', () => {
