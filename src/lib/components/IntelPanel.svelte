@@ -7,10 +7,13 @@
     activeMessages,
     updateGlobalDefault,
     setPerModelOverride,
+    perModelOverrides,
+    globalDefault,
     settingsOpen,
     activeConversationId,
     conversations,
   } from '$lib/stores.js';
+  import { getRecommendedSettingsForModel } from '$lib/modelDefaults.js';
   import { createConversation, listConversations, getMessageCount } from '$lib/db.js';
   import { getModelIcon, getQuantization, modelIconOverrides } from '$lib/modelIcons.js';
 
@@ -113,6 +116,24 @@
   }
   function saveAsGlobalDefault() {
     updateGlobalDefault({ temperature, top_p: topP, top_k: topK, system_prompt: sysPrompt.trim() || undefined });
+  }
+
+  function resetToRecommended() {
+    if (!currentModelId) return;
+    perModelOverrides.update((by) => {
+      const next = { ...by };
+      delete next[currentModelId];
+      return next;
+    });
+    const rec = getRecommendedSettingsForModel(currentModelId);
+    temperature = rec.temperature ?? 0.7;
+    topP = rec.top_p ?? 0.95;
+    topK = rec.top_k ?? 64;
+    sysPrompt = rec.system_prompt ?? 'You are a helpful assistant.';
+  }
+
+  function resetGlobalToRecommended() {
+    globalDefault.set({});
   }
 
   function openSettings() {
@@ -232,6 +253,13 @@
         style="border-color: var(--ui-border); color: var(--ui-text-primary);"
         onclick={saveAsGlobalDefault}
         title="Save as default for all models that don't have a custom setting">Save as global default</button>
+      <button
+        type="button"
+        class="text-[10px] px-2 py-1 rounded border hover:opacity-90 disabled:opacity-50"
+        style="border-color: var(--ui-border); color: var(--ui-text-secondary);"
+        onclick={resetToRecommended}
+        disabled={!currentModelId}
+        title="Clear custom settings for this model and use recommended">Reset to recommended</button>
     </div>
   </div>
 

@@ -80,6 +80,20 @@ const FAMILY_DEFAULTS = {
     top_k: 40,
     repeat_penalty: 1.1,
   },
+  minicpm: {
+    name: 'MiniCPM-V',
+    context_length: 32768,
+    eval_batch_size: 512,
+    flash_attention: true,
+    offload_kv_cache_to_gpu: true,
+    gpu_offload: 'max',
+    cpu_threads: 8,
+    temperature: 0.7,
+    max_tokens: 4096,
+    top_p: 0.95,
+    top_k: 64,
+    repeat_penalty: 1.15,
+  },
   deepseek: {
     name: 'DeepSeek',
     context_length: 32768,
@@ -127,6 +141,7 @@ const FAMILY_DEFAULTS = {
 /** Match model id (lowercase) to family key. Order matters: more specific first. */
 const FAMILY_PATTERNS = [
   { key: 'codellama', test: (id) => /codellama|code.?llama/i.test(id) },
+  { key: 'minicpm', test: (id) => /minicpm/i.test(id) },
   { key: 'qwen', test: (id) => /qwen/i.test(id) },
   { key: 'llama', test: (id) => /llama|meta/i.test(id) },
   { key: 'phi', test: (id) => /phi-|microsoft\/phi/i.test(id) },
@@ -149,8 +164,17 @@ function inferFamily(modelId) {
   return 'default';
 }
 
-/** Recommended system prompts for vision/VLM models (model-card / creator style). Stops "text-only" self-description. */
-const VISION_SYSTEM_PROMPTS = {
+/** Optimal system prompts per model family (from Hugging Face model cards, creator docs). */
+const RECOMMENDED_SYSTEM_PROMPTS = {
+  qwen: 'You are a helpful assistant.',
+  llama: 'You are a helpful assistant.',
+  phi: 'You are a helpful assistant.',
+  mistral: 'You are a helpful assistant.',
+  gemma: 'You are a helpful assistant.',
+  deepseek: 'You are a helpful assistant.',
+  codellama: 'You are an expert programmer. Be concise. Prefer code over prose when relevant.',
+  default: 'You are a helpful assistant.',
+  // Vision / VLM: stop "text-only" self-description and surface capabilities
   minicpm: 'You are a vision-language model. You can see and discuss images, PDFs, and video. Describe and reason about visual content when the user sends it. Do not say you are text-only.',
   'qwen2-vl': 'You are a vision-language model. You can see and discuss images, PDFs, and video. Describe and reason about visual content when the user sends it. Do not say you are text-only.',
 };
@@ -164,7 +188,7 @@ function inferVisionFamily(modelId) {
 }
 
 /**
- * Recommended generation settings for a model (from family defaults + vision prompt when applicable).
+ * Recommended generation settings for a model (from family defaults + optimal prompt).
  * Used as middle layer: globalDefault <- recommended <- perModelOverrides.
  * @param {string} modelId
  * @returns {{ temperature?: number, max_tokens?: number, top_p?: number, top_k?: number, repeat_penalty?: number, system_prompt?: string }}
@@ -173,16 +197,15 @@ export function getRecommendedSettingsForModel(modelId) {
   const family = inferFamily(modelId);
   const d = FAMILY_DEFAULTS[family] ?? FAMILY_DEFAULTS.default;
   const vision = inferVisionFamily(modelId);
+  const promptKey = vision ?? family;
   const out = {
     temperature: d.temperature,
     max_tokens: d.max_tokens,
     top_p: d.top_p,
     top_k: d.top_k,
     repeat_penalty: d.repeat_penalty,
+    system_prompt: RECOMMENDED_SYSTEM_PROMPTS[promptKey] ?? RECOMMENDED_SYSTEM_PROMPTS.default,
   };
-  if (vision && VISION_SYSTEM_PROMPTS[vision]) {
-    out.system_prompt = VISION_SYSTEM_PROMPTS[vision];
-  }
   return out;
 }
 

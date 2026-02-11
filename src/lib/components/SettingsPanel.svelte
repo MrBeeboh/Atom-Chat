@@ -1,7 +1,7 @@
 <script>
   import { fly } from 'svelte/transition';
   import { backOut, quintOut } from 'svelte/easing';
-  import { settings, layout, globalDefault, updateGlobalDefault, selectedModelId, hardware, models, presetDefaultModels, lmStudioBaseUrl, voiceServerUrl } from '$lib/stores.js';
+  import { layout, globalDefault, updateGlobalDefault, selectedModelId, hardware, models, presetDefaultModels, lmStudioBaseUrl, voiceServerUrl } from '$lib/stores.js';
   import { loadModel } from '$lib/api.js';
   import { getDefaultsForModel, BATCH_SIZE_MIN, BATCH_SIZE_MAX } from '$lib/modelDefaults.js';
 
@@ -36,13 +36,6 @@
     { value: 'off', label: 'Off (CPU only)' },
   ];
 
-  let temp = $state(DEFAULTS.temperature);
-  let maxTok = $state(DEFAULTS.max_tokens);
-  let sysPrompt = $state(DEFAULTS.system_prompt);
-  let topP = $state(DEFAULTS.top_p);
-  let topK = $state(DEFAULTS.top_k);
-  let repeatPenalty = $state(DEFAULTS.repeat_penalty);
-  let stopStrings = $state([]);
   let modelTtlSeconds = $state(DEFAULTS.model_ttl_seconds);
   let audioEnabled = $state(DEFAULTS.audio_enabled);
   let audioClicks = $state(DEFAULTS.audio_clicks);
@@ -57,13 +50,6 @@
   $effect(() => {
     const g = $globalDefault;
     $layout;
-    temp = g.temperature ?? DEFAULTS.temperature;
-    maxTok = g.max_tokens ?? DEFAULTS.max_tokens;
-    sysPrompt = g.system_prompt ?? DEFAULTS.system_prompt;
-    topP = g.top_p ?? DEFAULTS.top_p;
-    topK = g.top_k ?? DEFAULTS.top_k;
-    repeatPenalty = g.repeat_penalty ?? DEFAULTS.repeat_penalty;
-    stopStrings = Array.isArray(g.stop) ? [...g.stop] : [];
     modelTtlSeconds = g.model_ttl_seconds ?? DEFAULTS.model_ttl_seconds;
     audioEnabled = g.audio_enabled ?? DEFAULTS.audio_enabled;
     audioClicks = g.audio_clicks ?? DEFAULTS.audio_clicks;
@@ -78,10 +64,7 @@
 
   const maxCpuThreads = $derived(Math.max(1, $hardware?.cpuLogicalCores ?? 4));
 
-  let stopInput = $state('');
   let loadSectionOpen = $state(true);
-  let settingsOpen = $state(true);
-  let samplingOpen = $state(true);
   let loadError = $state(null);
   let loadApplying = $state(false);
 
@@ -92,14 +75,6 @@
     { name: 'Creative', prompt: 'You are a creative writer. Use vivid language and varied structure. Be engaging and original.' },
   ];
 
-  function applyPreset(preset) {
-    sysPrompt = preset.prompt;
-    const defaultModel = $presetDefaultModels[preset.name];
-    if (defaultModel && $models.some((m) => m.id === defaultModel)) {
-      selectedModelId.set(defaultModel);
-    }
-    updateGlobalDefault({ system_prompt: preset.prompt });
-  }
 
   function setPresetDefaultModel(presetName, modelId) {
     presetDefaultModels.update((m) => {
@@ -109,41 +84,6 @@
       return next;
     });
     if (modelId) selectedModelId.set(modelId);
-  }
-
-  function addStop() {
-    const s = stopInput.trim();
-    if (s && !stopStrings.includes(s)) {
-      stopStrings = [...stopStrings, s];
-      stopInput = '';
-    }
-  }
-
-  function removeStop(i) {
-    stopStrings = stopStrings.filter((_, idx) => idx !== i);
-  }
-
-  function onStopKeydown(ev) {
-    if (ev.key === 'Enter') {
-      ev.preventDefault();
-      addStop();
-    }
-  }
-
-  /** Rough token estimate (~4 chars per token) */
-  const systemPromptTokens = $derived(Math.max(0, Math.ceil((sysPrompt?.length ?? 0) / 4)));
-
-  const MAX_TOKENS_MIN = 128;
-  const MAX_TOKENS_MAX = 131072;
-
-  function stepMaxTokDown() {
-    const next = Math.max(MAX_TOKENS_MIN, Math.round(maxTok / 2));
-    maxTok = next;
-  }
-
-  function stepMaxTokUp() {
-    const next = Math.min(MAX_TOKENS_MAX, Math.round(maxTok * 2));
-    maxTok = next;
   }
 
   function stepBatchDown() {
@@ -186,13 +126,6 @@
 
   function save() {
     updateGlobalDefault({
-      temperature: temp,
-      max_tokens: maxTok,
-      system_prompt: sysPrompt,
-      top_p: topP,
-      top_k: topK,
-      repeat_penalty: repeatPenalty,
-      stop: stopStrings,
       model_ttl_seconds: Math.max(0, Number(modelTtlSeconds) || 0),
       audio_enabled: !!audioEnabled,
       audio_clicks: !!audioClicks,
@@ -211,13 +144,6 @@
     const modelId = $selectedModelId;
     const hw = $hardware;
     const d = modelId ? getDefaultsForModel(modelId, hw) : DEFAULTS;
-    temp = d.temperature ?? DEFAULTS.temperature;
-    maxTok = d.max_tokens ?? DEFAULTS.max_tokens;
-    sysPrompt = DEFAULTS.system_prompt;
-    topP = d.top_p ?? DEFAULTS.top_p;
-    topK = d.top_k ?? DEFAULTS.top_k;
-    repeatPenalty = d.repeat_penalty ?? DEFAULTS.repeat_penalty;
-    stopStrings = [];
     modelTtlSeconds = d.model_ttl_seconds ?? DEFAULTS.model_ttl_seconds;
     audioEnabled = d.audio_enabled ?? DEFAULTS.audio_enabled;
     audioClicks = d.audio_clicks ?? DEFAULTS.audio_clicks;
@@ -243,7 +169,7 @@
     <div class="shrink-0 px-6 pt-5 pb-2 border-b border-zinc-200 dark:border-zinc-700 flex items-start justify-between gap-2">
       <div>
         <h2 class="text-lg font-semibold text-zinc-900 dark:text-zinc-100">Settings</h2>
-        <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">Global default for all models. To set options for one model only, use the Intel panel (right) and click <strong>Save for this model</strong>.</p>
+        <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">LM Studio, Voice, Load settings, and Audio. For generation params (temperature, system prompt, etc.) use the <strong>Intel panel</strong> (right).</p>
       </div>
       <button type="button" class="shrink-0 p-1.5 rounded text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-700 dark:hover:text-zinc-200 text-xl leading-none" onclick={() => onclose?.()} title="Close" aria-label="Close">✕</button>
     </div>
@@ -413,18 +339,14 @@
         </div>
       </div>
 
-      <!-- Preset (each has optional default model) -->
+      <!-- Preset default models (used when you select a preset from the header dropdown) -->
       <div>
-        <span class="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">Preset</span>
-        <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-2">Click a preset to apply its system prompt and default model. Set default model per preset below.</p>
+        <span class="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">Preset default models</span>
+        <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-2">When you select a preset from the header dropdown, optionally switch to this model.</p>
         <div class="space-y-2">
           {#each PRESETS as p}
             <div class="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                class="text-xs px-2.5 py-1.5 rounded-lg border border-zinc-300 dark:border-zinc-600 hover:bg-zinc-100 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 transition-colors"
-                onclick={() => applyPreset(p)}>{p.name}</button>
-              <span class="text-xs text-zinc-500 dark:text-zinc-400">Default model:</span>
+              <span class="text-xs text-zinc-600 dark:text-zinc-400 min-w-[4rem]">{p.name}:</span>
               <select
                 class="text-xs rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 px-2 py-1 min-w-[140px]"
                 value={$presetDefaultModels[p.name] ?? ''}
@@ -440,159 +362,6 @@
         </div>
       </div>
 
-      <!-- System prompt -->
-      <div>
-        <label for="settings-system-prompt" class="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">System prompt</label>
-        <textarea
-          id="settings-system-prompt"
-          bind:value={sysPrompt}
-          rows="5"
-          class="w-full rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-zinc-900 dark:text-zinc-100 resize-y text-sm"
-          placeholder="You are a helpful assistant."></textarea>
-        <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">Token count (approx.): {systemPromptTokens}</p>
-      </div>
-
-      <!-- Settings (collapsible) -->
-      <div class="border border-zinc-200 dark:border-zinc-600 rounded-lg overflow-hidden">
-        <button
-          type="button"
-          class="w-full flex items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-zinc-700 dark:text-zinc-300 bg-zinc-50 dark:bg-zinc-800/80 hover:bg-zinc-100 dark:hover:bg-zinc-700/80 transition-colors"
-          onclick={() => (settingsOpen = !settingsOpen)}>
-          <span class="text-zinc-500">⚙️</span>
-          Settings
-          <span class="ml-auto text-zinc-400">{settingsOpen ? '▼' : '▶'}</span>
-        </button>
-        {#if settingsOpen}
-          <div class="px-4 pb-4 pt-1 space-y-4 border-t border-zinc-200 dark:border-zinc-600">
-            <div>
-              <label for="settings-temp" class="block text-sm font-medium text-zinc-600 dark:text-zinc-400 mb-1">Temperature</label>
-              <div class="flex items-center gap-3">
-                <input
-                  id="settings-temp"
-                  type="range"
-                  min="0"
-                  max="2"
-                  step="0.05"
-                  bind:value={temp}
-                  class="flex-1 h-2 rounded-full accent-themed" />
-                <input
-                  type="number"
-                  min="0"
-                  max="2"
-                  step="0.05"
-                  bind:value={temp}
-                  class="w-16 rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-2 py-1 text-sm text-zinc-900 dark:text-zinc-100" />
-              </div>
-            </div>
-            <div>
-              <label for="settings-max-tokens" class="block text-sm font-medium text-zinc-600 dark:text-zinc-400 mb-1">Max tokens</label>
-              <div class="flex items-stretch gap-1">
-                <input
-                  id="settings-max-tokens"
-                  type="number"
-                  min={MAX_TOKENS_MIN}
-                  max={MAX_TOKENS_MAX}
-                  bind:value={maxTok}
-                  onfocus={(e) => e.target.select()}
-                  class="max-tokens-step-input flex-1 rounded-l border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-zinc-900 dark:text-zinc-100 text-sm min-w-0" />
-                <div class="flex flex-col border border-l-0 border-zinc-300 dark:border-zinc-600 rounded-r overflow-hidden">
-                  <button
-                    type="button"
-                    class="flex-1 px-2 py-0.5 border-b border-zinc-300 dark:border-zinc-600 bg-zinc-100 dark:bg-zinc-700 hover:bg-zinc-200 dark:hover:bg-zinc-600 text-zinc-700 dark:text-zinc-300 text-xs font-medium transition-colors"
-                    onclick={stepMaxTokUp}
-                    title="Double (e.g. 2048 → 4096)"
-                    aria-label="Double max tokens">▲</button>
-                  <button
-                    type="button"
-                    class="flex-1 px-2 py-0.5 bg-zinc-100 dark:bg-zinc-700 hover:bg-zinc-200 dark:hover:bg-zinc-600 text-zinc-700 dark:text-zinc-300 text-xs font-medium transition-colors"
-                    onclick={stepMaxTokDown}
-                    title="Half (e.g. 4096 → 2048)"
-                    aria-label="Halve max tokens">▼</button>
-                </div>
-              </div>
-              <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">Type a number or use ▲/▼ to double or half (128 – 131072)</p>
-            </div>
-            <div>
-              <label for="settings-stop" class="block text-sm font-medium text-zinc-600 dark:text-zinc-400 mb-1">Stop strings</label>
-              <input
-                id="settings-stop"
-                type="text"
-                bind:value={stopInput}
-                onkeydown={onStopKeydown}
-                placeholder="Enter a string and press Enter"
-                class="w-full rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-zinc-900 dark:text-zinc-100 text-sm placeholder:text-zinc-400" />
-              {#if stopStrings.length}
-                <div class="flex flex-wrap gap-2 mt-2">
-                  {#each stopStrings as s, i}
-                    <span
-                      class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-zinc-200 dark:bg-zinc-600 text-zinc-800 dark:text-zinc-200 text-xs">
-                      {s}
-                      <button type="button" class="hover:text-red-600 dark:hover:text-red-400" onclick={() => removeStop(i)} aria-label="Remove">×</button>
-                    </span>
-                  {/each}
-                </div>
-              {/if}
-            </div>
-          </div>
-        {/if}
-      </div>
-
-      <!-- Sampling (collapsible) -->
-      <div class="border border-zinc-200 dark:border-zinc-600 rounded-lg overflow-hidden">
-        <button
-          type="button"
-          class="w-full flex items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-zinc-700 dark:text-zinc-300 bg-zinc-50 dark:bg-zinc-800/80 hover:bg-zinc-100 dark:hover:bg-zinc-700/80 transition-colors"
-          onclick={() => (samplingOpen = !samplingOpen)}>
-          <span class="text-zinc-500">○</span>
-          Sampling
-          <span class="ml-auto text-zinc-400">{samplingOpen ? '▼' : '▶'}</span>
-        </button>
-        {#if samplingOpen}
-          <div class="px-4 pb-4 pt-1 space-y-4 border-t border-zinc-200 dark:border-zinc-600">
-            <div>
-              <label for="settings-top-k" class="block text-sm font-medium text-zinc-600 dark:text-zinc-400 mb-1">Top K</label>
-              <input
-                id="settings-top-k"
-                type="number"
-                min="1"
-                max="200"
-                bind:value={topK}
-                class="w-full rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-zinc-900 dark:text-zinc-100 text-sm" />
-            </div>
-            <div>
-              <label for="settings-top-p" class="block text-sm font-medium text-zinc-600 dark:text-zinc-400 mb-1">Top P</label>
-              <div class="flex items-center gap-3">
-                <input
-                  id="settings-top-p"
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.01"
-                  bind:value={topP}
-                  class="flex-1 h-2 rounded-full accent-themed" />
-                <input
-                  type="number"
-                  min="0"
-                  max="1"
-                  step="0.01"
-                  bind:value={topP}
-                  class="w-16 rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-2 py-1 text-sm text-zinc-900 dark:text-zinc-100" />
-              </div>
-            </div>
-            <div>
-              <label for="settings-repeat-penalty" class="block text-sm font-medium text-zinc-600 dark:text-zinc-400 mb-1">Repeat penalty</label>
-              <input
-                id="settings-repeat-penalty"
-                type="number"
-                min="1"
-                max="2"
-                step="0.01"
-                bind:value={repeatPenalty}
-                class="w-full rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-zinc-900 dark:text-zinc-100 text-sm" />
-            </div>
-          </div>
-        {/if}
-      </div>
     </div>
 
     <div class="shrink-0 px-6 py-4 border-t border-zinc-200 dark:border-zinc-700 flex justify-between gap-2">
