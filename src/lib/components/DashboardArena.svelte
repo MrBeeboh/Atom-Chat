@@ -387,6 +387,47 @@
     clearScoreHistory();
   }
 
+  /** Full arena reset: clear all messages, scores, history, errors, go back to Q1. */
+  async function startOver() {
+    const ok = await confirm({
+      title: 'Start over',
+      message: 'Clear all model responses, reset all scores, and go back to question 1. This cannot be undone.',
+      confirmLabel: 'Start over',
+      cancelLabel: 'Cancel',
+      danger: true,
+    });
+    if (!ok) return;
+    // Stop any running streams
+    stopAll();
+    // Clear all slot messages
+    messagesA = [];
+    messagesB = [];
+    messagesC = [];
+    messagesD = [];
+    // Reset scores and history
+    arenaScores = { B: 0, C: 0, D: 0 };
+    scoreHistory = [];
+    clearScoreHistory();
+    // Reset to Q1
+    questionIndex = 0;
+    // Clear errors
+    chatError.set(null);
+    slotErrors = { A: '', B: '', C: '', D: '' };
+    // Clear persisted messages
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.removeItem('arenaMessagesA');
+      sessionStorage.removeItem('arenaMessagesB');
+      sessionStorage.removeItem('arenaMessagesC');
+      sessionStorage.removeItem('arenaMessagesD');
+    }
+    // Clear ask the judge state
+    askJudgeReply = '';
+    askJudgeQuestion = '';
+    // Clear Run All state
+    runAllActive = false;
+    runAllProgress = { current: 0, total: 0 };
+  }
+
   // ---------- Per-slot overrides & system prompt templates ----------
   // ARENA_SYSTEM_PROMPT_TEMPLATES imported from arenaLogic.js
   function applySystemPromptTemplate(slot, templatePrompt) {
@@ -1439,12 +1480,12 @@
       <button
         type="button"
         class="flex items-center gap-1.5 h-8 px-3 rounded-md border text-xs font-medium shrink-0 transition-opacity hover:opacity-90"
-        style="border-color: var(--ui-border); background: var(--ui-input-bg); color: var(--ui-text-secondary);"
-        onclick={confirmResetScores}
-        aria-label="Reset scores"
-        title="Reset B/C/D scores to 0">
-        <span aria-hidden="true">↺</span>
-        <span>Reset</span>
+        style="border-color: var(--ui-accent-hot, #dc2626); color: var(--ui-accent-hot, #dc2626); background: transparent;"
+        onclick={startOver}
+        aria-label="Start over"
+        title="Clear all responses, reset scores, go back to Q1">
+        <span aria-hidden="true">⟲</span>
+        <span>Start Over</span>
       </button>
       <button
         type="button"
