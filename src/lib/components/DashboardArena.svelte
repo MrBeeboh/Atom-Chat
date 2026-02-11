@@ -10,7 +10,7 @@
   import { chatError, dashboardModelA, dashboardModelB, dashboardModelC, dashboardModelD, isStreaming, settings, globalDefault, perModelOverrides, getEffectiveSettingsForModel, mergeEffectiveSettings, liveTokens, pushTokSample, liveTokPerSec, arenaPanelCount, arenaSlotAIsJudge, arenaWebSearchMode, arenaSlotOverrides, setArenaSlotOverride, pendingDroppedFiles, webSearchForNextMessage, webSearchInProgress, webSearchConnected, layout, lmStudioUnloadHelperUrl, confirm } from '$lib/stores.js';
   import { playClick, playComplete } from '$lib/audio.js';
   import { streamChatCompletion, unloadModel, loadModel, waitUntilUnloaded, unloadAllLoadedModels } from '$lib/api.js';
-  import { searchDuckDuckGo, formatSearchResultForChat } from '$lib/duckduckgo.js';
+  import { searchDuckDuckGo, formatSearchResultForChat, warmUpSearchConnection } from '$lib/duckduckgo.js';
   import ChatInput from '$lib/components/ChatInput.svelte';
   import MessageBubble from '$lib/components/MessageBubble.svelte';
   import ThinkingAtom from '$lib/components/ThinkingAtom.svelte';
@@ -83,6 +83,27 @@
     if (typeof localStorage !== 'undefined' && answerKey !== undefined)
       localStorage.setItem('arenaAnswerKey', answerKey);
   });
+  // ---------- Web globe (same behavior as cockpit ChatInput globe) ----------
+  let arenaWebWarmingUp = $state(false);
+  let arenaWebWarmUpAttempted = $state(false);
+  function runArenaWarmUp() {
+    arenaWebWarmUpAttempted = true;
+    arenaWebWarmingUp = true;
+    webSearchConnected.set(false);
+    warmUpSearchConnection().then((ok) => {
+      arenaWebWarmingUp = false;
+      webSearchConnected.set(ok);
+    });
+  }
+  /** Auto-start warm-up when web search is turned on (uses $store for Svelte 5 reactivity). */
+  $effect(() => {
+    const on = $webSearchForNextMessage;
+    const connected = $webSearchConnected;
+    if (!on) { arenaWebWarmUpAttempted = false; return; }
+    if (connected || arenaWebWarmingUp || arenaWebWarmUpAttempted) return;
+    runArenaWarmUp();
+  });
+
   /** Accordion open state in settings panel. */
   let settingsRulesExpanded = $state(false);
   /** Judge feedback: collapsible panel bottom-left; default collapsed. */
@@ -409,7 +430,8 @@
     let effectiveText = String(text).trim();
     const webMode = get(arenaWebSearchMode);
     if (webMode === 'all' && get(webSearchForNextMessage)) {
-      webSearchForNextMessage.set(false);
+      // Stay connected: don't turn off webSearchForNextMessage after send.
+      // User toggles it off manually via the globe button.
       webSearchInProgress.set(true);
       try {
         const searchResult = await searchDuckDuckGo(effectiveText);
@@ -990,10 +1012,50 @@
     </div>
     <!-- Group 2: Primary action -->
     <button type="button" class="arena-bar-btn primary h-8 px-4 rounded-md text-xs font-semibold shrink-0 disabled:opacity-50 transition-opacity" style="background-color: var(--ui-accent); color: var(--ui-bg-main);" disabled={$isStreaming || currentQuestionTotal === 0} onclick={askCurrentQuestion} aria-label="Ask this question" title="Send this question to the models">Ask</button>
-    <!-- Group 3: Web = heading; options = None | All | Judge only (label outside the control so it's not a fourth option) -->
+    <!-- Group 3: Globe (connect/disconnect) + mode buttons (None | All | Judge only) -->
     <div class="flex items-center gap-2">
-      <span class="text-[11px] font-medium shrink-0" style="color: var(--ui-text-secondary);" aria-hidden="true">Web</span>
-      <div class="flex h-8 rounded-md border overflow-hidden" style="border-color: var(--ui-border); background: var(--ui-input-bg);">
+      <!-- Globe: click to connect/disconnect; same as cockpit -->
+      <button
+        type="button"
+        class="arena-globe-btn relative flex items-center justify-center shrink-0 w-8 h-8 rounded-md border transition-colors"
+        class:arena-globe-active={$webSearchForNextMessage}
+        style="border-color: {$webSearchForNextMessage ? 'var(--ui-accent)' : 'var(--ui-border)'}; background: {$webSearchForNextMessage ? 'color-mix(in srgb, var(--ui-accent) 14%, transparent)' : 'var(--ui-input-bg)'};"
+        disabled={$isStreaming}
+        title={arenaWebWarmingUp ? 'Connecting to internet…' : $webSearchForNextMessage ? ($webSearchConnected ? 'Connected – click to disconnect' : 'Not connected – click to retry') : 'Click to connect to the internet'}
+        onclick={() => {
+          const on = $webSearchForNextMessage;
+          const connected = $webSearchConnected;
+          if (on && !connected && !arenaWebWarmingUp) {
+            arenaWebWarmUpAttempted = false;
+            runArenaWarmUp();
+            return;
+          }
+          if (on) {
+            webSearchForNextMessage.set(false);
+            webSearchConnected.set(false);
+            return;
+          }
+          webSearchForNextMessage.set(true);
+          runArenaWarmUp();
+        }}
+        aria-label={arenaWebWarmingUp ? 'Connecting' : $webSearchForNextMessage ? 'Web connected' : 'Connect to web'}
+        aria-pressed={$webSearchForNextMessage}
+      >
+        <span
+          class="text-base leading-none"
+          class:arena-globe-spin={arenaWebWarmingUp}
+          aria-hidden="true"
+        >🌐</span>
+        {#if $webSearchForNextMessage}
+          {#if $webSearchConnected}
+            <span class="arena-globe-dot arena-globe-dot-green" aria-hidden="true"></span>
+          {:else}
+            <span class="arena-globe-dot arena-globe-dot-red" class:arena-globe-dot-pulse={arenaWebWarmingUp} aria-hidden="true"></span>
+          {/if}
+        {/if}
+      </button>
+      <!-- Mode: who gets web access (only relevant when connected) -->
+      <div class="flex h-8 rounded-md border overflow-hidden" style="border-color: var(--ui-border); background: var(--ui-input-bg); opacity: {$webSearchForNextMessage && $webSearchConnected ? '1' : '0.5'};">
         <button type="button" class="arena-web-tab h-full px-2.5 text-[11px] font-medium" class:active={$arenaWebSearchMode === 'none'} onclick={() => { arenaWebSearchMode.set('none'); if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume); }} title="No web search">None</button>
         <button type="button" class="arena-web-tab h-full px-2.5 text-[11px] font-medium border-l" class:active={$arenaWebSearchMode === 'all'} style="border-color: var(--ui-border);" onclick={() => { arenaWebSearchMode.set('all'); if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume); }} title="All models get web search">All</button>
         <button type="button" class="arena-web-tab h-full px-2.5 text-[11px] font-medium border-l" class:active={$arenaWebSearchMode === 'judge'} style="border-color: var(--ui-border);" onclick={() => { arenaWebSearchMode.set('judge'); if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume); }} title="Only the judge (slot A) gets web search to fact-check">Judge only</button>

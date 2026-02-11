@@ -1093,6 +1093,24 @@ body {
   color: var(--ui-text-primary);
 }
 
+/* Arena globe button (web connect/disconnect) */
+.arena-globe-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.arena-globe-spin { animation: arena-globe-spin 1.2s linear infinite; }
+@keyframes arena-globe-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+.arena-globe-dot {
+  position: absolute;
+  bottom: 2px;
+  left: 2px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  pointer-events: none;
+}
+.arena-globe-dot-green { background: #22c55e; }
+.arena-globe-dot-red { background: #dc2626; }
+.arena-globe-dot-pulse { animation: arena-globe-dot-pulse 1.2s ease-in-out infinite; }
+@keyframes arena-globe-dot-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
 /* Streaming: pulsing border glow */
 .atom-streaming-glow {
   animation: atom-streaming-glow 1.5s ease-in-out infinite;

@@ -71,7 +71,8 @@
 
     let effectiveText = (text || '').trim();
     if (get(webSearchForNextMessage) && hasText) {
-      webSearchForNextMessage.set(false);
+      // Stay connected: don't turn off webSearchForNextMessage after send.
+      // User toggles it off manually via the globe button.
       webSearchInProgress.set(true);
       try {
         const searchResult = await searchDuckDuckGo(effectiveText);
