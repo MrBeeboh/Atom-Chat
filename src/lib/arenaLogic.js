@@ -65,9 +65,17 @@ export function parseQuestionsAndAnswers(text) {
   const numberedResult = tryParseNumbered(normalized);
   if (numberedResult) return numberedResult;
 
-  // --- Format 4: Q:/A: or Question:/Answer: labeled ---
+  // --- Format 4: Markdown list (- or *) ---
+  const mdListResult = tryParseMarkdownList(normalized);
+  if (mdListResult) return mdListResult;
+
+  // --- Format 5: Q:/A: or Question:/Answer: labeled ---
   const qaResult = tryParseQALabeled(normalized);
   if (qaResult) return qaResult;
+
+  // --- Format 6: Separated blocks (double newline) fallback ---
+  const blockResult = tryParseBlocks(normalized);
+  if (blockResult) return blockResult;
 
   // --- Fallback: treat entire text as a single question ---
   const trimmed = normalized.trim();
@@ -184,19 +192,69 @@ function tryParseNumbered(text) {
   // Check that at least the first block starts with a number
   if (!/^\s*\d+[.)]\s+/.test(blocks[0])) return null;
 
+  return parseBlocksToQA(blocks, /^\s*\d+[.)]\s+/);
+}
+
+/**
+ * Try to parse markdown list format: "- Question" or "* Question".
+ */
+function tryParseMarkdownList(text) {
+  // Split into blocks at lines starting with a bullet
+  const blocks = text.split(/\n\s*(?=[-]\s+)/).filter((b) => b.trim().length > 0);
+  if (blocks.length === 0) return null; // No bullets found or split failed
+
+  // Check that at least the first block starts with a bullet
+  // Using simplified check: strictly look for lines starting with "- " or "* "
+  if (!/^\s*[-]\s+/.test(blocks[0])) {
+    // try * bullets
+    const blocksStar = text.split(/\n\s*(?=[*]\s+)/).filter((b) => b.trim().length > 0);
+    if (blocksStar.length > 0 && /^\s*[*]\s+/.test(blocksStar[0])) {
+      return parseBlocksToQA(blocksStar, /^\s*[*]\s+/);
+    }
+    return null;
+  }
+
+  return parseBlocksToQA(blocks, /^\s*[-]\s+/);
+}
+
+/**
+ * Try to parse plain text blocks separated by double newlines.
+ * e.g. "Question 1\n\nQuestion 2\nAnswer: Something"
+ */
+function tryParseBlocks(text) {
+  const blocks = text.split(/\n\s*\n/).filter((b) => b.trim().length > 0);
+  if (blocks.length < 2) return null; // If only 1 block, let fallback handle it as single question
+
+  return parseBlocksToQA(blocks, null);
+}
+
+/**
+ * Helper to process a list of raw text blocks into Q/A pairs.
+ * Each block is treated as one item.
+ * @param {string[]} blocks
+ * @param {RegExp|null} stripPrefixRegex - regex to strip from start of question line (e.g. numbering)
+ */
+function parseBlocksToQA(blocks, stripPrefixRegex) {
   const questions = [];
   const answers = [];
   for (const block of blocks) {
     const lines = block.split('\n');
-    const first = (lines[0] || '').replace(/^\s*\d+[.)]\s+/, '').trim();
+    let first = lines[0] || '';
+    if (stripPrefixRegex) {
+      first = first.replace(stripPrefixRegex, '').trim();
+    } else {
+      first = first.trim();
+    }
+
     let questionLines = [];
     let answerLines = [];
     let inAnswer = false;
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
-      if (/^\s*Answer\s*:\s*/i.test(line)) {
+      // Check for explicit "Answer:" label
+      if (/^\s*(?:Answer|A)\s*:\s*/i.test(line)) {
         inAnswer = true;
-        answerLines.push(line.replace(/^\s*Answer\s*:\s*/i, '').trim());
+        answerLines.push(line.replace(/^\s*(?:Answer|A)\s*:\s*/i, '').trim());
       } else if (inAnswer) {
         answerLines.push(line);
       } else {
@@ -441,14 +499,14 @@ export function buildJudgePrompt({ slotsWithResponses, answerKeyTrimmed, judgeWe
 
   const messages = feedback
     ? [
-        {
-          role: 'system',
-          content: systemWithAnswerKey
-            ? `${systemWithAnswerKey}\n\nUser correction to apply when scoring:\n${feedback}`
-            : `You are a judge. Use the user correction below when scoring. Your reply must be ONLY the score lines (Model B: X/10 - comment, etc.). No reasoning, no <think>, no other text.\n\nUser correction:\n${feedback}`,
-        },
-        { role: 'user', content: userContent },
-      ]
+      {
+        role: 'system',
+        content: systemWithAnswerKey
+          ? `${systemWithAnswerKey}\n\nUser correction to apply when scoring:\n${feedback}`
+          : `You are a judge. Use the user correction below when scoring. Your reply must be ONLY the score lines (Model B: X/10 - comment, etc.). No reasoning, no <think>, no other text.\n\nUser correction:\n${feedback}`,
+      },
+      { role: 'user', content: userContent },
+    ]
     : systemWithAnswerKey
       ? [{ role: 'system', content: systemWithAnswerKey }, { role: 'user', content: userContent }]
       : [{ role: 'user', content: userContent }];
