@@ -6,6 +6,15 @@
  */
 
 // ---------- System prompt templates ----------
+
+/**
+ * Hardcoded system prompt for Arena contestants.
+ * CRITICAL: Must NEVER mention judges, scoring, competition, other models, or evaluation.
+ * Cached/persisted system prompts are IGNORED for contestants — only this is used.
+ */
+export const ARENA_CONTESTANT_SYSTEM_PROMPT =
+  'Answer the question directly and concisely. Follow any instructions or constraints given. Do not discuss how you would be evaluated. End your response with "Final Answer: " followed by your concise answer.';
+
 export const ARENA_SYSTEM_PROMPT_TEMPLATES = [
   { name: '—', prompt: '' },
   { name: 'General', prompt: 'You are a helpful assistant.' },
@@ -14,7 +23,7 @@ export const ARENA_SYSTEM_PROMPT_TEMPLATES = [
   { name: 'Creative', prompt: 'You are a creative writer. Use vivid language and varied structure. Be engaging and original.' },
   {
     name: 'Arena contestant',
-    prompt: 'You are a contestant in a competition against other AI models. You will receive questions and contest rules. You must strictly adhere to the rules; breaking them (e.g. going over the allowed line count, ignoring format, or violating instructions) can result in a score of zero. Answer each question concisely, accurately, and within the stated constraints. Do not acknowledge the competition in your answer. IMPORTANT: You MUST end every response with a line that reads "Final Answer: " followed by your concise, complete answer. Include variable names when solving equations (e.g. "Final Answer: x = 3" not just "3"). This is how the judge identifies your answer. If your answer has multiple parts, list them all on the Final Answer line.',
+    prompt: 'Answer the question directly and concisely. Follow any instructions or constraints given. Do not discuss how you would be evaluated. End your response with "Final Answer: " followed by your concise answer.',
   },
   {
     name: 'Arena judge',
@@ -321,24 +330,65 @@ export function stripThinkBlocks(text) {
 }
 
 /**
- * Parse judge output for "Model B: 7/10" lines; return { B: 7, C: 5, ... }.
+ * Strip judge-pattern lines from a contestant response.
+ * Some models hallucinate "Model B: 7/10 - reason" or similar scoring patterns.
+ * Also strips <think>...</think> blocks.
+ * @param {string} text
+ * @returns {string}
+ */
+export function sanitizeContestantResponse(text) {
+  if (!text || typeof text !== 'string') return text || '';
+  let cleaned = stripThinkBlocks(text);
+  // Remove lines that look like judge scoring: "Model X: N/10" or "Response N: N/10"
+  cleaned = cleaned.replace(/^.*(?:Model\s+[A-D]|Response\s+\d+)\s*:\s*\d+\s*\/\s*10.*$/gim, '');
+  // Collapse multiple blank lines into one
+  cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
+  return cleaned.trim();
+}
+
+/**
+ * Parse judge output for "Model A: 7/10" lines; return { A: 7, B: 5, ... }.
  * Strips <think> blocks before parsing (some models emit them despite instructions).
  * @param {string} text
  * @returns {Record<string, number>}
  */
 export function parseJudgeScores(text) {
   if (!text || typeof text !== 'string') return {};
-  // Strip <think> blocks so they don't interfere with score parsing
   const cleaned = stripThinkBlocks(text);
   const out = {};
-  const re = /Model\s+([B-D]):\s*(\d+)\s*\/\s*10/gi;
+  const re = /Model\s+([A-D]):\s*(\d+)\s*\/\s*10/gi;
   let m;
   while ((m = re.exec(cleaned)) !== null) {
     const slot = m[1].toUpperCase();
     const n = parseInt(m[2], 10);
-    if (slot >= 'B' && slot <= 'D' && n >= 0 && n <= 10) out[slot] = n;
+    if (slot >= 'A' && slot <= 'D' && n >= 0 && n <= 10) out[slot] = n;
   }
   return out;
+}
+
+/**
+ * Parse judge output into scores and per-model explanation text.
+ * Expects lines like "Model A: 7/10 - one short sentence".
+ * @param {string} text
+ * @returns {{ scores: Record<string, number>, explanations: Record<string, string> }}
+ */
+export function parseJudgeScoresAndExplanations(text) {
+  if (!text || typeof text !== 'string') return { scores: {}, explanations: {} };
+  const cleaned = stripThinkBlocks(text);
+  const scores = {};
+  const explanations = {};
+  const re = /Model\s+([A-D]):\s*(\d+)\s*\/\s*10\s*(?:-\s*)?([\s\S]*?)(?=Model\s+[A-D]:|$)/gi;
+  let m;
+  while ((m = re.exec(cleaned)) !== null) {
+    const slot = m[1].toUpperCase();
+    const n = parseInt(m[2], 10);
+    const reason = (m[3] || '').trim();
+    if (slot >= 'A' && slot <= 'D' && n >= 0 && n <= 10) {
+      scores[slot] = n;
+      explanations[slot] = reason;
+    }
+  }
+  return { scores, explanations };
 }
 
 // ---------- Loop detection ----------
@@ -408,10 +458,10 @@ export function addScoreRound(history, questionIndex, questionText, scores) {
 /**
  * Compute running totals from history.
  * @param {ScoreRound[]} history
- * @returns {{ B: number, C: number, D: number }}
+ * @returns {{ A: number, B: number, C: number, D: number }}
  */
 export function computeTotals(history) {
-  const totals = { B: 0, C: 0, D: 0 };
+  const totals = { A: 0, B: 0, C: 0, D: 0 };
   for (const round of history) {
     for (const [slot, score] of Object.entries(round.scores)) {
       if (slot in totals) totals[slot] += score;
@@ -443,6 +493,67 @@ export function contentToText(content) {
   return '';
 }
 
+// ---------- Blind review (shuffle + anonymize) ----------
+
+/**
+ * Create a seeded RNG for reproducible shuffle. Uses a simple hash of the seed string.
+ * @param {string} seed - e.g. run UUID
+ * @returns {() => number} - returns value in [0, 1)
+ */
+export function makeSeededRandom(seed) {
+  let h = 0;
+  const str = String(seed);
+  for (let i = 0; i < str.length; i++) {
+    h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
+  }
+  h = h >>> 0;
+  return function next() {
+    h = (Math.imul(1664525, h) + 1013904223) | 0;
+    return (h >>> 0) / (0xffffffff + 1);
+  };
+}
+
+/**
+ * Fisher–Yates shuffle; returns new array so original is unchanged.
+ * @param {Array<T>} arr
+ * @param {() => number} [random] - default Math.random; use makeSeededRandom(seed) for reproducibility
+ * @returns {Array<T>}
+ */
+export function shuffleArray(arr, random = Math.random) {
+  const out = [...arr];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+/**
+ * Parse blind judge output: "Response 1: 7/10 - reason" etc.
+ * @param {string} text
+ * @param {string[]} responseOrder - responseOrder[i] is the slot for "Response i+1"
+ * @returns {{ scores: Record<string, number>, explanations: Record<string, string> }}
+ */
+export function parseBlindJudgeScores(text, responseOrder) {
+  if (!text || typeof text !== 'string' || !Array.isArray(responseOrder)) return { scores: {}, explanations: {} };
+  const cleaned = stripThinkBlocks(text);
+  const scores = {};
+  const explanations = {};
+  const re = /Response\s+(\d+):\s*(\d+)\s*\/\s*10\s*(?:-\s*)?([\s\S]*?)(?=Response\s+\d+:|\s*$)/gi;
+  let m;
+  while ((m = re.exec(cleaned)) !== null) {
+    const oneBased = parseInt(m[1], 10);
+    const n = parseInt(m[2], 10);
+    const reason = (m[3] || '').trim();
+    const slot = responseOrder[oneBased - 1];
+    if (slot && n >= 0 && n <= 10) {
+      scores[slot] = n;
+      explanations[slot] = reason;
+    }
+  }
+  return { scores, explanations };
+}
+
 // ---------- Judge prompt builder ----------
 
 /**
@@ -459,14 +570,14 @@ export function contentToText(content) {
 export function buildJudgePrompt({ slotsWithResponses, answerKeyTrimmed, judgeWebContext, promptText, judgeFeedback, judgeInstructions }) {
   const competingSlots = slotsWithResponses.map((s) => s.slot);
   const competingList = competingSlots.join(', ');
-  const firstSlot = competingSlots[0] || 'B';
+  const firstSlot = competingSlots[0] || 'A';
   const feedback = typeof judgeFeedback === 'string' ? judgeFeedback.trim() : '';
   const customInstr = typeof judgeInstructions === 'string' ? judgeInstructions.trim() : '';
 
   const parts = [
     customInstr || 'You are a judge. Score each model response 1-10 (10 = best) with one short reason.',
     '',
-    `COMPETING MODELS (authoritative—do not guess): This round has exactly ${competingSlots.length} model(s): ${competingList}. You must output exactly one line for each of these, in this order: ${competingList}. Do not score Model A (the judge). Do not add or mention Model E or any other model. Only ${competingList}. If a model has no response below, write: Model X: 0/10 - No response.`,
+    `COMPETING MODELS (authoritative—do not guess): This round has exactly ${competingSlots.length} model(s): ${competingList}. You must output exactly one line for each of these, in this order: ${competingList}. Do not add or mention Model E or any other model. Only ${competingList}. If a model has no response below, write: Model X: 0/10 - No response.`,
     '',
     answerKeyTrimmed
       ? 'BASIS FOR SCORING: An ANSWER KEY is provided below. Judge whether each model\'s response is SUBSTANTIVELY CORRECT—meaning the factual content matches the answer key. IMPORTANT: If a model\'s response contains a line starting with "Final Answer:", use THAT line as the model\'s answer—ignore any verbose reasoning above it. If there is no "Final Answer:" line, evaluate the full response.\n\nSCORING EQUIVALENCES — all of these are the SAME correct answer and must receive the SAME high score:\n- "3" and "x=3" and "x = 3" (bare value = variable assignment when context is obvious)\n- "ampere" and "Ampere" and "AMPERE" (capitalization never matters)\n- "Electromagnetic force" and "electromagnetic force" and "EM force" (phrasing/abbreviation)\n- "H2O" and "water" (common synonyms)\nDo NOT penalize for omitting the variable name, extra explanation, or different phrasing. The ONLY question is: did the model give the right factual answer? A correct answer = 8-10. A partially correct answer = 4-7. A wrong answer = 1-3. No response = 0.'
@@ -514,6 +625,93 @@ export function buildJudgePrompt({ slotsWithResponses, answerKeyTrimmed, judgeWe
   return { messages };
 }
 
+/** Judge criteria per Sequential Model Arena spec. */
+const JUDGE_CRITERIA_SPEC = [
+  'correctness_against_answer_key',
+  'logical_validity',
+  'constraint_compliance',
+  'clarity',
+  'completeness',
+];
+
+/**
+ * Build judge prompt for blind review: responses are anonymized as "Response 1", "Response 2", ...
+ * and presented in shuffled order. Judge must output "Response N: X/10 - reason".
+ * @param {Object} opts - same as buildJudgePrompt, plus shuffleRandom optional
+ * @returns {{ messages: Array<{ role: string, content: string }>, responseOrder: string[] }}
+ */
+export function buildJudgePromptBlind({
+  slotsWithResponses,
+  answerKeyTrimmed,
+  judgeWebContext,
+  promptText,
+  judgeFeedback,
+  judgeInstructions,
+  shuffleRandom = Math.random,
+}) {
+  const shuffled = shuffleArray(slotsWithResponses, shuffleRandom);
+  const responseOrder = shuffled.map((s) => s.slot);
+  const n = responseOrder.length;
+  const feedback = typeof judgeFeedback === 'string' ? judgeFeedback.trim() : '';
+  const customInstr = typeof judgeInstructions === 'string' ? judgeInstructions.trim() : '';
+
+  const criteriaLine = JUDGE_CRITERIA_SPEC.join(', ');
+  const parts = [
+    customInstr ||
+      `You are a judge. Score each response 0-10 (10 = best) with one short reason. Consider: ${criteriaLine}. Do NOT identify or guess which model wrote which response.`,
+    '',
+    `There are exactly ${n} responses, labeled Response 1 through Response ${n}. You must output exactly one line per response, in order. Format: "Response 1: X/10 - one short reason." then "Response 2: X/10 - ..." and so on. If a response is missing or empty, write: Response N: 0/10 - No response.`,
+    '',
+    answerKeyTrimmed
+      ? `BASIS FOR SCORING: An ANSWER KEY is provided. Judge correctness against it. If a response contains a line "Final Answer:", use that line as the answer. Equivalences: "3" = "x=3", "ampere" = "Ampere". Correct = 8-10, partial = 4-7, wrong = 1-3, no response = 0.`
+      : 'BASIS FOR SCORING: Use the web search section (if present) or your knowledge. Focus on factual accuracy. Score 0-10 with a brief reason.',
+    '',
+    'CRITICAL: Your ENTIRE reply must be ONLY the score lines. No <think>, no preamble, no analysis. Start with "Response 1:".',
+    '',
+  ];
+  if (answerKeyTrimmed) {
+    parts.push('--- ANSWER KEY ---', answerKeyTrimmed, '');
+  }
+  if (judgeWebContext) {
+    parts.push('--- WEB SEARCH ---', judgeWebContext, '');
+  }
+  parts.push('--- ORIGINAL PROMPT ---', promptText || '(none)', '');
+  shuffled.forEach(({ msgs }, i) => {
+    const lastAssistantMsg = [...msgs].reverse().find((m) => m.role === 'assistant');
+    const text = lastAssistantMsg ? contentToText(lastAssistantMsg.content) : '';
+    parts.push(`--- Response ${i + 1} ---`, text.trim() || '(no response)', '');
+  });
+  const userContent = parts.join('\n');
+
+  const systemContent = answerKeyTrimmed
+    ? `You are a judge. Score each response 0-10 against the answer key. Consider: ${criteriaLine}. Output ONLY "Response 1: X/10 - reason" through "Response ${n}: X/10 - reason". No other text.`
+    : `You are a judge. Score each response 0-10. Consider: ${criteriaLine}. Output ONLY the Response 1..${n} score lines. No other text.`;
+
+  const messages = feedback
+    ? [
+        { role: 'system', content: `${systemContent}\n\nUser correction:\n${feedback}` },
+        { role: 'user', content: userContent },
+      ]
+    : [{ role: 'system', content: systemContent }, { role: 'user', content: userContent }];
+
+  return { messages, responseOrder };
+}
+
+// ---------- Witty judge loading messages ----------
+
+export const JUDGE_LOADING_LINES = [
+  { main: 'The judge is entering the courtroom.', sub: '(All rise.)' },
+  { main: 'Summoning the judge…', sub: '(They were napping. Give them a second.)' },
+  { main: 'Loading the judge model…', sub: '(No pressure. Only everyone\'s fate hangs in the balance.)' },
+  { main: 'The judge is warming up.', sub: '(Stretching neurons. Cracking knuckles.)' },
+  { main: 'Judge is being loaded…', sub: '(They take their time. It\'s a power move.)' },
+  { main: 'Calling in the expert.', sub: '(They charge by the token, so let\'s be quick.)' },
+  { main: 'Loading the arbiter of truth.', sub: '(Dramatic entrance in 3… 2… 1…)' },
+  { main: 'Judge incoming.', sub: '(Hope the contestants studied.)' },
+  { main: 'The judge approaches the bench.', sub: '(They\'ve seen things. Terrible answers. This time will be different. Maybe.)' },
+  { main: 'Waking the judge…', sub: '(It\'s not easy being the smartest model in the room.)' },
+];
+
 // ---------- Witty judge web messages ----------
 
 export const JUDGE_WEB_LINES = [
@@ -528,6 +726,70 @@ export const JUDGE_WEB_LINES = [
   { main: 'Judge is checking the web…', sub: '(Making sure the models didn\'t just make it up. Again.)' },
 ];
 
+// ---------- Judge model selection ----------
+
+/**
+ * Extract a rough parameter-count number from a model id string.
+ * E.g. "qwen3-32b-instruct" → 32, "llama-3.1-70b" → 70, "phi-4-mini" → 4.
+ * Returns 0 if no size found.
+ * @param {string} id
+ * @returns {number}
+ */
+function extractParamSize(id) {
+  if (!id) return 0;
+  const m = id.match(/(\d+(?:\.\d+)?)\s*[bB]\b/);
+  return m ? parseFloat(m[1]) : 0;
+}
+
+/**
+ * Pick the best judge model from the available model list.
+ *
+ * Rules (Sequential Model Arena spec):
+ *   1. The judge MUST NOT be any of the contestant models.
+ *   2. If the user explicitly set a scoring model that isn't a contestant, use it.
+ *   3. Otherwise, auto-pick the largest / smartest non-contestant model.
+ *   4. Prefer "instruct" models over base models. Prefer larger param counts.
+ *   5. If no non-contestant model is available, return { id: null, error: '...' }.
+ *
+ * @param {Object} opts
+ * @param {string} opts.userChoice - User-configured arenaScoringModelId ('' = auto).
+ * @param {string[]} opts.contestantIds - Model IDs currently competing (A–D).
+ * @param {Array<{ id: string }>} opts.availableModels - Full model list from LM Studio.
+ * @returns {{ id: string|null, error?: string, fallback?: boolean }}
+ */
+export function pickJudgeModel({ userChoice, contestantIds, availableModels }) {
+  const contestants = new Set((contestantIds || []).map((s) => s.trim().toLowerCase()).filter(Boolean));
+  const isContestant = (id) => contestants.has(id.trim().toLowerCase());
+
+  // User explicitly chose a model
+  if (userChoice && userChoice.trim()) {
+    if (!isContestant(userChoice)) {
+      return { id: userChoice.trim() };
+    }
+    // User's choice IS a contestant → fall back to auto-pick
+  }
+
+  // Auto-pick: find best non-contestant
+  const candidates = (availableModels || [])
+    .map((m) => m.id)
+    .filter((id) => id && !isContestant(id));
+
+  if (candidates.length === 0) {
+    return { id: null, error: 'No non-contestant model available for judging. Load an additional model in LM Studio that is not assigned to any Arena slot.' };
+  }
+
+  // Rank: prefer instruct, prefer larger param count
+  const scored = candidates.map((id) => {
+    const lower = id.toLowerCase();
+    const size = extractParamSize(id);
+    const instructBonus = /instruct|chat/.test(lower) ? 100 : 0;
+    return { id, score: size + instructBonus };
+  });
+  scored.sort((a, b) => b.score - a.score);
+
+  return { id: scored[0].id, fallback: true };
+}
+
 // ---------- Standing labels ----------
 
 /**
@@ -537,10 +799,11 @@ export const JUDGE_WEB_LINES = [
  * @returns {string}
  */
 export function arenaStandingLabel(slot, scores) {
-  const order = ['B', 'C', 'D'].sort((a, b) => (scores[b] ?? 0) - (scores[a] ?? 0));
+  const order = ['A', 'B', 'C', 'D'].sort((a, b) => (scores[b] ?? 0) - (scores[a] ?? 0));
   const idx = order.indexOf(slot);
   if (idx === 0) return 'Leader';
   if (idx === 1) return '2nd';
   if (idx === 2) return '3rd';
+  if (idx === 3) return '4th';
   return '—';
 }

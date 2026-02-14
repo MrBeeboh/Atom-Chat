@@ -253,6 +253,37 @@ export async function unloadAllLoadedModels(helperUrlOrOverride) {
 }
 
 /**
+ * Unload ALL currently loaded model instances using the native LM Studio API.
+ * Does NOT require any helper server. Finds every loaded instance via
+ * GET /api/v1/models and calls POST /api/v1/models/unload for each.
+ * @returns {Promise<{ ok: boolean, unloaded: number }>}
+ */
+export async function unloadAllModelsNative() {
+  try {
+    const base = getLmStudioBase();
+    const res = await fetch(`${base}/api/v1/models`);
+    if (!res.ok) return { ok: false, unloaded: 0 };
+    const data = await res.json();
+    const raw = data.models ?? data.data?.models ?? (Array.isArray(data) ? data : []);
+    if (!Array.isArray(raw)) return { ok: false, unloaded: 0 };
+    const instanceIds = [];
+    for (const m of raw) {
+      const instances = m?.loaded_instances ?? m?.instances;
+      if (Array.isArray(instances)) {
+        for (const inst of instances) {
+          if (inst?.id != null) instanceIds.push(String(inst.id));
+        }
+      }
+    }
+    if (instanceIds.length === 0) return { ok: true, unloaded: 0 };
+    await Promise.allSettled(instanceIds.map((id) => unloadByInstanceId(id).catch(() => {})));
+    return { ok: true, unloaded: instanceIds.length };
+  } catch (_) {
+    return { ok: false, unloaded: 0 };
+  }
+}
+
+/**
  * Single request/response chat completion (non-streaming). Returns full assistant message.
  * Use for short advisory requests (e.g. "suggest optimal settings").
  * @param {Object} opts

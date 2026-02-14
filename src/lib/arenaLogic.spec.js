@@ -2,6 +2,11 @@ import { describe, it, expect } from 'vitest';
 import {
   parseQuestionsAndAnswers,
   parseJudgeScores,
+  parseJudgeScoresAndExplanations,
+  parseBlindJudgeScores,
+  shuffleArray,
+  makeSeededRandom,
+  buildJudgePromptBlind,
   stripThinkBlocks,
   detectLoop,
   contentToText,
@@ -10,6 +15,8 @@ import {
   addScoreRound,
   computeTotals,
   migrateOldQuestionsAndAnswers,
+  pickJudgeModel,
+  sanitizeContestantResponse,
 } from './arenaLogic.js';
 
 // ---------- parseQuestionsAndAnswers ----------
@@ -255,9 +262,9 @@ describe('parseJudgeScores', () => {
     expect(parseJudgeScores(text)).toEqual({ B: 8, C: 6 });
   });
 
-  it('ignores Model A scores', () => {
+  it('parses Model A scores (all slots A–D are scored)', () => {
     const text = 'Model A: 10/10 - judge\nModel B: 7/10 - ok';
-    expect(parseJudgeScores(text)).toEqual({ B: 7 });
+    expect(parseJudgeScores(text)).toEqual({ A: 10, B: 7 });
   });
 
   it('handles only 2 models', () => {
@@ -283,6 +290,136 @@ describe('parseJudgeScores', () => {
   it('handles multiple <think> blocks', () => {
     const text = '<think>thinking 1</think>\n<think>thinking 2</think>\nModel B: 9/10 - Great';
     expect(parseJudgeScores(text)).toEqual({ B: 9 });
+  });
+});
+
+// ---------- parseJudgeScoresAndExplanations ----------
+describe('parseJudgeScoresAndExplanations', () => {
+  it('returns scores and per-model explanation text', () => {
+    const text = 'Model A: 7/10 - Correct approach.\nModel B: 5/10 - Partial.\nModel C: 9/10 - Excellent.';
+    const { scores, explanations } = parseJudgeScoresAndExplanations(text);
+    expect(scores).toEqual({ A: 7, B: 5, C: 9 });
+    expect(explanations.A).toContain('Correct approach');
+    expect(explanations.B).toContain('Partial');
+    expect(explanations.C).toContain('Excellent');
+  });
+
+  it('returns empty for empty input', () => {
+    expect(parseJudgeScoresAndExplanations('')).toEqual({ scores: {}, explanations: {} });
+    expect(parseJudgeScoresAndExplanations(null)).toEqual({ scores: {}, explanations: {} });
+  });
+});
+
+// ---------- sanitizeContestantResponse ----------
+describe('sanitizeContestantResponse', () => {
+  it('strips "Model X: N/10" lines from contestant output', () => {
+    const text = 'Manacher algorithm runs in O(n).\n\nModel B: 7/10 - reason\n\nActually it is linear.';
+    const cleaned = sanitizeContestantResponse(text);
+    expect(cleaned).not.toContain('Model B: 7/10');
+    expect(cleaned).toContain('Manacher algorithm');
+    expect(cleaned).toContain('Actually it is linear');
+  });
+
+  it('strips "Response N: N/10" lines', () => {
+    const text = 'Good answer.\nResponse 1: 8/10 - correct\nDone.';
+    expect(sanitizeContestantResponse(text)).not.toContain('Response 1: 8/10');
+    expect(sanitizeContestantResponse(text)).toContain('Good answer');
+  });
+
+  it('strips <think> blocks', () => {
+    const text = '<think>internal reasoning</think>The answer is 42.';
+    expect(sanitizeContestantResponse(text)).toBe('The answer is 42.');
+  });
+
+  it('handles empty/null input', () => {
+    expect(sanitizeContestantResponse('')).toBe('');
+    expect(sanitizeContestantResponse(null)).toBe('');
+  });
+
+  it('preserves clean responses unchanged', () => {
+    const text = 'The longest palindromic substring can be found using Manacher\'s algorithm.\n\nFinal Answer: Manacher\'s algorithm';
+    expect(sanitizeContestantResponse(text)).toBe(text);
+  });
+});
+
+// ---------- makeSeededRandom ----------
+describe('makeSeededRandom', () => {
+  it('returns a function that produces numbers in [0, 1)', () => {
+    const rng = makeSeededRandom('seed1');
+    for (let i = 0; i < 10; i++) {
+      const v = rng();
+      expect(v).toBeGreaterThanOrEqual(0);
+      expect(v).toBeLessThan(1);
+    }
+  });
+
+  it('same seed produces same sequence', () => {
+    const a = makeSeededRandom('abc');
+    const b = makeSeededRandom('abc');
+    expect(a()).toBe(b());
+    expect(a()).toBe(b());
+  });
+
+  it('different seeds produce different sequences', () => {
+    expect(makeSeededRandom('a')()).not.toBe(makeSeededRandom('b')());
+  });
+});
+
+// ---------- shuffleArray ----------
+describe('shuffleArray', () => {
+  it('returns new array of same length', () => {
+    const arr = [1, 2, 3];
+    const out = shuffleArray(arr);
+    expect(out).toHaveLength(3);
+    expect(arr).toEqual([1, 2, 3]);
+  });
+
+  it('with seeded random produces deterministic order', () => {
+    const arr = ['A', 'B', 'C'];
+    const out1 = shuffleArray(arr, makeSeededRandom('run-1'));
+    const out2 = shuffleArray(arr, makeSeededRandom('run-1'));
+    expect(out1).toEqual(out2);
+    expect(out1.sort()).toEqual(['A', 'B', 'C']);
+  });
+});
+
+// ---------- parseBlindJudgeScores ----------
+describe('parseBlindJudgeScores', () => {
+  it('maps Response N to slot via responseOrder', () => {
+    const text = 'Response 1: 7/10 - Good.\nResponse 2: 5/10 - Partial.\nResponse 3: 9/10 - Excellent.';
+    const responseOrder = ['B', 'A', 'C'];
+    const { scores, explanations } = parseBlindJudgeScores(text, responseOrder);
+    expect(scores).toEqual({ B: 7, A: 5, C: 9 });
+    expect(explanations.B).toContain('Good');
+    expect(explanations.A).toContain('Partial');
+    expect(explanations.C).toContain('Excellent');
+  });
+
+  it('returns empty for empty text or missing responseOrder', () => {
+    expect(parseBlindJudgeScores('', ['A', 'B'])).toEqual({ scores: {}, explanations: {} });
+    expect(parseBlindJudgeScores('Response 1: 5/10', null)).toEqual({ scores: {}, explanations: {} });
+  });
+});
+
+// ---------- buildJudgePromptBlind ----------
+describe('buildJudgePromptBlind', () => {
+  it('returns messages and responseOrder', () => {
+    const slotsWithResponses = [
+      { slot: 'A', msgs: [{ role: 'assistant', content: 'Answer A' }] },
+      { slot: 'B', msgs: [{ role: 'assistant', content: 'Answer B' }] },
+    ];
+    const { messages, responseOrder } = buildJudgePromptBlind({
+      slotsWithResponses,
+      answerKeyTrimmed: '',
+      judgeWebContext: '',
+      promptText: 'Q?',
+      judgeFeedback: '',
+      shuffleRandom: () => 0,
+    });
+    expect(messages.length).toBeGreaterThanOrEqual(1);
+    expect(responseOrder).toHaveLength(2);
+    expect(responseOrder).toContain('A');
+    expect(responseOrder).toContain('B');
   });
 });
 
@@ -434,16 +571,16 @@ describe('buildJudgePrompt', () => {
 
 // ---------- Score history ----------
 describe('score history', () => {
-  it('computeTotals sums correctly', () => {
+  it('computeTotals sums correctly (all slots A–D)', () => {
     const history = [
       { questionIndex: 0, questionText: 'Q1', scores: { B: 7, C: 5 }, timestamp: 1 },
       { questionIndex: 1, questionText: 'Q2', scores: { B: 8, C: 6, D: 9 }, timestamp: 2 },
     ];
-    expect(computeTotals(history)).toEqual({ B: 15, C: 11, D: 9 });
+    expect(computeTotals(history)).toEqual({ A: 0, B: 15, C: 11, D: 9 });
   });
 
   it('computeTotals returns zeros for empty history', () => {
-    expect(computeTotals([])).toEqual({ B: 0, C: 0, D: 0 });
+    expect(computeTotals([])).toEqual({ A: 0, B: 0, C: 0, D: 0 });
   });
 
   it('addScoreRound appends correctly', () => {
@@ -473,5 +610,69 @@ describe('migrateOldQuestionsAndAnswers', () => {
     const result = migrateOldQuestionsAndAnswers('1. Q one\n2. Q two', '');
     expect(result).toContain('1. Q one');
     expect(result).not.toContain('Answer:');
+  });
+});
+
+// ---------- pickJudgeModel ----------
+describe('pickJudgeModel', () => {
+  const allModels = [
+    { id: 'qwen3-vl-4b-instruct' },
+    { id: 'essentialai/rny-1' },
+    { id: 'meta-llama-3.1-8b-instruct' },
+    { id: 'zai-org/glm-4.6v-flash' },
+    { id: 'qwen3-32b-instruct' },
+  ];
+
+  it('picks largest non-contestant when no user choice', () => {
+    const result = pickJudgeModel({
+      userChoice: '',
+      contestantIds: ['qwen3-vl-4b-instruct', 'essentialai/rny-1', 'meta-llama-3.1-8b-instruct', 'zai-org/glm-4.6v-flash'],
+      availableModels: allModels,
+    });
+    expect(result.id).toBe('qwen3-32b-instruct');
+    expect(result.fallback).toBe(true);
+  });
+
+  it('uses explicit user choice if not a contestant', () => {
+    const result = pickJudgeModel({
+      userChoice: 'qwen3-32b-instruct',
+      contestantIds: ['qwen3-vl-4b-instruct', 'essentialai/rny-1'],
+      availableModels: allModels,
+    });
+    expect(result.id).toBe('qwen3-32b-instruct');
+    expect(result.fallback).toBeUndefined();
+  });
+
+  it('rejects user choice if it IS a contestant and falls back', () => {
+    const result = pickJudgeModel({
+      userChoice: 'qwen3-vl-4b-instruct',
+      contestantIds: ['qwen3-vl-4b-instruct', 'essentialai/rny-1'],
+      availableModels: allModels,
+    });
+    expect(result.id).not.toBe('qwen3-vl-4b-instruct');
+    expect(result.id).toBeTruthy();
+    expect(result.fallback).toBe(true);
+  });
+
+  it('returns error if all models are contestants', () => {
+    const result = pickJudgeModel({
+      userChoice: '',
+      contestantIds: allModels.map((m) => m.id),
+      availableModels: allModels,
+    });
+    expect(result.id).toBeNull();
+    expect(result.error).toBeTruthy();
+  });
+
+  it('prefers instruct over base model of same size', () => {
+    const result = pickJudgeModel({
+      userChoice: '',
+      contestantIds: [],
+      availableModels: [
+        { id: 'llama-3.1-8b' },
+        { id: 'llama-3.1-8b-instruct' },
+      ],
+    });
+    expect(result.id).toBe('llama-3.1-8b-instruct');
   });
 });

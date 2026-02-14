@@ -1,0 +1,135 @@
+{
+  "application": {
+    "name": "Sequential Model Arena",
+    "version": "1.0",
+    "purpose": "Deterministic, single-residency, sequential multi-model evaluation harness"
+  },
+  "global_constraints": {
+    "max_models_loaded_simultaneously": 1,
+    "parallel_execution_allowed": false,
+    "require_explicit_unload_before_next_load": true,
+    "require_memory_release_confirmation": true,
+    "temperature": 0,
+    "deterministic_seed_required": true,
+    "log_all_prompts": true,
+    "log_all_raw_outputs": true,
+    "model_identity_hidden_from_judge": true
+  },
+  "components": {
+    "QuestionBank": {
+      "source": "local_or_database",
+      "selection_mode": "sequential_or_random",
+      "must_include_answer_key": true
+    },
+    "ModelRegistry": {
+      "models": [
+        { "id": "model_1", "enabled": true },
+        { "id": "model_2", "enabled": true },
+        { "id": "model_3", "enabled": true },
+        { "id": "model_4", "enabled": true },
+        { "id": "model_5", "enabled": true },
+        { "id": "model_6", "enabled": true },
+        { "id": "model_7", "enabled": true },
+        { "id": "model_8", "enabled": true }
+      ]
+    },
+    "ExecutionController": {
+      "mode": "strict_sequential",
+      "lock_execution_during_run": true,
+      "require_unload_confirmation": true,
+      "retry_on_failure": {
+        "enabled": true,
+        "max_attempts": 2
+      },
+      "timeout_seconds_per_model": 120,
+      "abort_on_critical_failure": true
+    },
+    "ModelRunner": {
+      "load_model": {
+        "blocking": true,
+        "verify_loaded": true
+      },
+      "run_inference": {
+        "capture_latency": true,
+        "capture_token_usage": true
+      },
+      "unload_model": {
+        "blocking": true,
+        "verify_memory_release": true
+      }
+    },
+    "ResponseStore": {
+      "persist": true,
+      "fields": [
+        "model_id",
+        "model_version",
+        "prompt",
+        "raw_response",
+        "latency_ms",
+        "token_count",
+        "timestamp"
+      ]
+    },
+    "JudgeEngine": {
+      "type": "model_based",
+      "judge_model_id": "judge_model",
+      "blind_review": true,
+      "score_range": { "min": 0, "max": 10 },
+      "criteria": [
+        "correctness_against_answer_key",
+        "logical_validity",
+        "constraint_compliance",
+        "clarity",
+        "completeness"
+      ],
+      "require_explanation": true,
+      "shuffle_evaluation_order": true
+    },
+    "ScoreAggregator": {
+      "compute_average": true,
+      "rank_models": true,
+      "tie_breaker": "highest_correctness_score",
+      "include_summary_analysis": true
+    },
+    "UIController": {
+      "result_display_type": "modal_popup",
+      "display_fields": ["model_id", "score", "explanation", "rank"],
+      "allow_export_csv": true,
+      "show_latency_stats": true,
+      "show_token_usage": true
+    }
+  },
+  "execution_flow": [
+    "LOCK_EXECUTION",
+    "FETCH_NEXT_QUESTION",
+    "FOR_EACH_ENABLED_MODEL_IN_REGISTRY:",
+    "  LOAD_MODEL",
+    "  VERIFY_MODEL_LOADED",
+    "  RUN_INFERENCE",
+    "  STORE_RESPONSE",
+    "  UNLOAD_MODEL",
+    "  VERIFY_MODEL_UNLOADED",
+    "LOAD_JUDGE_MODEL",
+    "VERIFY_MODEL_LOADED",
+    "EVALUATE_ALL_RESPONSES_AGAINST_ANSWER_KEY",
+    "STORE_SCORES_AND_EXPLANATIONS",
+    "UNLOAD_JUDGE_MODEL",
+    "VERIFY_MODEL_UNLOADED",
+    "AGGREGATE_SCORES",
+    "DISPLAY_RESULTS_MODAL",
+    "UNLOCK_EXECUTION"
+  ],
+  "failure_handling": {
+    "model_load_failure": "retry_then_skip_model",
+    "inference_timeout": "retry_then_mark_zero_score",
+    "judge_failure": "abort_and_log_error",
+    "memory_release_failure": "force_cleanup_and_abort"
+  },
+  "reproducibility": {
+    "record_model_hash": true,
+    "record_model_version": true,
+    "record_prompt_template": true,
+    "record_seed": true,
+    "export_run_metadata": true
+  }
+}

@@ -351,17 +351,42 @@ if (typeof localStorage !== 'undefined') {
 const arenaSlotAIsJudgeStored = () => readBool('arenaSlotAIsJudge', false);
 export const arenaSlotAIsJudge = writable(arenaSlotAIsJudgeStored());
 
-/** Arena: who gets web search. 'none' = no one; 'all' = use globe, all models get it on send; 'judge' = only judge gets it on Judgment time. */
+/** Arena: who gets web search. 'none' = no one; 'all' = use globe, all models get web context on send (and when running automated scoring). */
 const arenaWebSearchModeStored = () => {
   const v = typeof localStorage !== 'undefined' ? localStorage.getItem('arenaWebSearchMode') : null;
-  return v === 'none' || v === 'all' || v === 'judge' ? v : 'all';
+  if (v === 'none' || v === 'all') return v;
+  if (v === 'judge') return 'all'; // legacy: migrate judge → all
+  return 'all';
 };
 export const arenaWebSearchMode = writable(arenaWebSearchModeStored());
 if (typeof localStorage !== 'undefined') {
   arenaSlotAIsJudge.subscribe((v) => localStorage.setItem('arenaSlotAIsJudge', v ? '1' : '0'));
 }
 if (typeof localStorage !== 'undefined') {
-  arenaWebSearchMode.subscribe((v) => localStorage.setItem('arenaWebSearchMode', v === 'none' || v === 'all' || v === 'judge' ? v : 'all'));
+  arenaWebSearchMode.subscribe((v) => localStorage.setItem('arenaWebSearchMode', v === 'none' || v === 'all' ? v : 'all'));
+}
+
+/** Arena: model ID used for automated scoring (evaluate answers against answer key). If empty, use Slot A's model. */
+const getArenaScoringModelId = () => (typeof localStorage !== 'undefined' ? localStorage.getItem('arenaScoringModelId') : null) || '';
+export const arenaScoringModelId = writable(getArenaScoringModelId());
+if (typeof localStorage !== 'undefined') {
+  arenaScoringModelId.subscribe((v) => localStorage.setItem('arenaScoringModelId', v ?? ''));
+}
+
+/** Arena: blind review — judge sees "Response 1", "Response 2", ... in shuffled order (no model identity). Per Sequential Model Arena spec. */
+export const arenaBlindReview = writable(
+  typeof localStorage !== 'undefined' ? (localStorage.getItem('arenaBlindReview') ?? '1') !== '0' : true
+);
+if (typeof localStorage !== 'undefined') {
+  arenaBlindReview.subscribe((v) => localStorage.setItem('arenaBlindReview', v ? '1' : '0'));
+}
+
+/** Arena: deterministic judge (temperature 0) per spec. */
+export const arenaDeterministicJudge = writable(
+  typeof localStorage !== 'undefined' ? (localStorage.getItem('arenaDeterministicJudge') ?? '1') !== '0' : true
+);
+if (typeof localStorage !== 'undefined') {
+  arenaDeterministicJudge.subscribe((v) => localStorage.setItem('arenaDeterministicJudge', v ? '1' : '0'));
 }
 
 /** Arena: per-slot overrides for temperature, max_tokens, system_prompt. Key = 'A'|'B'|'C'|'D'. Empty = use layout default. */

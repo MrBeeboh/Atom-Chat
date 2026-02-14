@@ -1,10 +1,9 @@
 <script>
   /**
-   * DashboardArena (ATOM Arena): head-to-head model comparison with optional judge scoring.
-   * Layout: header (model cards A–D) → question bar (Q selector, Ask, Next, Web globe, Judgment, Reset, Settings) → response panels (resizable) → footer (ChatInput).
-   * Bottom-left floating panel: full question text (no truncation) + "Ask the Judge" interactive side-conversation.
+   * DashboardArena (ATOM Arena): head-to-head model comparison. All four slots (A–D) are contestants.
+   * Layout: header (model cards A–D with scores) → question bar (Q selector, Ask, Next, Web, Start Over, Settings) → response panels (resizable) → footer (ChatInput).
+   * When the last contestant finishes, automated scoring runs (using Slot A's model for the scoring API) and a popup shows scores + brief explanation for each model.
    * Right slide-out: Arena settings (Questions, Answer key, Contest rules, Execution, Web search, Actions).
-   * Judge: slot A can be "Use as judge" (checkbox in panel A header); Judgment button runs A to score B/C/D and updates arenaScores.
    */
   import { get } from "svelte/store";
   import { onMount } from "svelte";
@@ -24,9 +23,12 @@
     pushTokSample,
     liveTokPerSec,
     arenaPanelCount,
-    arenaSlotAIsJudge,
     arenaWebSearchMode,
+    arenaScoringModelId,
+    arenaBlindReview,
+    arenaDeterministicJudge,
     arenaSlotOverrides,
+    models,
     pendingDroppedFiles,
     webSearchForNextMessage,
     webSearchInProgress,
@@ -42,6 +44,8 @@
     loadModel,
     waitUntilUnloaded,
     unloadAllLoadedModels,
+    unloadAllModelsNative,
+    getLoadedModelKeys,
   } from "$lib/api.js";
   import {
     searchDuckDuckGo,
@@ -53,6 +57,8 @@
   import ModelSelectorSlot from "$lib/components/ModelSelectorSlot.svelte";
   import ArenaPanel from "$lib/components/ArenaPanel.svelte";
   import ArenaScoreMatrix from "$lib/components/ArenaScoreMatrix.svelte";
+  import ArenaHeader from "$lib/components/ArenaHeader.svelte";
+  import ArenaControlBar from "$lib/components/ArenaControlBar.svelte";
   import {
     generateId,
     resizeImageDataUrlsForVision,
@@ -61,11 +67,19 @@
   import {
     parseQuestionsAndAnswers,
     parseJudgeScores,
+    parseJudgeScoresAndExplanations,
+    parseBlindJudgeScores,
+    buildJudgePrompt,
+    buildJudgePromptBlind,
+    makeSeededRandom,
+    pickJudgeModel,
+    sanitizeContestantResponse,
+    ARENA_CONTESTANT_SYSTEM_PROMPT,
+    JUDGE_LOADING_LINES,
     detectLoop,
     contentToText,
     JUDGE_WEB_LINES,
     arenaStandingLabel,
-    buildJudgePrompt,
     loadScoreHistory,
     addScoreRound,
     computeTotals,
@@ -80,11 +94,6 @@
   let messagesD = $state([]);
   let running = $state({ A: false, B: false, C: false, D: false });
   let slotErrors = $state({ A: "", B: "", C: "", D: "" });
-  let sequential = $state(
-    typeof localStorage !== "undefined"
-      ? (localStorage.getItem("arenaSequential") ?? "1") !== "0"
-      : true,
-  );
   /** Optional feedback/correction sent to the judge (e.g. correct NFPA 72 definition). */
   let judgeFeedback = $state("");
   /** Arena footer: Questions list expanded vs collapsed. */
@@ -196,12 +205,20 @@
   let lastSampleTokens = 0;
   /** Which Arena slot's "Model options" panel is open: 'A'|'B'|'C'|'D'|null */
   let optionsOpenSlot = $state(null);
-  /** Sequential/judge transition: show 'ejecting' | 'loading' | 'judge_web' with atom animation. */
+  /** When set, show modal with automated judgment scores and explanation. */
+  let judgmentPopup = $state(
+    /** @type {null | { scores: Record<string, number>, explanation: string, rawJudgeOutput?: string, questionIndex?: number, explanations?: Record<string, string> }} */ (null),
+  );
+  /** Transition: 'ejecting' | 'loading' | 'loading_judge' | 'judge_web' | 'scoring' (atom animation). */
   let arenaTransitionPhase = $state(
-    /** @type {null | 'ejecting' | 'loading' | 'judge_web'} */ (null),
+    /** @type {null | 'ejecting' | 'loading' | 'loading_judge' | 'judge_web' | 'scoring'} */ (null),
   );
   /** Index of the current witty "judge checking web" message (rotated each time we enter judge_web). */
   let judgeWebMessageIndex = $state(0);
+  /** Index of the current witty "judge loading" message (rotated each time judge is loaded). */
+  let judgeLoadingMessageIndex = $state(0);
+  /** Current run metadata for reproducibility and logging (set at run start, filled during run, read in runJudgment). */
+  let arenaCurrentRunMeta = $state(/** @type {null | { run_id: string, seed: string, question_index: number, prompt_text: string, model_list: Array<{ slot: string, model_id: string }>, judge_model: string | null, deterministic_judge: boolean, blind_review: boolean, start_timestamp: number, responses: Record<string, { model_id: string, prompt: string, raw_response: string, latency_ms: number, token_count: number | null, timestamp: number }> }} */ (null));
 
   // ---------- Arena slot configuration ----------
   const SLOT_COLORS = {
@@ -256,9 +273,23 @@
       if (d) messagesD = JSON.parse(d);
     } catch (_) {}
   }
-  // Load persisted messages on mount
+  // Load persisted messages on mount; eject any loaded models so Arena starts clean.
   onMount(() => {
     loadArenaMessages();
+    // Eject all loaded models on Arena open so we start with zero models in VRAM.
+    (async () => {
+      try {
+        await unloadAllModelsNative();
+        // Also wait for confirmation they're gone
+        const loaded = await getLoadedModelKeys();
+        if (loaded.length > 0) {
+          // Still loaded — poll until empty or timeout
+          await waitUntilUnloaded(loaded, { pollIntervalMs: 500, timeoutMs: 15000 });
+        }
+      } catch (_) {
+        /* best-effort; don't block UI */
+      }
+    })();
   });
   // Save whenever messages change
   $effect(() => {
@@ -384,16 +415,21 @@
   let ejectBusy = $state(false);
   let ejectMessage = $state(/** @type {null | string} */ (null));
 
-  /** Running scores from judge (B, C, D). Persisted to localStorage. */
+  /** Running scores for all four slots (A–D). Persisted to localStorage. */
   const loadArenaScores = () => {
-    if (typeof localStorage === "undefined") return { B: 0, C: 0, D: 0 };
+    if (typeof localStorage === "undefined") return { A: 0, B: 0, C: 0, D: 0 };
     try {
       const raw = localStorage.getItem("arenaScores");
-      if (!raw) return { B: 0, C: 0, D: 0 };
+      if (!raw) return { A: 0, B: 0, C: 0, D: 0 };
       const o = JSON.parse(raw);
-      return { B: Number(o.B) || 0, C: Number(o.C) || 0, D: Number(o.D) || 0 };
+      return {
+        A: Number(o.A) || 0,
+        B: Number(o.B) || 0,
+        C: Number(o.C) || 0,
+        D: Number(o.D) || 0,
+      };
     } catch {
-      return { B: 0, C: 0, D: 0 };
+      return { A: 0, B: 0, C: 0, D: 0 };
     }
   };
   let arenaScores = $state(loadArenaScores());
@@ -461,7 +497,7 @@
   // ---------- Judge / scores ----------
 
   function resetArenaScores() {
-    arenaScores = { B: 0, C: 0, D: 0 };
+    arenaScores = { A: 0, B: 0, C: 0, D: 0 };
     scoreHistory = [];
     clearScoreHistory();
   }
@@ -485,7 +521,7 @@
     messagesC = [];
     messagesD = [];
     // Reset scores and history
-    arenaScores = { B: 0, C: 0, D: 0 };
+    arenaScores = { A: 0, B: 0, C: 0, D: 0 };
     scoreHistory = [];
     clearScoreHistory();
     // Reset to Q1
@@ -542,12 +578,6 @@
     slotErrors = { ...slotErrors, [slot]: message || "" };
   }
 
-  $effect(() => {
-    if (typeof localStorage !== "undefined") {
-      localStorage.setItem("arenaSequential", sequential ? "1" : "0");
-    }
-  });
-
   // detectLoop imported from arenaLogic.js
 
   /** Effective settings for one Arena slot: per-model effective + per-slot session overrides. */
@@ -574,33 +604,37 @@
   }
 
   // ---------- Stream / send ----------
+  const ARENA_TIMEOUT_MS = 120000; // spec: timeout_seconds_per_model: 120
+
   /**
-   * Send a message to one Arena slot. Streams response.
-   * @param {string} slot - 'A'|'B'|'C'|'D'
+   * Send one question to one model in one Arena slot.
+   *
+   * CRITICAL DESIGN RULES (Sequential Model Arena spec):
+   *   1. The model receives ONLY: system prompt (optional) + the question. Nothing else.
+   *      No history, no judge text, no scoring format, no competition framing.
+   *   2. The question text may include contest rules (prepended by caller) — but those
+   *      rules must never mention judges, scoring, other models, or competition.
+   *   3. A 120 s hard timeout aborts the stream if the model hangs.
+   *
+   * @param {string} slot  - 'A'|'B'|'C'|'D'
    * @param {string} modelId
-   * @param {string|Array} apiContent - Full content sent to model API (includes rules, web context, etc.)
-   * @param {string|Array} [displayContent] - What shows in the UI bubble (question only, no rules). Falls back to apiContent.
-   * @param {Function} [onStreamDone]
+   * @param {string|Array} question      - What the model sees (may include contest rules).
+   * @param {string|Array} displayQuestion - What the user sees in the UI bubble (question only).
+   * @returns {Promise<{ latency_ms: number, token_count: number|null, timestamp: number }|undefined>}
    */
-  async function sendToSlot(
-    slot,
-    modelId,
-    apiContent,
-    displayContent,
-    onStreamDone,
-  ) {
+  async function sendToSlot(slot, modelId, question, displayQuestion) {
+    // --- Reset slot state ---
     setRunning(slot, true);
     setSlotError(slot, "");
 
-    // Display-friendly message: just the question (no rules clutter)
-    const userMsg = {
-      id: generateId(),
+    // --- UI messages (what the user sees in the panel) ---
+    const userMsgId = generateId();
+    pushMessage(slot, {
+      id: userMsgId,
       role: "user",
-      content: displayContent || apiContent,
+      content: displayQuestion || question,
       createdAt: Date.now(),
-    };
-    pushMessage(slot, userMsg);
-
+    });
     const assistantMsgId = generateId();
     pushMessage(slot, {
       id: assistantMsgId,
@@ -611,23 +645,24 @@
       createdAt: Date.now(),
     });
 
-    // API messages: use full content with rules for the user message
+    // --- Build API payload: hardcoded clean system prompt + question. Nothing else. ---
+    // CRITICAL: We use a hardcoded system prompt that NEVER mentions judges, scoring,
+    // competition, or other models. Cached/persisted user settings are IGNORED for
+    // contestants because they may contain old toxic "Arena contestant" text from
+    // localStorage that causes models to hallucinate scoring patterns.
     const slotOpts = getSettingsForSlot(slot);
-    const displayMsgs = getMessages(slot);
-    const apiMsgs = displayMsgs.map((m) => {
-      // Replace the display user message with the full API content (rules + question)
-      if (m.id === userMsg.id) return { role: "user", content: apiContent };
-      return { role: m.role, content: m.content };
-    });
-    const systemPrompt = (
-      slotOpts.system_prompt ?? $settings.system_prompt
-    )?.trim();
-    if (systemPrompt)
-      apiMsgs.unshift({ role: "system", content: systemPrompt });
-    const apiMessages = apiMsgs;
+    const messages = [
+      { role: "system", content: ARENA_CONTESTANT_SYSTEM_PROMPT },
+      { role: "user", content: question },
+    ];
+
+    // --- Abort controller + 120 s hard timeout ---
     const controller = new AbortController();
     aborters[slot] = controller;
+    const timeoutId = setTimeout(() => controller.abort(), ARENA_TIMEOUT_MS);
 
+    // --- Stream ---
+    const startMs = performance.now();
     let fullContent = "";
     let usage = null;
     let elapsedMs = 0;
@@ -637,7 +672,7 @@
     try {
       const result = await streamChatCompletion({
         model: modelId,
-        messages: apiMessages,
+        messages,
         options: {
           temperature: slotOpts.temperature,
           max_tokens: slotOpts.max_tokens,
@@ -652,7 +687,6 @@
         signal: controller.signal,
         onDone() {
           setRunning(slot, false);
-          onStreamDone?.();
         },
         onChunk(chunk) {
           fullContent += chunk;
@@ -660,65 +694,57 @@
             controller.abort();
             return;
           }
-          liveTokens.set(Math.max(1, Math.ceil(fullContent.length / 4)));
+          const estTokens = Math.max(1, Math.ceil(fullContent.length / 4));
+          liveTokens.set(estTokens);
           const now = Date.now();
           if (now - lastSampleAt >= 1000) {
-            const tok = Math.max(1, Math.ceil(fullContent.length / 4));
-            const rate =
-              (tok - lastSampleTokens) / ((now - lastSampleAt) / 1000);
+            const rate = (estTokens - lastSampleTokens) / ((now - lastSampleAt) / 1000);
             if (rate >= 0) pushTokSample(rate);
             lastSampleAt = now;
-            lastSampleTokens = tok;
+            lastSampleTokens = estTokens;
           }
-          updateMessage(slot, assistantMsgId, {
-            content: fullContent,
-            modelId,
-          });
+          updateMessage(slot, assistantMsgId, { content: fullContent, modelId });
         },
         onUsage(u) {
           usage = u;
         },
       });
-      elapsedMs = result.elapsedMs ?? 0;
+
+      elapsedMs = result.elapsedMs ?? Math.round(performance.now() - startMs);
       if (result.usage) usage = result.usage;
       if ($settings.audio_enabled && !result?.aborted)
         playComplete($settings.audio_volume);
     } catch (err) {
       if (err?.name !== "AbortError") {
-        setSlotError(
-          slot,
-          err?.message ||
-            "Failed to get response. Is your model server running and the model loaded?",
-        );
+        setSlotError(slot, err?.message || "Failed to get response.");
       }
-      try {
-        updateMessage(slot, assistantMsgId, {
-          content: fullContent || "",
-          stats: null,
-          modelId,
-        });
-      } catch (_) {
-        /* message list may have been cleared (e.g. Next question); ignore */
-      }
-      onStreamDone?.();
-      return;
+      updateMessage(slot, assistantMsgId, { content: sanitizeContestantResponse(fullContent) || "", stats: null, modelId });
+      return undefined;
     } finally {
+      clearTimeout(timeoutId);
       setRunning(slot, false);
       aborters[slot] = null;
     }
 
-    const estimatedTokens = Math.max(1, Math.ceil(fullContent.length / 4));
-    const stats = {
-      prompt_tokens: usage?.prompt_tokens ?? 0,
-      completion_tokens: usage?.completion_tokens ?? estimatedTokens,
-      elapsed_ms: elapsedMs,
-      estimated: !usage?.completion_tokens,
-    };
+    // --- Sanitize: strip any judge-pattern lines the model may have hallucinated ---
+    fullContent = sanitizeContestantResponse(fullContent);
+
+    // --- Finalize stats ---
+    const estTokens = Math.max(1, Math.ceil(fullContent.length / 4));
+    const tokenCount = usage?.completion_tokens != null
+      ? (usage.prompt_tokens || 0) + usage.completion_tokens
+      : null;
     updateMessage(slot, assistantMsgId, {
       content: fullContent,
-      stats,
+      stats: {
+        prompt_tokens: usage?.prompt_tokens ?? 0,
+        completion_tokens: usage?.completion_tokens ?? estTokens,
+        elapsed_ms: elapsedMs,
+        estimated: !usage?.completion_tokens,
+      },
       modelId,
     });
+    return { latency_ms: elapsedMs, token_count: tokenCount, timestamp: Date.now() };
   }
 
   async function sendUserMessage(text, imageDataUrls = []) {
@@ -758,21 +784,15 @@
       ...(n >= 3 ? ["C"] : []),
       ...(n >= 4 ? ["D"] : []),
     ];
-    const isJudge = get(arenaSlotAIsJudge);
     let selected = [
       { slot: "A", modelId: $dashboardModelA },
       { slot: "B", modelId: $dashboardModelB },
       { slot: "C", modelId: $dashboardModelC },
       { slot: "D", modelId: $dashboardModelD },
     ].filter((s) => s.modelId && slotsActive.includes(s.slot));
-    if (isJudge) selected = selected.filter((s) => s.slot !== "A");
 
     if (!selected.length) {
-      chatError.set(
-        isJudge
-          ? "Select at least one responder (B, C, or D) before sending."
-          : "Select at least one model (A–D) before sending.",
-      );
+      chatError.set("Select at least one model (A–D) before sending.");
       return;
     }
 
@@ -780,16 +800,6 @@
     const currentRun = runId;
     liveTokens.set(0);
     isStreaming.set(true);
-    let streamDoneCount = 0;
-    const onStreamDone = () => {
-      streamDoneCount += 1;
-      if (streamDoneCount >= selected.length) {
-        isStreaming.set(false);
-        liveTokens.set(null);
-        liveTokPerSec.set(null);
-      }
-    };
-
     try {
       const rulesPrefix = (typeof contestRules === "string"
         ? contestRules
@@ -830,76 +840,122 @@
 
       if (runId !== currentRun) return;
 
-      /* Eject every loaded model so the first contestant has full VRAM (best-effort; don't block if helper down). */
+      const runIdUuid = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : "run-" + Date.now();
+      const runSeed = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : String(Math.random());
+      arenaCurrentRunMeta = {
+        run_id: runIdUuid,
+        seed: runSeed,
+        question_index: questionIndex,
+        prompt_text: effectiveText,
+        model_list: selected.map((s) => ({ slot: s.slot, model_id: s.modelId })),
+        judge_model: null,
+        deterministic_judge: get(arenaDeterministicJudge),
+        blind_review: get(arenaBlindReview),
+        start_timestamp: Date.now(),
+        responses: {},
+      };
+      if (typeof console !== "undefined" && console.log) {
+        console.log("[Arena run start]", { run_id: arenaCurrentRunMeta.run_id, seed: arenaCurrentRunMeta.seed, question_index: questionIndex });
+      }
+
+      /* Clear all slot messages so old responses/judge text don't leak into new run. */
+      messagesA = [];
+      messagesB = [];
+      messagesC = [];
+      messagesD = [];
+
+      /* Eject every loaded model so the first contestant has full VRAM. Uses native API (no helper needed). */
       arenaTransitionPhase = "ejecting";
-      await unloadAllLoadedModels(get(lmStudioUnloadHelperUrl));
-      const allArenaModelIds = [
-        get(dashboardModelA),
-        get(dashboardModelB),
-        get(dashboardModelC),
-        get(dashboardModelD),
-      ].filter(Boolean);
-      await waitUntilUnloaded(allArenaModelIds, {
-        pollIntervalMs: 400,
-        timeoutMs: 25000,
-      });
-      await new Promise((r) => setTimeout(r, 1500));
+      await unloadAllModelsNative();
+      const loadedBefore = await getLoadedModelKeys();
+      if (loadedBefore.length > 0) {
+        await waitUntilUnloaded(loadedBefore, {
+          pollIntervalMs: 400,
+          timeoutMs: 25000,
+        });
+      }
+      await new Promise((r) => setTimeout(r, 1000));
       arenaTransitionPhase = null;
       if (runId !== currentRun) return;
 
-      if (sequential) {
-        let completedCount = 0;
-        let failedSlots = [];
-        for (let i = 0; i < selected.length; i++) {
-          if (runId !== currentRun) break;
-          const s = selected[i];
+      /* Arena runs one model at a time: load first contestant, then for each slot answer → eject → load next. */
+      arenaTransitionPhase = "loading";
+      try {
+        if (selected[0]?.modelId) await loadModel(selected[0].modelId);
+      } catch (_) {
+        /* Load may fail; sendToSlot may load on demand */
+      }
+      arenaTransitionPhase = null;
+      if (runId !== currentRun) return;
+
+      let completedCount = 0;
+      let failedSlots = [];
+      const maxAttempts = 2;
+      for (let i = 0; i < selected.length; i++) {
+        if (runId !== currentRun) break;
+        const s = selected[i];
+        let lastErr = null;
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
           try {
-            await sendToSlot(
-              s.slot,
-              s.modelId,
-              content,
-              displayContent,
-              onStreamDone,
-            );
+            const metrics = await sendToSlot(s.slot, s.modelId, content, displayContent);
             completedCount++;
+            if (metrics && arenaCurrentRunMeta) {
+              const msgs = getMessages(s.slot);
+              const lastAsst = [...msgs].reverse().find((m) => m.role === "assistant");
+              const raw_response = lastAsst ? contentToText(lastAsst.content) : "";
+              arenaCurrentRunMeta.responses[s.slot] = {
+                model_id: s.modelId,
+                prompt: effectiveText,
+                raw_response,
+                latency_ms: metrics.latency_ms,
+                token_count: metrics.token_count,
+                timestamp: metrics.timestamp,
+              };
+            }
+            lastErr = null;
+            break;
           } catch (slotErr) {
-            failedSlots.push(s.slot);
-            setSlotError(s.slot, slotErr?.message || "Failed to get response.");
-            onStreamDone(); // count it as done even on failure
+            lastErr = slotErr;
+            if (attempt === maxAttempts) {
+              failedSlots.push(s.slot);
+              setSlotError(s.slot, slotErr?.message || "Failed to get response.");
+            }
           }
-          const next = selected[i + 1];
-          if (!next?.modelId || runId !== currentRun) continue;
-          arenaTransitionPhase = "ejecting";
-          try {
-            if (s.modelId) await unloadModel(s.modelId);
-          } catch (_) {
-            /* LM Studio may not support unload or already unloaded; continue */
+        }
+        /* Always unload current contestant so only one model is ever loaded (including after the last slot). */
+        if (runId !== currentRun) break;
+        arenaTransitionPhase = "ejecting";
+        try {
+          if (s.modelId) {
+            await unloadModel(s.modelId);
+            await waitUntilUnloaded([s.modelId], { pollIntervalMs: 400, timeoutMs: 15000 });
           }
-          if (runId !== currentRun) break;
+        } catch (_) {
+          /* LM Studio may not support unload or already unloaded; continue */
+        }
+        arenaTransitionPhase = null;
+        if (runId !== currentRun) break;
+        const next = selected[i + 1];
+        if (next?.modelId) {
           arenaTransitionPhase = "loading";
           try {
             await loadModel(next.modelId);
           } catch (_) {
-            /* Load may fail or already loaded; sendToSlot will load on demand */
+            /* Load may fail; sendToSlot will load on demand */
           }
           arenaTransitionPhase = null;
         }
-        if (failedSlots.length > 0 && completedCount > 0) {
-          chatError.set(
-            `${completedCount}/${selected.length} models completed. Failed: ${failedSlots.join(", ")}.`,
-          );
-        }
-      } else {
-        await Promise.allSettled(
-          selected.map((s) =>
-            sendToSlot(
-              s.slot,
-              s.modelId,
-              content,
-              displayContent,
-              onStreamDone,
-            ),
-          ),
+      }
+      /* All contestants have run and the last one has been unloaded. Now run judge (one model at a time). */
+      if (runId === currentRun) {
+        isStreaming.set(false);
+        liveTokens.set(null);
+        liveTokPerSec.set(null);
+        setTimeout(() => runJudgment(), 500);
+      }
+      if (failedSlots.length > 0 && completedCount > 0) {
+        chatError.set(
+          `${completedCount}/${selected.length} models completed. Failed: ${failedSlots.join(", ")}.`,
         );
       }
     } catch (err) {
@@ -996,15 +1052,15 @@
     });
   }
 
-  /** Run All: iterate through all questions, send each, optionally judge each, then advance. */
+  /** Run All: iterate through all questions, send each, then run automated scoring after each. */
   async function runAllQuestions() {
     if ($isStreaming || runAllActive) return;
     const questions = parsedQuestions;
     if (questions.length === 0) return;
-    const shouldJudge = $arenaSlotAIsJudge && $dashboardModelA;
+    const hasJudgeModel = get(models).length > 0; // judge will be auto-selected from non-contestants
     const ok = await confirm({
       title: "Run all questions",
-      message: `This will run ${questions.length} question${questions.length > 1 ? "s" : ""} sequentially${shouldJudge ? " with judgment after each" : ""}. This may take a while.`,
+      message: `This will run ${questions.length} question${questions.length > 1 ? "s" : ""} sequentially${hasJudgeModel ? " with automated scoring after each" : ""}. This may take a while.`,
       confirmLabel: "Run all",
       cancelLabel: "Cancel",
       danger: false,
@@ -1043,10 +1099,11 @@
           };
           check();
         });
-        // Run judgment if judge mode is on
-        if (shouldJudge && runAllActive) {
+        // Run automated scoring after each question when Slot A has a model
+        if (hasJudgeModel && runAllActive) {
           const n = get(arenaPanelCount);
           const hasResponses =
+            (n >= 1 && messagesA.length > 0) ||
             (n >= 2 && messagesB.length > 0) ||
             (n >= 3 && messagesC.length > 0) ||
             (n >= 4 && messagesD.length > 0);
@@ -1055,20 +1112,9 @@
               await runJudgment();
             } catch (e) {
               chatError.set(
-                e?.message || `Judgment failed on question ${i + 1}.`,
+                e?.message || `Scoring failed on question ${i + 1}.`,
               );
             }
-            // Wait for judge to finish
-            await new Promise((r) => {
-              const check = () => {
-                if (!running.A) {
-                  r();
-                  return;
-                }
-                setTimeout(check, 500);
-              };
-              check();
-            });
           }
         }
       }
@@ -1112,49 +1158,58 @@
     }
   }
 
-  // ---------- Judgment & eject ----------
+  // ---------- Automated judgment: eject contestants → load scoring model → evaluate against answer key → show popup ----------
   async function runJudgment() {
-    if ($arenaSlotAIsJudge && $isStreaming) return;
-    if (running.A) return;
-    const judgeId = get(dashboardModelA);
-    if (!judgeId) {
-      chatError.set("Select a model in Slot A to use as judge.");
+    if ($isStreaming) return;
+    const n = get(arenaPanelCount);
+    const contestantIds = [
+      get(dashboardModelA),
+      n >= 2 ? get(dashboardModelB) : null,
+      n >= 3 ? get(dashboardModelC) : null,
+      n >= 4 ? get(dashboardModelD) : null,
+    ].filter(Boolean);
+    const pick = pickJudgeModel({
+      userChoice: get(arenaScoringModelId)?.trim() || "",
+      contestantIds,
+      availableModels: get(models),
+    });
+    if (!pick.id) {
+      chatError.set(pick.error || "No judge model available. Load a model that is not assigned to any Arena slot.");
       return;
     }
+    if (pick.fallback && typeof console !== "undefined") {
+      console.log("[Arena] Judge auto-selected:", pick.id, "(user choice was a contestant or unset)");
+    }
+    const judgeId = pick.id;
+    if (arenaCurrentRunMeta) arenaCurrentRunMeta.judge_model = judgeId;
     const feedback =
       typeof judgeFeedback === "string" ? judgeFeedback.trim() : "";
-    const n = get(arenaPanelCount);
     const slotsWithResponses = [
+      n >= 1 && messagesA.length ? { slot: "A", msgs: messagesA } : null,
       n >= 2 && messagesB.length ? { slot: "B", msgs: messagesB } : null,
       n >= 3 && messagesC.length ? { slot: "C", msgs: messagesC } : null,
       n >= 4 && messagesD.length ? { slot: "D", msgs: messagesD } : null,
     ].filter(Boolean);
     if (!slotsWithResponses.length) {
-      chatError.set(
-        "Run a prompt with at least one responder (B, C, or D) first.",
-      );
+      chatError.set("Run a question so all contestants respond first.");
       return;
     }
-    /* Eject all loaded models so the judge gets full VRAM — same as run start: eject then wait until gone. */
     try {
       arenaTransitionPhase = "ejecting";
-      await unloadAllLoadedModels(get(lmStudioUnloadHelperUrl));
-      const contestantIds = [
-        n >= 2 && get(dashboardModelB) ? get(dashboardModelB) : null,
-        n >= 3 && get(dashboardModelC) ? get(dashboardModelC) : null,
-        n >= 4 && get(dashboardModelD) ? get(dashboardModelD) : null,
-      ].filter(Boolean);
-      await waitUntilUnloaded(contestantIds, {
-        pollIntervalMs: 400,
-        timeoutMs: 25000,
-      });
-      await new Promise((r) => setTimeout(r, 1500));
-      arenaTransitionPhase = "loading";
+      await unloadAllModelsNative();
+      const loadedBefore = await getLoadedModelKeys();
+      if (loadedBefore.length > 0) {
+        await waitUntilUnloaded(loadedBefore, {
+          pollIntervalMs: 400,
+          timeoutMs: 25000,
+        });
+      }
+      await new Promise((r) => setTimeout(r, 1000));
+      judgeLoadingMessageIndex = Math.floor(Math.random() * JUDGE_LOADING_LINES.length);
+      arenaTransitionPhase = "loading_judge";
       try {
         await loadModel(judgeId);
-      } catch (_) {
-        /* Load may fail or already loaded; stream will trigger load on demand */
-      }
+      } catch (_) {}
       arenaTransitionPhase = null;
     } finally {
       arenaTransitionPhase = null;
@@ -1165,7 +1220,7 @@
       .pop();
     const promptText = lastUserMsg ? contentToText(lastUserMsg.content) : "";
     let judgeWebContext = "";
-    if (get(arenaWebSearchMode) === "judge" && promptText.trim()) {
+    if (get(arenaWebSearchMode) === "all" && get(webSearchForNextMessage) && promptText.trim()) {
       webSearchInProgress.set(true);
       arenaTransitionPhase = "judge_web";
       judgeWebMessageIndex = Math.floor(Math.random() * JUDGE_WEB_LINES.length);
@@ -1181,46 +1236,45 @@
       }
     }
     const answerKeyTrimmed = currentQuestionAnswer;
-    console.log(
-      "[Arena Judge] Answer key for Q" + (questionIndex + 1) + ":",
-      answerKeyTrimmed || "(none)",
-    );
-    const { messages } = buildJudgePrompt({
-      slotsWithResponses,
-      answerKeyTrimmed,
-      judgeWebContext,
-      promptText,
-      judgeFeedback: feedback,
-      judgeInstructions,
-    });
-    console.log(
-      "[Arena Judge] Full prompt:",
-      messages
-        .map((m) => m.role + ": " + m.content.slice(0, 300))
-        .join("\n---\n"),
-    );
+    const useBlindReview = get(arenaBlindReview);
+    const useDeterministicJudge = get(arenaDeterministicJudge);
+    const shuffleRandom = arenaCurrentRunMeta ? makeSeededRandom(arenaCurrentRunMeta.seed) : undefined;
+    let responseOrder = null;
+    const { messages } = useBlindReview
+      ? (() => {
+          const out = buildJudgePromptBlind({
+            slotsWithResponses,
+            answerKeyTrimmed,
+            judgeWebContext,
+            promptText,
+            judgeFeedback: feedback,
+            judgeInstructions,
+            shuffleRandom,
+          });
+          responseOrder = out.responseOrder;
+          return { messages: out.messages };
+        })()
+      : buildJudgePrompt({
+          slotsWithResponses,
+          answerKeyTrimmed,
+          judgeWebContext,
+          promptText,
+          judgeFeedback: feedback,
+          judgeInstructions,
+        });
     chatError.set(null);
-    setRunning("A", true);
-    setSlotError("A", "");
-    const assistantMsgId = generateId();
-    pushMessage("A", {
-      id: assistantMsgId,
-      role: "assistant",
-      content: "",
-      stats: null,
-      modelId: judgeId,
-      createdAt: Date.now(),
-    });
     const controller = new AbortController();
     aborters["A"] = controller;
+    const judgeTimeoutId = setTimeout(() => controller.abort(), ARENA_TIMEOUT_MS);
     let fullContent = "";
     const judgeOpts = getSettingsForSlot("A");
     try {
+      arenaTransitionPhase = "scoring";
       await streamChatCompletion({
         model: judgeId,
         messages,
         options: {
-          temperature: judgeOpts.temperature,
+          temperature: useDeterministicJudge ? 0 : judgeOpts.temperature,
           max_tokens: judgeOpts.max_tokens,
           top_p: judgeOpts.top_p,
           top_k: judgeOpts.top_k,
@@ -1233,43 +1287,98 @@
         signal: controller.signal,
         onChunk(chunk) {
           fullContent += chunk;
-          updateMessage("A", assistantMsgId, {
-            content: fullContent,
-            modelId: judgeId,
-          });
         },
       });
-      // Post-process: force each "Model X:" score onto its own line for clean rendering
       fullContent = fullContent.replace(
-        /([.!?;])\s*(Model\s+[B-D]:)/gi,
+        /([.!?;])\s*(Model\s+[A-D]:)/gi,
         "$1\n\n$2",
       );
-      const estimatedTokens = Math.max(1, Math.ceil(fullContent.length / 4));
-      updateMessage("A", assistantMsgId, {
-        content: fullContent,
-        stats: { completion_tokens: estimatedTokens, estimated: true },
-        modelId: judgeId,
-      });
-      const roundScores = parseJudgeScores(fullContent);
-      if (Object.keys(roundScores).length > 0) {
-        // Track per-question history
-        const qIdx = questionIndex % Math.max(1, parsedQuestions.length);
-        const qText = parsedQuestions[qIdx] || "(free-form prompt)";
-        scoreHistory = addScoreRound(scoreHistory, qIdx, qText, roundScores);
-        arenaScores = computeTotals(scoreHistory);
+      fullContent = fullContent.replace(
+        /([.!?;])\s*(Response\s+\d+:)/gi,
+        "$1\n\n$2",
+      );
+      let roundScores;
+      let displayExplanation = fullContent;
+      let popupExplanations = /** @type {Record<string, string> | undefined} */ (undefined);
+      if (useBlindReview && responseOrder) {
+        const blind = parseBlindJudgeScores(fullContent, responseOrder);
+        roundScores = blind.scores;
+        popupExplanations = blind.explanations;
+        const lines = ["A", "B", "C", "D"]
+          .filter((slot) => roundScores[slot] !== undefined)
+          .map((slot) => `Model ${slot}: ${roundScores[slot]}/10 - ${(blind.explanations[slot] || "").trim() || "—"}`);
+        displayExplanation = lines.join("\n");
+      } else {
+        roundScores = parseJudgeScores(fullContent);
+      }
+      const qIdx = questionIndex % Math.max(1, parsedQuestions.length);
+      const parsedOk = Object.keys(roundScores).length > 0;
+      if (!parsedOk && slotsWithResponses.length > 0) {
+        chatError.set("Judge output could not be parsed. See modal for raw output.");
+        if (typeof console !== "undefined" && console.error) {
+          console.error("[Arena judge_failure] abort_and_log_error", { raw_output: fullContent, run_id: arenaCurrentRunMeta?.run_id });
+        }
+        judgmentPopup = {
+          scores: {},
+          explanation: "Judge returned malformed output (no scores parsed). Raw output below.\n\n---\n\n" + fullContent,
+          rawJudgeOutput: fullContent,
+          questionIndex: qIdx,
+          explanations: undefined,
+        };
+      } else {
+        if (parsedOk) {
+          const qText = parsedQuestions[qIdx] || "(free-form prompt)";
+          scoreHistory = addScoreRound(scoreHistory, qIdx, qText, roundScores);
+          arenaScores = computeTotals(scoreHistory);
+        }
+        judgmentPopup = {
+          scores: roundScores,
+          explanation: displayExplanation,
+          rawJudgeOutput: fullContent,
+          questionIndex: qIdx,
+          explanations: popupExplanations,
+        };
+      }
+      if (typeof console !== "undefined" && console.log && arenaCurrentRunMeta) {
+        console.log("[Arena run metadata]", {
+          run_id: arenaCurrentRunMeta.run_id,
+          seed: arenaCurrentRunMeta.seed,
+          question_index: arenaCurrentRunMeta.question_index,
+          deterministic_judge: arenaCurrentRunMeta.deterministic_judge,
+          blind_review: arenaCurrentRunMeta.blind_review,
+          model_list: arenaCurrentRunMeta.model_list,
+          judge_model: arenaCurrentRunMeta.judge_model,
+          responses: arenaCurrentRunMeta.responses,
+          scores: roundScores,
+        });
       }
     } catch (err) {
       if (err?.name !== "AbortError") {
-        setSlotError("A", err?.message || "Judge request failed.");
+        const msg = err?.message || "Scoring request failed.";
+        chatError.set(msg);
+        const qIdx = questionIndex % Math.max(1, parsedQuestions.length);
+        judgmentPopup = {
+          scores: {},
+          explanation: "Scoring failed: " + msg + (fullContent ? "\n\n--- Raw judge output ---\n\n" + fullContent : ""),
+          rawJudgeOutput: fullContent || "",
+          questionIndex: qIdx,
+        };
+        if (typeof console !== "undefined" && console.error) {
+          console.error("[Arena judge_failure] abort_and_log_error", { error: msg, raw_output: fullContent, run_id: arenaCurrentRunMeta?.run_id });
+        }
       }
-      updateMessage("A", assistantMsgId, {
-        content: fullContent || "",
-        stats: null,
-        modelId: judgeId,
-      });
     } finally {
-      setRunning("A", false);
+      clearTimeout(judgeTimeoutId);
       aborters["A"] = null;
+      // Unload judge model after scoring (spec: UNLOAD_JUDGE_MODEL → VERIFY_MODEL_UNLOADED)
+      arenaTransitionPhase = "ejecting";
+      try {
+        if (judgeId) {
+          await unloadModel(judgeId);
+          await waitUntilUnloaded([judgeId], { pollIntervalMs: 400, timeoutMs: 15000 });
+        }
+      } catch (_) { /* best-effort */ }
+      arenaTransitionPhase = null;
     }
   }
 
@@ -1279,12 +1388,11 @@
     ejectMessage = null;
     chatError.set(null);
     try {
-      const result = await unloadAllLoadedModels(get(lmStudioUnloadHelperUrl));
+      const result = await unloadAllModelsNative();
       if (result?.ok) {
-        ejectMessage = "All models ejected.";
+        ejectMessage = `All models ejected (${result.unloaded} instance${result.unloaded !== 1 ? "s" : ""}).`;
       } else {
-        ejectMessage =
-          "Unload helper not running. Run start_atom_ui.bat or start_unload_helper.bat.";
+        ejectMessage = "Could not eject models. Is LM Studio running?";
       }
       setTimeout(() => {
         ejectMessage = null;
@@ -1294,17 +1402,7 @@
     }
   }
 
-  const canRunJudgment = $derived(
-    $arenaSlotAIsJudge &&
-      $dashboardModelA &&
-      !$isStreaming &&
-      !running.A &&
-      (($arenaPanelCount >= 2 && messagesB.length > 0) ||
-        ($arenaPanelCount >= 3 && messagesC.length > 0) ||
-        ($arenaPanelCount >= 4 && messagesD.length > 0)),
-  );
-
-  // ---------- Ask the Judge (side conversation) ----------
+  // ---------- Ask the Judge (side conversation; kept for possible future use) ----------
   async function askTheJudge() {
     if (askJudgeLoading || !askJudgeQuestion.trim()) return;
     const judgeId = get(dashboardModelA);
@@ -1456,8 +1554,8 @@
       running: running[slot],
       slotError: slotErrors[slot],
       tps: tps[slot],
-      score: slot === "A" ? 0 : arenaScores[slot],
-      standingLabel: slot === "A" ? "—" : arenaStandingLabel(slot, arenaScores),
+      score: arenaScores[slot] ?? 0,
+      standingLabel: arenaStandingLabel(slot, arenaScores),
       effectiveSettings: effectiveSettings[slot],
       accentColor: SLOT_COLORS[slot],
       showScore: slot !== "A",
@@ -1602,356 +1700,33 @@
   }}
 >
   <!-- === Header: model cards A–D (selector + score) === -->
-  <header
-    class="shrink-0 grid gap-2 px-3 py-1.5 border-b items-stretch"
-    style="background-color: var(--ui-bg-sidebar); border-color: var(--ui-border); z-index: 100; grid-template-columns: {windowWidth <
-    1200
-      ? 'repeat(2, minmax(0, 1fr))'
-      : 'repeat(' + $arenaPanelCount + ', minmax(0, 1fr))'};"
-  >
-    {#if $arenaPanelCount >= 1}
-      <div
-        class="flex items-center gap-2 rounded border px-2 py-1 min-h-0 transition-all"
-        class:model-card-active={running.A}
-        style="background-color: var(--ui-bg-main); border-color: {running.A
-          ? '#3b82f6'
-          : 'var(--ui-border)'};"
-      >
-        <span
-          class="text-[10px] font-bold w-4 shrink-0"
-          style="color: var(--ui-text-secondary);">A</span
-        >
-        <div class="flex-1 min-w-0"><ModelSelectorSlot slot="A" /></div>
-        <span
-          class="text-[11px] font-bold shrink-0 w-6 text-right"
-          style="color: #3b82f6;">—</span
-        >
-      </div>
-    {/if}
-    {#if $arenaPanelCount >= 2}
-      <div
-        class="flex items-center gap-2 rounded border px-2 py-1 min-h-0 transition-all"
-        class:model-card-active={running.B}
-        style="background-color: var(--ui-bg-main); border-color: {running.B
-          ? '#10b981'
-          : 'var(--ui-border)'};"
-      >
-        <span
-          class="text-[10px] font-bold w-4 shrink-0"
-          style="color: var(--ui-text-secondary);">B</span
-        >
-        <div class="flex-1 min-w-0"><ModelSelectorSlot slot="B" /></div>
-        <span
-          class="text-[11px] font-bold shrink-0 tabular-nums"
-          style="color: #10b981;">{arenaScores.B}</span
-        >
-      </div>
-    {/if}
-    {#if $arenaPanelCount >= 3}
-      <div
-        class="flex items-center gap-2 rounded border px-2 py-1 min-h-0 transition-all"
-        class:model-card-active={running.C}
-        style="background-color: var(--ui-bg-main); border-color: {running.C
-          ? '#f59e0b'
-          : 'var(--ui-border)'};"
-      >
-        <span
-          class="text-[10px] font-bold w-4 shrink-0"
-          style="color: var(--ui-text-secondary);">C</span
-        >
-        <div class="flex-1 min-w-0"><ModelSelectorSlot slot="C" /></div>
-        <span
-          class="text-[11px] font-bold shrink-0 tabular-nums"
-          style="color: #f59e0b;">{arenaScores.C}</span
-        >
-      </div>
-    {/if}
-    {#if $arenaPanelCount >= 4}
-      <div
-        class="flex items-center gap-2 rounded border px-2 py-1 min-h-0 transition-all"
-        class:model-card-active={running.D}
-        style="background-color: var(--ui-bg-main); border-color: {running.D
-          ? '#8b5cf6'
-          : 'var(--ui-border)'};"
-      >
-        <span
-          class="text-[10px] font-bold w-4 shrink-0"
-          style="color: var(--ui-text-secondary);">D</span
-        >
-        <div class="flex-1 min-w-0"><ModelSelectorSlot slot="D" /></div>
-        <span
-          class="text-[11px] font-bold shrink-0 tabular-nums"
-          style="color: #8b5cf6;">{arenaScores.D}</span
-        >
-      </div>
-    {/if}
-  </header>
+  <ArenaHeader
+    arenaPanelCount={$arenaPanelCount}
+    running={running}
+    arenaScores={arenaScores}
+    windowWidth={windowWidth}
+  />
 
   <!-- === Arena control bar: Question | Run | Web | Judge | Tools === -->
-  <div
-    class="arena-question-bar shrink-0 flex items-center gap-0 px-4 py-2.5 border-b"
-    style="background-color: var(--ui-bg-sidebar); border-color: var(--ui-border);"
-  >
-    <!-- 1. Question: nav only -->
-    <div
-      class="arena-bar-section flex items-center gap-1"
-      aria-label="Question"
-    >
-      <div
-        class="flex items-center h-8 rounded-md overflow-hidden border"
-        style="border-color: var(--ui-border); background: var(--ui-input-bg);"
-      >
-        <button
-          type="button"
-          class="h-full px-2.5 text-xs font-medium disabled:opacity-40 transition-opacity"
-          style="color: var(--ui-text-secondary);"
-          disabled={currentQuestionTotal === 0 || currentQuestionNum <= 1}
-          onclick={prevQuestion}
-          aria-label="Previous question">←</button
-        >
-        {#if currentQuestionTotal > 0}
-          <select
-            class="h-full min-w-[4.5rem] max-w-[14rem] pl-2 pr-7 text-xs font-semibold tabular-nums border-l border-r bg-transparent cursor-pointer"
-            style="border-color: var(--ui-border); color: var(--ui-text-primary);"
-            aria-label="Current question"
-            value={currentQuestionNum}
-            onchange={(e) => jumpToQuestion(e.currentTarget.value)}
-          >
-            {#each Array(currentQuestionTotal) as _, i}
-              {@const qPreview = parsedQuestions[i]
-                ? parsedQuestions[i].slice(0, 50) +
-                  (parsedQuestions[i].length > 50 ? "…" : "")
-                : ""}
-              <option value={i + 1}
-                >Q{i + 1}{qPreview ? ": " + qPreview : ""}</option
-              >
-            {/each}
-          </select>
-          <span
-            class="h-full flex items-center px-2 text-xs tabular-nums"
-            style="color: var(--ui-text-secondary);"
-            >/ {currentQuestionTotal}</span
-          >
-        {:else}
-          <span class="px-2 text-xs" style="color: var(--ui-text-secondary);"
-            >—</span
-          >
-        {/if}
-        <button
-          type="button"
-          class="h-full px-2.5 text-xs font-medium disabled:opacity-40 transition-opacity"
-          style="color: var(--ui-text-secondary);"
-          disabled={currentQuestionTotal === 0 ||
-            currentQuestionNum >= currentQuestionTotal}
-          onclick={advanceQuestionIndex}
-          aria-label="Next question">→</button
-        >
-      </div>
-    </div>
-    <div class="arena-bar-divider" aria-hidden="true"></div>
-    <!-- 2. Run: Ask + Next -->
-    <div class="arena-bar-section flex items-center gap-2" aria-label="Run">
-      <button
-        type="button"
-        class="h-8 px-4 rounded-md text-xs font-semibold shrink-0 disabled:opacity-50 transition-opacity"
-        style="background-color: var(--ui-accent); color: var(--ui-bg-main);"
-        disabled={$isStreaming || currentQuestionTotal === 0}
-        onclick={askCurrentQuestion}
-        aria-label="Ask this question"
-        title="Send the currently selected question to the models">Ask</button
-      >
-      <button
-        type="button"
-        class="h-8 px-3 rounded-md text-xs font-semibold shrink-0 disabled:opacity-50 transition-opacity border"
-        style="border-color: var(--ui-accent); color: var(--ui-accent); background: transparent;"
-        disabled={$isStreaming ||
-          currentQuestionTotal === 0 ||
-          currentQuestionNum >= currentQuestionTotal}
-        onclick={askNextQuestion}
-        aria-label="Next question and ask"
-        title="Advance to next question and send it">Next</button
-      >
-      {#if runAllActive}
-        <button
-          type="button"
-          class="h-8 px-3 rounded-md text-xs font-semibold shrink-0 transition-opacity"
-          style="background: var(--ui-accent-hot, #dc2626); color: white;"
-          onclick={stopRunAll}
-          title="Stop Run All"
-          >Stop ({runAllProgress.current}/{runAllProgress.total})</button
-        >
-      {:else}
-        <button
-          type="button"
-          class="h-8 px-3 rounded-md text-xs font-medium shrink-0 disabled:opacity-50 transition-opacity border"
-          style="border-color: var(--ui-border); color: var(--ui-text-secondary); background: var(--ui-input-bg);"
-          disabled={$isStreaming || currentQuestionTotal < 2}
-          onclick={runAllQuestions}
-          aria-label="Run all questions"
-          title="Run all questions sequentially{$arenaSlotAIsJudge
-            ? ' with judgment'
-            : ''}">Run All</button
-        >
-      {/if}
-    </div>
-    <div class="arena-bar-divider" aria-hidden="true"></div>
-    <!-- 3. Web: globe + who gets it -->
-    <div class="arena-bar-section flex items-center gap-2" aria-label="Web">
-      <button
-        type="button"
-        class="arena-globe-btn relative flex items-center justify-center shrink-0 w-8 h-8 rounded-md border transition-colors"
-        class:arena-globe-active={$webSearchForNextMessage}
-        style="border-color: {$webSearchForNextMessage
-          ? 'var(--ui-accent)'
-          : 'var(--ui-border)'}; background: {$webSearchForNextMessage
-          ? 'color-mix(in srgb, var(--ui-accent) 14%, transparent)'
-          : 'var(--ui-input-bg)'};"
-        disabled={$isStreaming}
-        title={arenaWebWarmingUp
-          ? "Connecting…"
-          : $webSearchForNextMessage
-            ? $webSearchConnected
-              ? "Connected – click to disconnect"
-              : "Not connected – click to retry"
-            : "Connect to internet"}
-        onclick={() => {
-          const on = $webSearchForNextMessage;
-          const connected = $webSearchConnected;
-          if (on && !connected && !arenaWebWarmingUp) {
-            arenaWebWarmUpAttempted = false;
-            runArenaWarmUp();
-            return;
-          }
-          if (on) {
-            webSearchForNextMessage.set(false);
-            webSearchConnected.set(false);
-            return;
-          }
-          webSearchForNextMessage.set(true);
-          runArenaWarmUp();
-        }}
-        aria-label={arenaWebWarmingUp
-          ? "Connecting"
-          : $webSearchForNextMessage
-            ? "Web connected"
-            : "Connect to web"}
-        aria-pressed={$webSearchForNextMessage}
-      >
-        <span
-          class="text-base leading-none"
-          class:arena-globe-spin={arenaWebWarmingUp}
-          aria-hidden="true">🌐</span
-        >
-        {#if $webSearchForNextMessage}
-          {#if $webSearchConnected}
-            <span
-              class="arena-globe-dot arena-globe-dot-green"
-              aria-hidden="true"
-            ></span>
-          {:else}
-            <span
-              class="arena-globe-dot arena-globe-dot-red"
-              class:arena-globe-dot-pulse={arenaWebWarmingUp}
-              aria-hidden="true"
-            ></span>
-          {/if}
-        {/if}
-      </button>
-      <div
-        class="flex h-8 rounded-md border overflow-hidden"
-        style="border-color: var(--ui-border); background: var(--ui-input-bg); opacity: {$webSearchForNextMessage &&
-        $webSearchConnected
-          ? '1'
-          : '0.5'};"
-      >
-        <button
-          type="button"
-          class="arena-web-tab h-full px-2.5 text-[11px] font-medium"
-          class:active={$arenaWebSearchMode === "none"}
-          onclick={() => {
-            arenaWebSearchMode.set("none");
-            if ($settings.audio_enabled && $settings.audio_clicks)
-              playClick($settings.audio_volume);
-          }}
-          title="No web">None</button
-        >
-        <button
-          type="button"
-          class="arena-web-tab h-full px-2.5 text-[11px] font-medium border-l"
-          class:active={$arenaWebSearchMode === "all"}
-          style="border-color: var(--ui-border);"
-          onclick={() => {
-            arenaWebSearchMode.set("all");
-            if ($settings.audio_enabled && $settings.audio_clicks)
-              playClick($settings.audio_volume);
-          }}
-          title="All models">All</button
-        >
-        <button
-          type="button"
-          class="arena-web-tab h-full px-2.5 text-[11px] font-medium border-l"
-          class:active={$arenaWebSearchMode === "judge"}
-          style="border-color: var(--ui-border);"
-          onclick={() => {
-            arenaWebSearchMode.set("judge");
-            if ($settings.audio_enabled && $settings.audio_clicks)
-              playClick($settings.audio_volume);
-          }}
-          title="Judge only">Judge only</button
-        >
-      </div>
-    </div>
-    <div class="arena-bar-divider" aria-hidden="true"></div>
-    <!-- 4. Judge: score B/C/D -->
-    {#if $arenaSlotAIsJudge}
-      <div class="arena-bar-section flex items-center" aria-label="Judge">
-        <button
-          type="button"
-          class="h-8 px-4 rounded-md text-xs font-semibold shrink-0 disabled:opacity-50 transition-opacity"
-          style="background-color: var(--ui-accent); color: var(--ui-bg-main);"
-          disabled={!canRunJudgment}
-          onclick={() => {
-            if (canRunJudgment) runJudgment();
-            if ($settings.audio_enabled && $settings.audio_clicks)
-              playClick($settings.audio_volume);
-          }}
-          title="Score B/C/D using slot A">Judgment</button
-        >
-      </div>
-      <div class="arena-bar-divider" aria-hidden="true"></div>
-    {/if}
-    <!-- Spacer: push tools right -->
-    <div class="flex-1 min-w-4" aria-hidden="true"></div>
-    <!-- 5. Tools: Reset + Settings -->
-    <div class="arena-bar-section flex items-center gap-2" aria-label="Tools">
-      <button
-        type="button"
-        class="flex items-center gap-1.5 h-8 px-3 rounded-md border text-xs font-medium shrink-0 transition-opacity hover:opacity-90"
-        style="border-color: var(--ui-accent-hot, #dc2626); color: var(--ui-accent-hot, #dc2626); background: transparent;"
-        onclick={startOver}
-        aria-label="Start over"
-        title="Clear all responses, reset scores, go back to Q1"
-      >
-        <span aria-hidden="true">⟲</span>
-        <span>Start Over</span>
-      </button>
-      <button
-        type="button"
-        class="flex items-center gap-1.5 h-8 px-3 rounded-md border text-xs font-medium shrink-0 transition-opacity hover:opacity-90"
-        style="border-color: var(--ui-border); background: var(--ui-input-bg); color: var(--ui-text-secondary);"
-        onclick={() => {
-          arenaSettingsOpen = true;
-          if ($settings.audio_enabled && $settings.audio_clicks)
-            playClick($settings.audio_volume);
-        }}
-        aria-label="Arena settings"
-        title="Questions, answer key, rules"
-      >
-        <span aria-hidden="true">⚙</span>
-        <span>Settings</span>
-      </button>
-    </div>
-  </div>
+  <ArenaControlBar
+    currentQuestionNum={currentQuestionNum}
+    currentQuestionTotal={currentQuestionTotal}
+    parsedQuestions={parsedQuestions}
+    runAllActive={runAllActive}
+    runAllProgress={runAllProgress}
+    arenaWebWarmingUp={arenaWebWarmingUp}
+    arenaWebWarmUpAttempted={arenaWebWarmUpAttempted}
+    prevQuestion={prevQuestion}
+    jumpToQuestion={jumpToQuestion}
+    advanceQuestionIndex={advanceQuestionIndex}
+    askCurrentQuestion={askCurrentQuestion}
+    askNextQuestion={askNextQuestion}
+    runAllQuestions={runAllQuestions}
+    stopRunAll={stopRunAll}
+    runArenaWarmUp={runArenaWarmUp}
+    startOver={startOver}
+    onOpenSettings={() => (arenaSettingsOpen = true)}
+  />
 
   <!-- === Sticky question text bar (always visible above panels) === -->
   {#if currentQuestionTotal > 0 && currentQuestionText}
@@ -1971,7 +1746,7 @@
     </div>
   {/if}
 
-  <!-- === Response panels A–D (resizable; panel A header has "Use as judge" checkbox) === -->
+  <!-- === Response panels A–D (resizable) === -->
   <div
     bind:this={gridEl}
     class="flex-1 min-h-0 grid gap-2 p-3 atom-layout-transition relative grid-rows-[minmax(0,1fr)]"
@@ -2097,16 +1872,26 @@
       <div class="flex items-center gap-2">
         <ThinkingAtom size={22} />
         <span class="text-sm font-medium">
-          {#if arenaTransitionPhase === "judge_web"}
+          {#if arenaTransitionPhase === "loading_judge"}
+            {JUDGE_LOADING_LINES[judgeLoadingMessageIndex].main}
+          {:else if arenaTransitionPhase === "judge_web"}
             {JUDGE_WEB_LINES[judgeWebMessageIndex].main}
           {:else if arenaTransitionPhase === "ejecting"}
             Ejecting…
+          {:else if arenaTransitionPhase === "scoring"}
+            Scoring answers…
           {:else}
             New model loading
           {/if}
         </span>
       </div>
-      {#if arenaTransitionPhase === "judge_web"}
+      {#if arenaTransitionPhase === "loading_judge"}
+        <span
+          class="text-xs opacity-80"
+          style="color: var(--ui-text-secondary);"
+          >{JUDGE_LOADING_LINES[judgeLoadingMessageIndex].sub}</span
+        >
+      {:else if arenaTransitionPhase === "judge_web"}
         <span
           class="text-xs opacity-80"
           style="color: var(--ui-text-secondary);"
@@ -2143,79 +1928,127 @@
 
   <!-- Floating question panel removed: question now shows cleanly in each slot's chat bubble -->
 
-  <!-- Draggable floating panel: Ask the Judge (only when slot A is judge) -->
-  {#if $arenaSlotAIsJudge}
+  <!-- Judgment result popup (scores + explanation after automated judging) -->
+  {#if judgmentPopup}
     <div
-      class="arena-floating-panel rounded-lg border shadow-lg overflow-hidden"
-      style="position: fixed; left: {askJudgePanelPos.x}px; top: {askJudgePanelPos.y}px; z-index: 30; width: min(380px, calc(100vw - 2rem)); background-color: var(--ui-bg-sidebar); border-color: var(--ui-border);"
+      class="fixed inset-0 z-[250] flex items-center justify-center p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Judgment results"
     >
       <div
-        class="arena-floating-handle flex items-center justify-between gap-2 px-3 py-2 cursor-grab active:cursor-grabbing select-none"
-        style="border-bottom: 1px solid var(--ui-border); color: var(--ui-text-primary);"
-        use:makeDraggable={{
-          storageKey: "arenaAskJudgePanelPos",
-          getPos: () => askJudgePanelPos,
-          setPos: (p) => (askJudgePanelPos = p),
-        }}
+        class="absolute inset-0 bg-black/40"
+        role="button"
+        tabindex="-1"
+        aria-label="Close"
+        onclick={() => (judgmentPopup = null)}
+        onkeydown={(e) => e.key === "Escape" && (judgmentPopup = null)}
+      ></div>
+      <div
+        class="relative rounded-xl border shadow-xl max-w-lg w-full max-h-[85vh] flex flex-col overflow-hidden"
+        style="background-color: var(--ui-bg-main); border-color: var(--ui-border);"
       >
-        <span class="text-xs font-semibold">🧑‍⚖️ Ask the Judge</span>
-        {#if askJudgeExpanded}
-          <button
-            type="button"
-            class="p-1 rounded opacity-70 hover:opacity-100"
-            style="color: var(--ui-text-secondary);"
-            onclick={() => (askJudgeExpanded = false)}
-            aria-label="Collapse">×</button
-          >
-        {:else}
-          <button
-            type="button"
-            class="text-xs font-medium px-2 py-1 rounded"
-            style="background: var(--ui-accent); color: var(--ui-bg-main);"
-            onclick={() => (askJudgeExpanded = true)}
-            aria-label="Expand">Open</button
-          >
-        {/if}
-      </div>
-      {#if askJudgeExpanded}
-        {#if askJudgeReply}
-          <div
-            class="px-3 py-2 text-xs leading-relaxed border-b max-h-48 overflow-y-auto"
-            style="background-color: var(--ui-input-bg); border-color: var(--ui-border); color: var(--ui-text-primary); white-space: pre-wrap;"
-          >
-            {askJudgeReply}
-          </div>
-        {/if}
-        <div class="flex gap-1.5 p-2">
-          <textarea
-            id="arena-ask-judge"
-            class="flex-1 px-2.5 py-2 text-xs resize-none rounded-md"
-            style="background-color: var(--ui-input-bg); color: var(--ui-text-primary); border: 1px solid var(--ui-border);"
-            placeholder="e.g. Why did you give Model B a 6 instead of a 4?"
-            rows="2"
-            bind:value={askJudgeQuestion}
-            onkeydown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                askTheJudge();
-              }
-            }}
-          ></textarea>
-          <button
-            type="button"
-            class="self-end shrink-0 h-8 px-3 rounded-md text-xs font-semibold transition-opacity disabled:opacity-40"
-            style="background-color: var(--ui-accent); color: var(--ui-bg-main);"
-            disabled={askJudgeLoading || !askJudgeQuestion.trim()}
-            onclick={askTheJudge}
-          >
-            {#if askJudgeLoading}
-              Thinking…
-            {:else}
-              Ask
+        <div class="shrink-0 flex items-center justify-between px-4 py-3 border-b" style="border-color: var(--ui-border);">
+          <h2 class="text-base font-semibold" style="color: var(--ui-text-primary);">Scores</h2>
+            <div class="flex items-center gap-2">
+            <button
+              type="button"
+              class="px-2 py-1 rounded text-xs font-medium border transition-colors"
+              style="color: var(--ui-text-secondary); border-color: var(--ui-border);"
+              onclick={() => {
+                const raw = judgmentPopup.rawJudgeOutput ?? judgmentPopup.explanation;
+                const explanations =
+                  judgmentPopup.explanations && Object.keys(judgmentPopup.explanations).length > 0
+                    ? judgmentPopup.explanations
+                    : parseJudgeScoresAndExplanations(judgmentPopup.explanation).explanations;
+                const payload = {
+                  questionIndex: judgmentPopup.questionIndex ?? -1,
+                  scores: judgmentPopup.scores,
+                  explanations: Object.keys(explanations || {}).length ? explanations : undefined,
+                  rawExplanation: raw,
+                };
+                navigator.clipboard?.writeText(JSON.stringify(payload, null, 2));
+              }}
+              aria-label="Copy results as JSON">Copy JSON</button>
+            <button
+              type="button"
+              class="px-2 py-1 rounded text-xs font-medium border transition-colors"
+              style="color: var(--ui-text-secondary); border-color: var(--ui-border);"
+              onclick={() => {
+                const q = judgmentPopup.questionIndex ?? -1;
+                const expl = judgmentPopup.explanations || {};
+                const header = "questionIndex,slot,score,explanation";
+                const rows = ["A", "B", "C", "D"]
+                  .filter((slot) => judgmentPopup.scores[slot] !== undefined)
+                  .map((slot) => {
+                    const score = judgmentPopup.scores[slot];
+                    const ex = (expl[slot] ?? "").replace(/"/g, '""');
+                    return `${q},${slot},${score},"${ex}"`;
+                  });
+                const csv = [header, ...rows].join("\n");
+                navigator.clipboard?.writeText(csv);
+              }}
+              aria-label="Copy results as CSV">Copy CSV</button>
+            {#if arenaCurrentRunMeta}
+              <button
+                type="button"
+                class="px-2 py-1 rounded text-xs font-medium border transition-colors"
+                style="color: var(--ui-text-secondary); border-color: var(--ui-border);"
+                onclick={() => {
+                  const meta = {
+                    run_id: arenaCurrentRunMeta.run_id,
+                    seed: arenaCurrentRunMeta.seed,
+                    timestamp: arenaCurrentRunMeta.start_timestamp,
+                    question_index: arenaCurrentRunMeta.question_index,
+                    deterministic_judge: arenaCurrentRunMeta.deterministic_judge,
+                    blind_review: arenaCurrentRunMeta.blind_review,
+                    model_list: arenaCurrentRunMeta.model_list,
+                    judge_model: arenaCurrentRunMeta.judge_model,
+                    responses: arenaCurrentRunMeta.responses,
+                    scores: judgmentPopup.scores,
+                  };
+                  navigator.clipboard?.writeText(JSON.stringify(meta, null, 2));
+                }}
+                aria-label="Copy run metadata as JSON">Copy run metadata</button>
             {/if}
-          </button>
+            <button
+              type="button"
+              class="p-2 rounded-lg hover:opacity-80"
+              style="color: var(--ui-text-secondary);"
+              onclick={() => (judgmentPopup = null)}
+              aria-label="Close">×</button>
+          </div>
         </div>
-      {/if}
+        <div class="flex-1 min-h-0 overflow-y-auto px-4 pb-4" style="border-top: 1px solid var(--ui-border);">
+          <div class="flex flex-col gap-3 pt-3">
+            {#each ["A", "B", "C", "D"] as slot}
+              {#if judgmentPopup.scores[slot] !== undefined}
+                {@const color = SLOT_COLORS[slot]}
+                {@const score = judgmentPopup.scores[slot]}
+                {@const expl = judgmentPopup.explanations?.[slot] || ""}
+                {@const fallbackExpl = !expl && judgmentPopup.explanation ? judgmentPopup.explanation : ""}
+                <div class="rounded-lg border p-3" style="border-color: {color}40; background: {color}08;">
+                  <div class="flex items-center justify-between mb-1.5">
+                    <span class="text-sm font-semibold flex items-center gap-2">
+                      <span class="inline-block w-2.5 h-2.5 rounded-full" style="background: {color};"></span>
+                      Model {slot}
+                    </span>
+                    <span class="text-lg font-bold" style="color: {color};">{score}/10</span>
+                  </div>
+                  {#if expl}
+                    <p class="text-sm leading-relaxed" style="color: var(--ui-text-secondary);">{expl}</p>
+                  {/if}
+                </div>
+              {/if}
+            {/each}
+            {#if !judgmentPopup.explanations || Object.keys(judgmentPopup.explanations).length === 0}
+              <div class="text-sm whitespace-pre-wrap mt-1" style="color: var(--ui-text-secondary);">
+                {judgmentPopup.explanation}
+              </div>
+            {/if}
+          </div>
+        </div>
+      </div>
     </div>
   {/if}
 
@@ -2374,23 +2207,18 @@ Answer: Thomas Newcomen.
               class="font-semibold text-sm mb-3"
               style="color: var(--ui-text-primary);"
             >
-              Execution mode
+              Execution
             </h3>
-            <label
-              class="flex items-start gap-2 cursor-pointer text-sm"
-              style="color: var(--ui-text-secondary);"
-            >
-              <input
-                type="checkbox"
-                bind:checked={sequential}
-                class="rounded mt-0.5"
-                style="accent-color: var(--ui-accent);"
-                onchange={() => {
-                  if ($settings.audio_enabled && $settings.audio_clicks)
-                    playClick($settings.audio_volume);
-                }}
-              />
-              <span>Sequential (one at a time). Off = parallel.</span>
+            <p class="text-sm mb-3" style="color: var(--ui-text-secondary);">
+              One model at a time: each contestant loads, answers, then is ejected before the next. No more than one model is ever loaded.
+            </p>
+            <label class="flex items-start gap-2 cursor-pointer text-sm" style="color: var(--ui-text-secondary);">
+              <input type="checkbox" bind:checked={$arenaBlindReview} class="rounded mt-0.5" style="accent-color: var(--ui-accent);" />
+              <span>Blind review (judge sees "Response 1", "Response 2" in shuffled order — no model identity)</span>
+            </label>
+            <label class="flex items-start gap-2 cursor-pointer text-sm mt-2" style="color: var(--ui-text-secondary);">
+              <input type="checkbox" bind:checked={$arenaDeterministicJudge} class="rounded mt-0.5" style="accent-color: var(--ui-accent);" />
+              <span>Deterministic judge (temperature 0)</span>
             </label>
           </section>
           <!-- Web search -->
@@ -2437,23 +2265,36 @@ Answer: Thomas Newcomen.
                     playClick($settings.audio_volume);
                 }}>All</button
               >
-              <button
-                type="button"
-                class="flex-1 px-2 py-1.5 text-xs font-medium transition-colors border-l"
-                class:opacity-70={$arenaWebSearchMode !== "judge"}
-                style="border-color: var(--ui-border); background: {$arenaWebSearchMode ===
-                'judge'
-                  ? 'var(--ui-sidebar-active)'
-                  : 'transparent'}; color: {$arenaWebSearchMode === 'judge'
-                  ? 'var(--ui-text-primary)'
-                  : 'var(--ui-text-secondary)'}"
-                onclick={() => {
-                  arenaWebSearchMode.set("judge");
-                  if ($settings.audio_enabled && $settings.audio_clicks)
-                    playClick($settings.audio_volume);
-                }}>Judge only</button
-              >
             </div>
+          </section>
+          <!-- Scoring model (for automated judging) -->
+          <section>
+            <h3 class="font-semibold text-sm mb-3" style="color: var(--ui-text-primary);">
+              Judge model
+            </h3>
+            <p class="text-xs mb-2" style="color: var(--ui-text-secondary);">
+              Model used to score answers after all contestants finish. Must NOT be a contestant. "Auto" picks the largest non-contestant model available.
+            </p>
+            <select
+              class="w-full px-3 py-2 rounded-lg border text-sm"
+              style="border-color: var(--ui-border); background: var(--ui-input-bg); color: var(--ui-text-primary);"
+              aria-label="Judge model"
+              value={$arenaScoringModelId || "__auto__"}
+              onchange={(e) => {
+                const v = e.currentTarget?.value;
+                arenaScoringModelId.set(v === "__auto__" || !v ? "" : v);
+              }}
+            >
+              <option value="__auto__">Auto (largest non-contestant)</option>
+              {#each $models.filter((m) => {
+                const cIds = [
+                  $dashboardModelA, $dashboardModelB, $dashboardModelC, $dashboardModelD
+                ].map((s) => (s || "").trim().toLowerCase()).filter(Boolean);
+                return !cIds.includes((m.id || "").trim().toLowerCase());
+              }) as m (m.id)}
+                <option value={m.id}>{m.id}</option>
+              {/each}
+            </select>
           </section>
           <!-- Score breakdown -->
           <section>
@@ -2467,10 +2308,12 @@ Answer: Thomas Newcomen.
               {scoreHistory}
               totals={arenaScores}
               visibleSlots={$arenaPanelCount >= 4
-                ? ["B", "C", "D"]
+                ? ["A", "B", "C", "D"]
                 : $arenaPanelCount >= 3
-                  ? ["B", "C"]
-                  : ["B"]}
+                  ? ["A", "B", "C"]
+                  : $arenaPanelCount >= 2
+                    ? ["A", "B"]
+                    : ["A"]}
             />
           </section>
           <!-- Actions -->
@@ -2482,7 +2325,7 @@ Answer: Thomas Newcomen.
               Actions
             </h3>
             <p class="text-xs mb-2" style="color: var(--ui-text-secondary);">
-              Reset all scores sets B/C/D back to 0 so you can start a new
+              Reset all scores sets A–D back to 0 so you can start a new
               competition. You can also use <strong>Reset scores</strong> in the
               bar above.
             </p>
