@@ -91,6 +91,15 @@ describe('parseQuestionsAndAnswers', () => {
       const result = parseQuestionsAndAnswers(text);
       expect(result.questions).toHaveLength(2);
     });
+
+    it('recognizes Answer 1: / ANSWER 1: style labels (optional number)', () => {
+      const text = '1. QUESTION 1:\nWhat is 2+2?\nANSWER 1:\n4\n\n2. QUESTION 2:\nCapital of France?\nAnswer 2:\nParis';
+      const result = parseQuestionsAndAnswers(text);
+      expect(result.questions).toHaveLength(2);
+      expect(result.questions[0]).toContain('What is 2+2?');
+      expect(result.answers[0]).toBe('4');
+      expect(result.answers[1]).toBe('Paris');
+    });
   });
 
   // --- Format 2: Q/A labeled ---
@@ -484,21 +493,47 @@ describe('contentToText', () => {
 
 // ---------- arenaStandingLabel ----------
 describe('arenaStandingLabel', () => {
-  it('returns Leader for highest score', () => {
-    expect(arenaStandingLabel('B', { B: 10, C: 5, D: 3 })).toBe('Leader');
+  it('returns Leader for highest score (no tie)', () => {
+    expect(arenaStandingLabel('A', { A: 10, B: 5, C: 3, D: 1 })).toBe('Leader');
   });
 
   it('returns 2nd for second highest', () => {
-    expect(arenaStandingLabel('C', { B: 10, C: 5, D: 3 })).toBe('2nd');
+    expect(arenaStandingLabel('B', { A: 10, B: 5, C: 3, D: 1 })).toBe('2nd');
   });
 
-  it('returns 3rd for lowest', () => {
-    expect(arenaStandingLabel('D', { B: 10, C: 5, D: 3 })).toBe('3rd');
+  it('returns 3rd for third highest', () => {
+    expect(arenaStandingLabel('C', { A: 10, B: 5, C: 3, D: 1 })).toBe('3rd');
   });
 
-  it('handles tied scores', () => {
-    const label = arenaStandingLabel('B', { B: 5, C: 5, D: 5 });
-    expect(['Leader', '2nd', '3rd']).toContain(label);
+  it('returns 4th for lowest', () => {
+    expect(arenaStandingLabel('D', { A: 10, B: 5, C: 3, D: 1 })).toBe('4th');
+  });
+
+  it('shows Tied 1st when two models share the lead', () => {
+    expect(arenaStandingLabel('A', { A: 10, B: 10, C: 5, D: 3 })).toBe('Tied 1st');
+    expect(arenaStandingLabel('B', { A: 10, B: 10, C: 5, D: 3 })).toBe('Tied 1st');
+  });
+
+  it('shows Tied 2nd when two models share second place', () => {
+    expect(arenaStandingLabel('B', { A: 10, B: 5, C: 5, D: 1 })).toBe('Tied 2nd');
+    expect(arenaStandingLabel('C', { A: 10, B: 5, C: 5, D: 1 })).toBe('Tied 2nd');
+  });
+
+  it('shows Tied 1st when ALL models are tied (non-zero)', () => {
+    expect(arenaStandingLabel('A', { A: 5, B: 5, C: 5, D: 5 })).toBe('Tied 1st');
+    expect(arenaStandingLabel('D', { A: 5, B: 5, C: 5, D: 5 })).toBe('Tied 1st');
+  });
+
+  it('returns — when all scores are zero', () => {
+    expect(arenaStandingLabel('A', { A: 0, B: 0, C: 0, D: 0 })).toBe('—');
+  });
+
+  it('returns — for slot with no score', () => {
+    expect(arenaStandingLabel('D', { A: 10, B: 5 })).toBe('—');
+  });
+
+  it('works with Model A included', () => {
+    expect(arenaStandingLabel('A', { A: 3, B: 10, C: 7, D: 5 })).toBe('4th');
   });
 });
 
@@ -524,8 +559,8 @@ describe('buildJudgePrompt', () => {
     expect(content).toContain('Model B');
     expect(content).toContain('Model C');
     // Should instruct judge to ignore capitalization/formatting
-    expect(content).toContain('SUBSTANTIVELY CORRECT');
-    expect(content).toContain('capitalization');
+    expect(content).toContain('FUNCTIONALLY EQUIVALENT');
+    expect(content).toContain('same result');
   });
 
   it('builds messages without answer key', () => {

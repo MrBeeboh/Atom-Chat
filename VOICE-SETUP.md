@@ -18,7 +18,7 @@ See **voice-server/README.md** for details (smaller model, limits, options).
 
 ## 2. Use the mic in ATOM UI
 
-- Start the frontend: `npm run dev` (or use `start_atom_ui.bat`).
+- Start the frontend: `npm run dev` (or use `START-EVERYTHING.bat`).
 - Open **Settings** → **Voice-to-text server** should be `http://localhost:8765` (default).
 - In the chat input bar, click the **mic** (🎤). Click again to stop recording; the server will transcribe and insert text into the input.
 

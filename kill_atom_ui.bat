@@ -1,6 +1,7 @@
 @echo off
 setlocal
 title ATOM UI — Kill All
+cd /d "%~dp0"
 
 echo [ATOM] Stopping all ATOM services...
 

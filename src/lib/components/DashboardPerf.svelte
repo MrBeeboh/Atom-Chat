@@ -103,13 +103,13 @@
 
   {#if !hasData}
     <p class="text-sm py-4" style="color: var(--ui-text-secondary);">
-      No score history yet. Run questions in Arena and use Judgment to record scores; then return here to see charts and summaries.
+      No score history yet. Run questions in Arena; scores are recorded automatically when all models finish. Return here to see charts and summaries.
     </p>
   {:else}
     <!-- Summary cards -->
     <section class="grid grid-cols-2 md:grid-cols-4 gap-2" aria-label="Summary">
       <div class="perf-card">
-        <div class="perf-k">Questions judged</div>
+        <div class="perf-k">Questions scored</div>
         <div class="perf-v">{totalQuestions}</div>
       </div>
       <div class="perf-card">

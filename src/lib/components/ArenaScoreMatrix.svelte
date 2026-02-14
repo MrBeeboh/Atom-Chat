@@ -5,11 +5,11 @@
    */
   let {
     scoreHistory = [],
-    totals = { B: 0, C: 0, D: 0 },
-    visibleSlots = ['B', 'C', 'D'],
+    totals = { A: 0, B: 0, C: 0, D: 0 },
+    visibleSlots = ['A', 'B', 'C', 'D'],
   } = $props();
 
-  const SLOT_COLORS = { B: '#10b981', C: '#f59e0b', D: '#8b5cf6' };
+  const SLOT_COLORS = { A: '#3b82f6', B: '#10b981', C: '#f59e0b', D: '#8b5cf6' };
 
   const hasHistory = $derived(scoreHistory.length > 0);
 </script>
@@ -57,5 +57,5 @@
     </table>
   </div>
 {:else}
-  <p class="text-xs py-2" style="color: var(--ui-text-secondary);">No scores yet. Run questions and use Judgment to see the breakdown here.</p>
+  <p class="text-xs py-2" style="color: var(--ui-text-secondary);">No scores yet. Run questions; scoring runs automatically when all models finish.</p>
 {/if}

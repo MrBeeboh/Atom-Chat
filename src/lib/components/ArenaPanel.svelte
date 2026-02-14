@@ -33,16 +33,22 @@
     loadStatus = null,
     /** When set, hide the user message that matches this (question is shown once in header) */
     currentQuestionText = '',
+    /** When set, filter by question id instead of string match (preferred for reproducibility). */
+    currentQuestionId = null,
   } = $props();
 
   const displayMessages = $derived(
-    currentQuestionText
+    currentQuestionId != null
       ? messages.filter(
-          (m) =>
-            m.role !== 'user' ||
-            (typeof m.content === 'string' ? m.content : '') !== currentQuestionText
+          (m) => m.role !== 'user' || m.questionId !== currentQuestionId
         )
-      : messages
+      : currentQuestionText
+        ? messages.filter(
+            (m) =>
+              m.role !== 'user' ||
+              (typeof m.content === 'string' ? m.content : '') !== currentQuestionText
+          )
+        : messages
   );
 
   function slotOverrideInput(key) {

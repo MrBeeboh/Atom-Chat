@@ -37,6 +37,7 @@
     lmStudioUnloadHelperUrl,
     confirm,
     arenaBuilderInternetEnabled,
+    arenaDebugMode,
   } from "$lib/stores.js";
   import { playClick, playComplete } from "$lib/audio.js";
   import {
@@ -74,11 +75,14 @@
     buildJudgePromptBlind,
     buildArenaQuestionGenerationPrompt,
     parseGeneratedQuestionSet,
+    normalizeGeneratedQuestionSet,
     makeSeededRandom,
     pickJudgeModel,
     sanitizeContestantResponse,
     ARENA_CONTESTANT_SYSTEM_PROMPT,
     JUDGE_LOADING_LINES,
+    ARENA_BUILD_LOADING_LINES,
+    ARENA_LOADING_MODEL_LINES,
     detectLoop,
     contentToText,
     JUDGE_WEB_LINES,
@@ -121,12 +125,32 @@
     if (typeof localStorage !== "undefined" && contestRules !== undefined)
       localStorage.setItem("arenaContestRules", contestRules);
   });
+  /** When set (0–5), contestants are told to express numeric answers to this many decimal places; judge scores accordingly. null = not specified. */
+  let arenaNumericPrecision = $state(
+    (() => {
+      if (typeof localStorage === "undefined") return null;
+      const v = localStorage.getItem("arenaNumericPrecision");
+      if (v === "" || v === null) return null;
+      const n = parseInt(v, 10);
+      return Number.isNaN(n) || n < 0 || n > 5 ? null : n;
+    })(),
+  );
+  $effect(() => {
+    if (typeof localStorage !== "undefined")
+      localStorage.setItem("arenaNumericPrecision", arenaNumericPrecision != null ? String(arenaNumericPrecision) : "");
+  });
   let questionIndex = $state(0);
   /** Arena Builder: generated question set (Phase 1). Only set after successful Build Arena. */
-  let builtQuestionSet = $state(/** @type {{ questions: string[]; answers: string[] } | null} */ (null));
+  let builtQuestionSet = $state(
+    /** @type {{ questions: Array<{ id: string; text: string; category?: string; correct_answer?: string; grading_rubric?: string }> } | null} */ (null),
+  );
   /** Metadata for audit: run_id, tool_calls, urls_accessed, timestamps. Set when Build Arena completes. */
   let builtQuestionSetMeta = $state(
     /** @type {null | { run_id: string; tool_calls: unknown[]; urls_accessed: string[]; timestamps: Record<string, number> }} */ (null),
+  );
+  /** Run metadata (in-memory only): reproducibility, audit. Set when Build Arena completes. */
+  let arenaRunMetadata = $state(
+    /** @type {null | { run_id: string; timestamp: number; judge_model: string; contestant_models: string[]; blind_review: boolean; deterministic_judge: boolean; builder_internet_enabled: boolean; question_count: number; categories: string[]; seed: string }} */ (null),
   );
   /** Builder config: categories and count. Persisted. */
   let arenaBuilderCategories = $state(
@@ -138,15 +162,20 @@
       Math.max(1, parseInt(typeof localStorage !== "undefined" ? localStorage.getItem("arenaBuilderQuestionCount") ?? "10" : "10", 10) || 10),
     ),
   );
+  /** Difficulty 1–5: 1 = easiest, 5 = frontier-model only. Persisted. */
+  let arenaBuilderDifficultyLevel = $state(
+    Math.min(5, Math.max(1, parseInt(typeof localStorage !== "undefined" ? localStorage.getItem("arenaBuilderDifficultyLevel") ?? "3" : "3", 10) || 3)),
+  );
   $effect(() => {
     if (typeof localStorage !== "undefined") {
       localStorage.setItem("arenaBuilderCategories", arenaBuilderCategories ?? "");
       localStorage.setItem("arenaBuilderQuestionCount", String(Math.min(100, Math.max(1, arenaBuilderQuestionCount || 1))));
+      localStorage.setItem("arenaBuilderDifficultyLevel", String(Math.min(5, Math.max(1, arenaBuilderDifficultyLevel || 3))));
     }
   });
-  /** Questions/answers used by the bar and run: only the built set after Build Arena. */
+  /** Questions (with id, text, correct_answer) used by the bar and run. Only set after Build Arena. */
   const parsedQuestions = $derived(builtQuestionSet ? builtQuestionSet.questions : []);
-  const parsedAnswers = $derived(builtQuestionSet ? builtQuestionSet.answers : []);
+  const parsedAnswers = $derived(parsedQuestions.map((q) => (q.correct_answer != null ? String(q.correct_answer) : "")));
   let buildArenaInProgress = $state(false);
   let buildArenaError = $state("");
   async function buildArena() {
@@ -179,6 +208,7 @@
     try {
       await unloadAllModelsNative();
       await new Promise((r) => setTimeout(r, 500));
+      buildLoadingMessageIndex = Math.floor(Math.random() * ARENA_BUILD_LOADING_LINES.length);
       arenaTransitionPhase = "loading_judge";
       await loadModel(judgeId);
       await new Promise((r) => setTimeout(r, 800));
@@ -202,10 +232,12 @@
         timestamps.search_end = Date.now();
       }
       timestamps.generation_start = Date.now();
+      const difficultyLevel = Math.min(5, Math.max(1, arenaBuilderDifficultyLevel || 3));
       const messages = buildArenaQuestionGenerationPrompt({
         categories,
         questionCount,
         webContext,
+        difficultyLevel,
       });
       const { content } = await requestChatCompletion({
         model: judgeId,
@@ -218,12 +250,26 @@
         buildArenaError = "Judge did not return valid JSON. Try again or check the model.";
         return;
       }
-      builtQuestionSet = { questions: parsed.questions, answers: parsed.answers };
+      const normalized = normalizeGeneratedQuestionSet(parsed);
+      builtQuestionSet = { questions: normalized.questions };
       builtQuestionSetMeta = {
         run_id: runId,
         tool_calls: [],
         urls_accessed: urlsAccessed,
         timestamps: { ...timestamps },
+      };
+      const buildSeed = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : String(Date.now());
+      arenaRunMetadata = {
+        run_id: runId,
+        timestamp: Date.now(),
+        judge_model: judgeId,
+        contestant_models: contestantIds.filter(Boolean),
+        blind_review: get(arenaBlindReview),
+        deterministic_judge: get(arenaDeterministicJudge),
+        builder_internet_enabled: get(arenaBuilderInternetEnabled),
+        question_count: normalized.questions.length,
+        categories: categories.slice(),
+        seed: buildSeed,
       };
       questionIndex = 0;
       if (judgeId) {
@@ -240,23 +286,19 @@
       arenaTransitionPhase = null;
     }
   }
+  const currentQuestionItem = $derived(
+    parsedQuestions.length > 0 ? parsedQuestions[questionIndex % parsedQuestions.length] : null,
+  );
   /** Answer for the current question only (blank if none provided → judge uses web or own knowledge). */
   const currentQuestionAnswer = $derived(
-    parsedQuestions.length > 0 && parsedAnswers.length > 0
-      ? (parsedAnswers[questionIndex % parsedQuestions.length] || "").trim()
-      : "",
+    currentQuestionItem?.correct_answer != null ? String(currentQuestionItem.correct_answer).trim() : "",
   );
   const currentQuestionNum = $derived(
-    parsedQuestions.length > 0
-      ? (questionIndex % parsedQuestions.length) + 1
-      : 0,
+    parsedQuestions.length > 0 ? (questionIndex % parsedQuestions.length) + 1 : 0,
   );
   const currentQuestionTotal = $derived(parsedQuestions.length);
-  const currentQuestionText = $derived(
-    parsedQuestions.length > 0
-      ? (parsedQuestions[questionIndex % parsedQuestions.length] || "").trim()
-      : "",
-  );
+  const currentQuestionText = $derived(currentQuestionItem?.text != null ? String(currentQuestionItem.text).trim() : "");
+  const currentQuestionId = $derived(currentQuestionItem?.id ?? null);
   /** Arena settings panel: docked right sidebar (collapsed = hidden, like left sidebar). */
   let arenaSettingsCollapsed = $state(
     typeof localStorage !== "undefined"
@@ -307,6 +349,77 @@
   let judgmentPopup = $state(
     /** @type {null | { scores: Record<string, number>, explanation: string, rawJudgeOutput?: string, questionIndex?: number, explanations?: Record<string, string> }} */ (null),
   );
+  /** Draggable position of the Scores panel (null = centered). Reset when popup closes. */
+  let judgmentPopupPos = $state(/** @type {null | { x: number, y: number }} */ (null));
+  /** Ref for the Scores panel card (used to read position when starting drag). */
+  let scoresPanelEl = $state(/** @type {null | HTMLDivElement} */ (null));
+
+  /** Fisher–Yates shuffle of indices [0..n-1]. */
+  function shuffleIndices(n) {
+    const a = Array.from({ length: n }, (_, i) => i);
+    for (let i = n - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+  function scrambleWittyMessages() {
+    wittyOrderJudgeLoading = shuffleIndices(JUDGE_LOADING_LINES.length);
+    wittyOrderJudgeWeb = shuffleIndices(JUDGE_WEB_LINES.length);
+    wittyOrderLoadingModel = shuffleIndices(ARENA_LOADING_MODEL_LINES.length);
+    wittyIndexJudgeLoading = 0;
+    wittyIndexJudgeWeb = 0;
+    wittyIndexLoadingModel = 0;
+  }
+  function getNextWittyJudgeLoading() {
+    if (wittyOrderJudgeLoading.length === 0) scrambleWittyMessages();
+    const arr = wittyOrderJudgeLoading;
+    if (arr.length === 0) return 0;
+    const i = arr[wittyIndexJudgeLoading];
+    wittyIndexJudgeLoading = (wittyIndexJudgeLoading + 1) % arr.length;
+    return i;
+  }
+  function getNextWittyJudgeWeb() {
+    if (wittyOrderJudgeWeb.length === 0) scrambleWittyMessages();
+    const arr = wittyOrderJudgeWeb;
+    if (arr.length === 0) return 0;
+    const i = arr[wittyIndexJudgeWeb];
+    wittyIndexJudgeWeb = (wittyIndexJudgeWeb + 1) % arr.length;
+    return i;
+  }
+  function getNextWittyLoadingModel() {
+    if (wittyOrderLoadingModel.length === 0) scrambleWittyMessages();
+    const arr = wittyOrderLoadingModel;
+    if (arr.length === 0) return 0;
+    const i = arr[wittyIndexLoadingModel];
+    wittyIndexLoadingModel = (wittyIndexLoadingModel + 1) % arr.length;
+    return i;
+  }
+
+  function startScoresPanelDrag(e) {
+    if (!scoresPanelEl || !judgmentPopup) return;
+    if (/** @type {HTMLElement} */ (e.target).closest("button")) return;
+    e.preventDefault();
+    const rect = scoresPanelEl.getBoundingClientRect();
+    const panelLeft = judgmentPopupPos?.x ?? rect.left;
+    const panelTop = judgmentPopupPos?.y ?? rect.top;
+    judgmentPopupPos = { x: panelLeft, y: panelTop };
+    const startX = e.clientX;
+    const startY = e.clientY;
+    function onMove(ev) {
+      judgmentPopupPos = {
+        x: panelLeft + (ev.clientX - startX),
+        y: panelTop + (ev.clientY - startY),
+      };
+    }
+    function onUp() {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
+
   /** Transition: 'ejecting' | 'loading' | 'loading_judge' | 'judge_web' | 'scoring' (atom animation). */
   let arenaTransitionPhase = $state(
     /** @type {null | 'ejecting' | 'loading' | 'loading_judge' | 'judge_web' | 'scoring'} */ (null),
@@ -315,6 +428,17 @@
   let judgeWebMessageIndex = $state(0);
   /** Index of the current witty "judge loading" message (rotated each time judge is loaded). */
   let judgeLoadingMessageIndex = $state(0);
+  /** Index of the current witty "loading next model" message (rotated each time we load a contestant). */
+  let loadingModelMessageIndex = $state(0);
+  /** Index of the current witty "Build Arena" loading message (one per build). */
+  let buildLoadingMessageIndex = $state(0);
+  /** Shuffled orders for witty messages, cycled through each run so we see all of them. */
+  let wittyOrderJudgeLoading = $state(/** @type {number[]} */ ([]));
+  let wittyOrderJudgeWeb = $state(/** @type {number[]} */ ([]));
+  let wittyOrderLoadingModel = $state(/** @type {number[]} */ ([]));
+  let wittyIndexJudgeLoading = $state(0);
+  let wittyIndexJudgeWeb = $state(0);
+  let wittyIndexLoadingModel = $state(0);
   /** Current run metadata for reproducibility and logging (set at run start, filled during run, read in runJudgment). */
   let arenaCurrentRunMeta = $state(/** @type {null | { run_id: string, seed: string, question_index: number, prompt_text: string, model_list: Array<{ slot: string, model_id: string }>, judge_model: string | null, deterministic_judge: boolean, blind_review: boolean, start_timestamp: number, responses: Record<string, { model_id: string, prompt: string, raw_response: string, latency_ms: number, token_count: number | null, timestamp: number }> }} */ (null));
 
@@ -720,19 +844,19 @@
    * @param {string|Array} displayQuestion - What the user sees in the UI bubble (question only).
    * @returns {Promise<{ latency_ms: number, token_count: number|null, timestamp: number }|undefined>}
    */
-  async function sendToSlot(slot, modelId, question, displayQuestion) {
-    // --- Reset slot state ---
+  async function sendToSlot(slot, modelId, question, displayQuestion, questionId = null) {
     setRunning(slot, true);
     setSlotError(slot, "");
 
-    // --- UI messages (what the user sees in the panel) ---
     const userMsgId = generateId();
-    pushMessage(slot, {
+    const userMsg = {
       id: userMsgId,
       role: "user",
       content: displayQuestion || question,
       createdAt: Date.now(),
-    });
+    };
+    if (questionId != null) userMsg.questionId = questionId;
+    pushMessage(slot, userMsg);
     const assistantMsgId = generateId();
     pushMessage(slot, {
       id: assistantMsgId,
@@ -754,74 +878,92 @@
       { role: "user", content: question },
     ];
 
-    // --- Abort controller + 120 s hard timeout ---
-    const controller = new AbortController();
-    aborters[slot] = controller;
-    const timeoutId = setTimeout(() => controller.abort(), ARENA_TIMEOUT_MS);
-
-    // --- Stream ---
     const startMs = performance.now();
     let fullContent = "";
     let usage = null;
     let elapsedMs = 0;
     lastSampleAt = Date.now();
     lastSampleTokens = 0;
-
-    try {
-      const result = await streamChatCompletion({
-        model: modelId,
-        messages,
-        options: {
-          temperature: slotOpts.temperature,
-          max_tokens: slotOpts.max_tokens,
-          top_p: slotOpts.top_p,
-          top_k: slotOpts.top_k,
-          repeat_penalty: slotOpts.repeat_penalty,
-          presence_penalty: slotOpts.presence_penalty,
-          frequency_penalty: slotOpts.frequency_penalty,
-          stop: slotOpts.stop?.length ? slotOpts.stop : undefined,
-          ttl: slotOpts.model_ttl_seconds,
-        },
-        signal: controller.signal,
-        onDone() {
-          setRunning(slot, false);
-        },
-        onChunk(chunk) {
-          fullContent += chunk;
-          if (detectLoop(fullContent)) {
-            controller.abort();
-            return;
+    const softTimeoutMs = 120000;
+    let lastErr = null;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const controller = new AbortController();
+      aborters[slot] = controller;
+      const timeoutId = setTimeout(() => controller.abort(), softTimeoutMs);
+      try {
+        const result = await streamChatCompletion({
+          model: modelId,
+          messages,
+          options: {
+            temperature: slotOpts.temperature,
+            max_tokens: slotOpts.max_tokens,
+            top_p: slotOpts.top_p,
+            top_k: slotOpts.top_k,
+            repeat_penalty: slotOpts.repeat_penalty,
+            presence_penalty: slotOpts.presence_penalty,
+            frequency_penalty: slotOpts.frequency_penalty,
+            stop: slotOpts.stop?.length ? slotOpts.stop : undefined,
+            ttl: slotOpts.model_ttl_seconds,
+          },
+          signal: controller.signal,
+          onDone() {
+            setRunning(slot, false);
+          },
+          onChunk(chunk) {
+            fullContent += chunk;
+            if (detectLoop(fullContent)) {
+              controller.abort();
+              return;
+            }
+            const estTokens = Math.max(1, Math.ceil(fullContent.length / 4));
+            liveTokens.set(estTokens);
+            const now = Date.now();
+            if (now - lastSampleAt >= 1000) {
+              const rate = (estTokens - lastSampleTokens) / ((now - lastSampleAt) / 1000);
+              if (rate >= 0) pushTokSample(rate);
+              lastSampleAt = now;
+              lastSampleTokens = estTokens;
+            }
+            updateMessage(slot, assistantMsgId, { content: fullContent, modelId });
+          },
+          onUsage(u) {
+            usage = u;
+          },
+        });
+        elapsedMs = result.elapsedMs ?? Math.round(performance.now() - startMs);
+        if (result.usage) usage = result.usage;
+        if ($settings.audio_enabled && !result?.aborted)
+          playComplete($settings.audio_volume);
+        lastErr = null;
+        break;
+      } catch (err) {
+        lastErr = err;
+        clearTimeout(timeoutId);
+        if (err?.name === "AbortError") {
+          if (attempt === 1) {
+            fullContent = "";
+            updateMessage(slot, assistantMsgId, { content: "", modelId });
+            continue;
           }
-          const estTokens = Math.max(1, Math.ceil(fullContent.length / 4));
-          liveTokens.set(estTokens);
-          const now = Date.now();
-          if (now - lastSampleAt >= 1000) {
-            const rate = (estTokens - lastSampleTokens) / ((now - lastSampleAt) / 1000);
-            if (rate >= 0) pushTokSample(rate);
-            lastSampleAt = now;
-            lastSampleTokens = estTokens;
-          }
-          updateMessage(slot, assistantMsgId, { content: fullContent, modelId });
-        },
-        onUsage(u) {
-          usage = u;
-        },
-      });
-
-      elapsedMs = result.elapsedMs ?? Math.round(performance.now() - startMs);
-      if (result.usage) usage = result.usage;
-      if ($settings.audio_enabled && !result?.aborted)
-        playComplete($settings.audio_volume);
-    } catch (err) {
-      if (err?.name !== "AbortError") {
+          setSlotError(slot, "Timeout (no response after retry). Score: 0.");
+          updateMessage(slot, assistantMsgId, { content: "", stats: null, modelId });
+          return undefined;
+        }
         setSlotError(slot, err?.message || "Failed to get response.");
+        updateMessage(slot, assistantMsgId, { content: sanitizeContestantResponse(fullContent) || "", stats: null, modelId });
+        return undefined;
+      } finally {
+        clearTimeout(timeoutId);
+        if (aborters[slot] === controller) {
+          setRunning(slot, false);
+          aborters[slot] = null;
+        }
       }
+    }
+    if (lastErr) {
+      setSlotError(slot, lastErr?.message || "Failed to get response.");
       updateMessage(slot, assistantMsgId, { content: sanitizeContestantResponse(fullContent) || "", stats: null, modelId });
       return undefined;
-    } finally {
-      clearTimeout(timeoutId);
-      setRunning(slot, false);
-      aborters[slot] = null;
     }
 
     // --- Sanitize: strip any judge-pattern lines the model may have hallucinated ---
@@ -842,10 +984,18 @@
       },
       modelId,
     });
+    if (get(arenaDebugMode) && typeof console !== "undefined" && console.log) {
+      console.log("[Arena debug] slot response", {
+        slot,
+        prompt: typeof question === "string" ? question.slice(0, 200) : "(multimodal)",
+        raw_response: fullContent.slice(0, 500) + (fullContent.length > 500 ? "…" : ""),
+        latency: elapsedMs,
+      });
+    }
     return { latency_ms: elapsedMs, token_count: tokenCount, timestamp: Date.now() };
   }
 
-  async function sendUserMessage(text, imageDataUrls = []) {
+  async function sendUserMessage(text, imageDataUrls = [], questionId = null) {
     if (!text || !String(text).trim() || $isStreaming) return;
     chatError.set(null);
 
@@ -899,12 +1049,19 @@
     liveTokens.set(0);
     isStreaming.set(true);
     try {
-      const rulesPrefix = (typeof contestRules === "string"
+      let rulesPrefix = (typeof contestRules === "string"
         ? contestRules
         : ""
       ).trim()
         ? contestRules.trim() + "\n\n---\n\n"
         : "";
+      if (arenaNumericPrecision != null) {
+        const precisionLine =
+          arenaNumericPrecision === 0
+            ? "Numeric answers must be expressed as integers (no decimal places)."
+            : `Numeric answers must be expressed to exactly ${arenaNumericPrecision} decimal place(s).`;
+        rulesPrefix = rulesPrefix ? rulesPrefix + precisionLine + "\n\n" : precisionLine + "\n\n---\n\n";
+      }
       const textWithRules = rulesPrefix + effectiveText;
       const urls = Array.isArray(imageDataUrls) ? imageDataUrls : [];
       const needResize =
@@ -939,7 +1096,7 @@
       if (runId !== currentRun) return;
 
       const runIdUuid = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : "run-" + Date.now();
-      const runSeed = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : String(Math.random());
+      const runSeed = arenaRunMetadata?.seed ?? (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : String(Math.random()));
       arenaCurrentRunMeta = {
         run_id: runIdUuid,
         seed: runSeed,
@@ -955,6 +1112,7 @@
       if (typeof console !== "undefined" && console.log) {
         console.log("[Arena run start]", { run_id: arenaCurrentRunMeta.run_id, seed: arenaCurrentRunMeta.seed, question_index: questionIndex });
       }
+      scrambleWittyMessages();
 
       /* Clear all slot messages so old responses/judge text don't leak into new run. */
       messagesA = [];
@@ -977,6 +1135,7 @@
       if (runId !== currentRun) return;
 
       /* Arena runs one model at a time: load first contestant, then for each slot answer → eject → load next. */
+      loadingModelMessageIndex = getNextWittyLoadingModel();
       arenaTransitionPhase = "loading";
       try {
         if (selected[0]?.modelId) await loadModel(selected[0].modelId);
@@ -995,7 +1154,7 @@
         let lastErr = null;
         for (let attempt = 1; attempt <= maxAttempts; attempt++) {
           try {
-            const metrics = await sendToSlot(s.slot, s.modelId, content, displayContent);
+            const metrics = await sendToSlot(s.slot, s.modelId, content, displayContent, questionId);
             completedCount++;
             if (metrics && arenaCurrentRunMeta) {
               const msgs = getMessages(s.slot);
@@ -1035,6 +1194,7 @@
         if (runId !== currentRun) break;
         const next = selected[i + 1];
         if (next?.modelId) {
+          loadingModelMessageIndex = getNextWittyLoadingModel();
           arenaTransitionPhase = "loading";
           try {
             await loadModel(next.modelId);
@@ -1114,7 +1274,8 @@
     const questions = parsedQuestions;
     if (questions.length === 0) return;
     const idx = questionIndex % questions.length;
-    const toSend = (questions[idx] && String(questions[idx]).trim()) || "";
+    const item = questions[idx];
+    const toSend = item?.text != null ? String(item.text).trim() : "";
     if (!toSend) return;
     messagesA = [];
     messagesB = [];
@@ -1123,7 +1284,7 @@
     chatError.set(null);
     if ($settings.audio_enabled && $settings.audio_clicks)
       playClick($settings.audio_volume);
-    sendUserMessage(toSend, []).catch((e) => {
+    sendUserMessage(toSend, [], item?.id ?? null).catch((e) => {
       chatError.set(e?.message || "Failed to send question.");
     });
   }
@@ -1133,10 +1294,10 @@
     if ($isStreaming) return;
     const questions = parsedQuestions;
     if (questions.length === 0) return;
-    // Advance to next question
     questionIndex = (questionIndex + 1) % questions.length;
     const idx = questionIndex % questions.length;
-    const toSend = (questions[idx] && String(questions[idx]).trim()) || "";
+    const item = questions[idx];
+    const toSend = item?.text != null ? String(item.text).trim() : "";
     if (!toSend) return;
     messagesA = [];
     messagesB = [];
@@ -1145,7 +1306,7 @@
     chatError.set(null);
     if ($settings.audio_enabled && $settings.audio_clicks)
       playClick($settings.audio_volume);
-    sendUserMessage(toSend, []).catch((e) => {
+    sendUserMessage(toSend, [], item?.id ?? null).catch((e) => {
       chatError.set(e?.message || "Failed to send question.");
     });
   }
@@ -1171,17 +1332,16 @@
         if (!runAllActive) break; // user cancelled
         questionIndex = i;
         runAllProgress = { current: i + 1, total: questions.length };
-        const toSend = (questions[i] && String(questions[i]).trim()) || "";
+        const item = questions[i];
+        const toSend = item?.text != null ? String(item.text).trim() : "";
         if (!toSend) continue;
-        // Clear slot messages for this question
         messagesA = [];
         messagesB = [];
         messagesC = [];
         messagesD = [];
         chatError.set(null);
-        // Send question to models
         try {
-          await sendUserMessage(toSend, []);
+          await sendUserMessage(toSend, [], item?.id ?? null);
         } catch (e) {
           chatError.set(e?.message || `Failed on question ${i + 1}.`);
           continue;
@@ -1301,7 +1461,7 @@
         });
       }
       await new Promise((r) => setTimeout(r, 1000));
-      judgeLoadingMessageIndex = Math.floor(Math.random() * JUDGE_LOADING_LINES.length);
+      judgeLoadingMessageIndex = getNextWittyJudgeLoading();
       arenaTransitionPhase = "loading_judge";
       try {
         await loadModel(judgeId);
@@ -1319,7 +1479,7 @@
     if (get(arenaWebSearchMode) === "all" && get(webSearchForNextMessage) && promptText.trim()) {
       webSearchInProgress.set(true);
       arenaTransitionPhase = "judge_web";
-      judgeWebMessageIndex = Math.floor(Math.random() * JUDGE_WEB_LINES.length);
+      judgeWebMessageIndex = getNextWittyJudgeWeb();
       try {
         const searchResult = await searchDuckDuckGo(promptText);
         webSearchConnected.set(true);
@@ -1336,6 +1496,9 @@
     const useDeterministicJudge = get(arenaDeterministicJudge);
     const shuffleRandom = arenaCurrentRunMeta ? makeSeededRandom(arenaCurrentRunMeta.seed) : undefined;
     let responseOrder = null;
+    if (get(arenaDebugMode) && shuffleRandom && typeof console !== "undefined" && console.log) {
+      console.log("[Arena debug] shuffle_order seed", { seed: arenaCurrentRunMeta?.seed });
+    }
     const { messages } = useBlindReview
       ? (() => {
           const out = buildJudgePromptBlind({
@@ -1346,8 +1509,12 @@
             judgeFeedback: feedback,
             judgeInstructions,
             shuffleRandom,
+            numericPrecision: arenaNumericPrecision,
           });
           responseOrder = out.responseOrder;
+          if (get(arenaDebugMode) && typeof console !== "undefined" && console.log) {
+            console.log("[Arena debug] shuffle_order", { responseOrder });
+          }
           return { messages: out.messages };
         })()
       : buildJudgePrompt({
@@ -1357,6 +1524,7 @@
           promptText,
           judgeFeedback: feedback,
           judgeInstructions,
+          numericPrecision: arenaNumericPrecision,
         });
     chatError.set(null);
     const controller = new AbortController();
@@ -1393,6 +1561,9 @@
         /([.!?;])\s*(Response\s+\d+:)/gi,
         "$1\n\n$2",
       );
+      if (get(arenaDebugMode) && typeof console !== "undefined" && console.log) {
+        console.log("[Arena debug] judge_raw_output", { judge_raw_output: fullContent });
+      }
       let roundScores;
       let displayExplanation = fullContent;
       let popupExplanations = /** @type {Record<string, string> | undefined} */ (undefined);
@@ -1423,7 +1594,7 @@
         };
       } else {
         if (parsedOk) {
-          const qText = parsedQuestions[qIdx] || "(free-form prompt)";
+          const qText = (parsedQuestions[qIdx]?.text != null ? String(parsedQuestions[qIdx].text) : null) || "(free-form prompt)";
           scoreHistory = addScoreRound(scoreHistory, qIdx, qText, roundScores);
           arenaScores = computeTotals(scoreHistory);
         }
@@ -1879,6 +2050,7 @@
           showScore={data.showScore}
           loadStatus={null}
           currentQuestionText={currentQuestionText}
+          currentQuestionId={currentQuestionId}
         />
       {:else if data.slot === "B"}
         <ArenaPanel
@@ -1903,6 +2075,7 @@
           showScore={data.showScore}
           loadStatus={null}
           currentQuestionText={currentQuestionText}
+          currentQuestionId={currentQuestionId}
         />
       {:else if data.slot === "C"}
         <ArenaPanel
@@ -1927,6 +2100,7 @@
           showScore={data.showScore}
           loadStatus={null}
           currentQuestionText={currentQuestionText}
+          currentQuestionId={currentQuestionId}
         />
       {:else if data.slot === "D"}
         <ArenaPanel
@@ -1951,6 +2125,7 @@
           showScore={data.showScore}
           loadStatus={null}
           currentQuestionText={currentQuestionText}
+          currentQuestionId={currentQuestionId}
         />
       {/if}
       {#if i < slotData.length - 1 && !isMobile}
@@ -1980,15 +2155,21 @@
         <ThinkingAtom size={22} />
         <span class="text-sm font-medium">
           {#if arenaTransitionPhase === "loading_judge"}
-            {JUDGE_LOADING_LINES[judgeLoadingMessageIndex].main}
+            {#if buildArenaInProgress}
+              {ARENA_BUILD_LOADING_LINES[buildLoadingMessageIndex].main}
+            {:else}
+              {JUDGE_LOADING_LINES[judgeLoadingMessageIndex].main}
+            {/if}
           {:else if arenaTransitionPhase === "judge_web"}
             {JUDGE_WEB_LINES[judgeWebMessageIndex].main}
           {:else if arenaTransitionPhase === "ejecting"}
             Ejecting…
           {:else if arenaTransitionPhase === "scoring"}
             Scoring answers…
+          {:else if arenaTransitionPhase === "loading"}
+            {ARENA_LOADING_MODEL_LINES[loadingModelMessageIndex].main}
           {:else}
-            New model loading
+            Loading…
           {/if}
         </span>
       </div>
@@ -1996,13 +2177,19 @@
         <span
           class="text-xs opacity-80"
           style="color: var(--ui-text-secondary);"
-          >{JUDGE_LOADING_LINES[judgeLoadingMessageIndex].sub}</span
+          >{buildArenaInProgress ? ARENA_BUILD_LOADING_LINES[buildLoadingMessageIndex].sub : JUDGE_LOADING_LINES[judgeLoadingMessageIndex].sub}</span
         >
       {:else if arenaTransitionPhase === "judge_web"}
         <span
           class="text-xs opacity-80"
           style="color: var(--ui-text-secondary);"
           >{JUDGE_WEB_LINES[judgeWebMessageIndex].sub}</span
+        >
+      {:else if arenaTransitionPhase === "loading"}
+        <span
+          class="text-xs opacity-80"
+          style="color: var(--ui-text-secondary);"
+          >{ARENA_LOADING_MODEL_LINES[loadingModelMessageIndex].sub}</span
         >
       {/if}
     </div>
@@ -2087,6 +2274,25 @@
             Configure below, then click <strong>Build Arena</strong> on the bar. The judge model (selected below) will generate the question set.
           </p>
           <div class="flex items-center gap-2 mb-3">
+            <span class="text-xs font-medium shrink-0" style="color: var(--ui-text-secondary);">Difficulty level</span>
+            <select
+              id="arena-builder-difficulty"
+              class="h-8 min-w-[8rem] pl-2 pr-8 text-xs font-medium rounded-md border bg-transparent cursor-pointer"
+              style="border-color: var(--ui-border); background-color: var(--ui-input-bg); color: var(--ui-text-primary);"
+              aria-label="Question difficulty 1 (easiest) to 5 (frontier)"
+              bind:value={arenaBuilderDifficultyLevel}
+            >
+              <option value={1}>1 — Easiest</option>
+              <option value={2}>2</option>
+              <option value={3}>3 — Medium</option>
+              <option value={4}>4</option>
+              <option value={5}>5 — Frontier only</option>
+            </select>
+          </div>
+          <p class="text-[11px] mb-3 -mt-1" style="color: var(--ui-text-secondary);">
+            Instructs the model generating questions: 1 = broadly solvable; 5 = difficulty typically only solvable by frontier-level models.
+          </p>
+          <div class="flex items-center gap-2 mb-3">
             <span class="text-xs font-medium shrink-0" style="color: var(--ui-text-secondary);">Judge Internet Access</span>
             <div class="flex h-8 rounded-md border overflow-hidden" style="border-color: var(--ui-border); background: var(--ui-input-bg);">
               <button
@@ -2153,6 +2359,31 @@
         </section>
         <!-- 4. Contest rules (accordion) -->
         <section>
+          <div class="flex items-center gap-2 mb-2">
+            <label for="arena-numeric-precision" class="text-xs font-medium shrink-0" style="color: var(--ui-text-secondary);">Numeric answer precision</label>
+            <select
+              id="arena-numeric-precision"
+              class="h-8 min-w-[10rem] pl-2 pr-8 text-xs rounded-md border flex-1"
+              style="border-color: var(--ui-border); background-color: var(--ui-input-bg); color: var(--ui-text-primary);"
+              aria-label="Digits for numeric answers (contestants and judge)"
+              value={arenaNumericPrecision != null ? String(arenaNumericPrecision) : ""}
+              onchange={(e) => {
+                const v = e.currentTarget?.value;
+                arenaNumericPrecision = v === "" ? null : Math.min(5, Math.max(0, parseInt(v, 10) || 0));
+              }}
+            >
+              <option value="">Not specified</option>
+              <option value="0">Integer (0 decimals)</option>
+              <option value="1">1 decimal place</option>
+              <option value="2">2 decimal places</option>
+              <option value="3">3 decimal places</option>
+              <option value="4">4 decimal places</option>
+              <option value="5">5 decimal places</option>
+            </select>
+          </div>
+          <p class="text-[11px] mb-2" style="color: var(--ui-text-secondary);">
+            When set, contestants are told how many decimal places to use for numeric answers; the judge scores numeric answers to this precision.
+          </p>
           <button
             type="button"
             class="w-full flex items-center justify-between text-left font-semibold text-sm mb-2"
@@ -2254,14 +2485,23 @@
         role="button"
         tabindex="-1"
         aria-label="Close"
-        onclick={() => (judgmentPopup = null)}
-        onkeydown={(e) => e.key === "Escape" && (judgmentPopup = null)}
+        onclick={() => { judgmentPopup = null; judgmentPopupPos = null; }}
+        onkeydown={(e) => { if (e.key === "Escape") { judgmentPopup = null; judgmentPopupPos = null; } }}
       ></div>
       <div
-        class="relative rounded-xl border shadow-xl max-w-lg w-full max-h-[85vh] flex flex-col overflow-hidden"
-        style="background-color: var(--ui-bg-main); border-color: var(--ui-border);"
+        bind:this={scoresPanelEl}
+        class="relative rounded-xl border shadow-xl max-w-lg w-full max-h-[85vh] flex flex-col overflow-hidden select-none"
+        style="position: {judgmentPopupPos ? 'absolute' : 'relative'}; left: {judgmentPopupPos ? `${judgmentPopupPos.x}px` : 'auto'}; top: {judgmentPopupPos ? `${judgmentPopupPos.y}px` : 'auto'}; background-color: var(--ui-bg-main); border-color: var(--ui-border);"
       >
-        <div class="shrink-0 flex items-center justify-between px-4 py-3 border-b" style="border-color: var(--ui-border);">
+        <div
+          class="shrink-0 flex items-center justify-between px-4 py-3 border-b cursor-grab active:cursor-grabbing"
+          style="border-color: var(--ui-border);"
+          role="button"
+          tabindex="0"
+          aria-label="Drag to move panel"
+          onmousedown={startScoresPanelDrag}
+          onkeydown={(e) => e.key === "Enter" && scoresPanelEl?.focus()}
+        >
           <h2 class="text-base font-semibold" style="color: var(--ui-text-primary);">Scores</h2>
             <div class="flex items-center gap-2">
             <button
@@ -2328,7 +2568,7 @@
               type="button"
               class="p-2 rounded-lg hover:opacity-80"
               style="color: var(--ui-text-secondary);"
-              onclick={() => (judgmentPopup = null)}
+              onclick={() => { judgmentPopup = null; judgmentPopupPos = null; }}
               aria-label="Close">×</button>
           </div>
         </div>

@@ -397,6 +397,9 @@ if (typeof localStorage !== 'undefined') {
   arenaBuilderInternetEnabled.subscribe((v) => localStorage.setItem('arenaBuilderInternetEnabled', v ? '1' : '0'));
 }
 
+/** Arena: when true, log prompt, raw_response, latency, shuffle_order, judge_raw_output to console (no UI change). Default false. */
+export const arenaDebugMode = writable(false);
+
 /** Arena: per-slot overrides for temperature, max_tokens, system_prompt. Key = 'A'|'B'|'C'|'D'. Empty = use layout default. */
 function loadArenaSlotOverrides() {
   if (typeof localStorage === 'undefined') return {};

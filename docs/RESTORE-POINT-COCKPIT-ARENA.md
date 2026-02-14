@@ -14,7 +14,7 @@ All other layouts have been **removed**: Flow, Focus, and Workbench. The default
 - **Panel count:** 1, 2, 3, or 4 (user choice).
 - **Slots:** A, B, C, D. When 4 panels are shown, Model D is available; its selection is persisted like A/B/C.
 - Send goes to all active slots; stop stops all. TPS and errors are shown per panel.
-- **Unload helper:** Eject (free VRAM) uses a small helper server (started by `start_atom_ui.bat`). Optional; Arena runs either way.
+- **Unload helper:** Eject (free VRAM) uses a small helper server (started by `START-EVERYTHING.bat`). Optional; Arena runs either way.
 
 ## Themes / Colors
 

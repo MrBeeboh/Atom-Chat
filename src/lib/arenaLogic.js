@@ -566,23 +566,31 @@ export function parseBlindJudgeScores(text, responseOrder) {
  * @param {string} opts.promptText - original question text
  * @param {string} opts.judgeFeedback - optional user correction
  * @param {string} [opts.judgeInstructions] - optional custom judge instructions
+ * @param {number|null} [opts.numericPrecision] - when set (0-5), judge scores numeric answers to this many decimal places
  * @returns {{ messages: Array<{ role: string, content: string }> }}
  */
-export function buildJudgePrompt({ slotsWithResponses, answerKeyTrimmed, judgeWebContext, promptText, judgeFeedback, judgeInstructions }) {
+export function buildJudgePrompt({ slotsWithResponses, answerKeyTrimmed, judgeWebContext, promptText, judgeFeedback, judgeInstructions, numericPrecision = null }) {
   const competingSlots = slotsWithResponses.map((s) => s.slot);
   const competingList = competingSlots.join(', ');
   const firstSlot = competingSlots[0] || 'A';
   const feedback = typeof judgeFeedback === 'string' ? judgeFeedback.trim() : '';
   const customInstr = typeof judgeInstructions === 'string' ? judgeInstructions.trim() : '';
 
+  const precisionNote =
+    numericPrecision != null && numericPrecision >= 0 && numericPrecision <= 5
+      ? (numericPrecision === 0
+          ? 'NUMERIC ANSWERS: When the answer key or any response is numeric, compare values as integers (no decimal places). Score as correct if the numeric value matches when rounded to the specified precision.'
+          : `NUMERIC ANSWERS: When the answer key or any response is numeric, compare values to ${numericPrecision} decimal place(s). Score as correct if the numeric value matches when rounded to that precision.`)
+      : '';
   const parts = [
     customInstr || 'You are a judge. Score each model response 1-10 (10 = best) with one short reason.',
     '',
     `COMPETING MODELS (authoritative—do not guess): This round has exactly ${competingSlots.length} model(s): ${competingList}. You must output exactly one line for each of these, in this order: ${competingList}. Do not add or mention Model E or any other model. Only ${competingList}. If a model has no response below, write: Model X: 0/10 - No response.`,
     '',
+    ...(precisionNote ? [precisionNote, ''] : []),
     answerKeyTrimmed
-      ? 'BASIS FOR SCORING: An ANSWER KEY is provided below. Use it as the reference for the correct result. Your job is to decide whether each model\'s response is FUNCTIONALLY EQUIVALENT to the answer key—i.e. does it reach the same end result? You may equivocate: different wording, phrasing, or structure is fine as long as the meaning or result is the same. For math, the value or expression should be equivalent; for concepts, the same idea. If a model\'s response contains a line starting with "Final Answer:", use THAT line as the model\'s answer—ignore any verbose reasoning above it. If there is no "Final Answer:" line, evaluate the full response.\n\nExamples of equivalences you may recognize: "3" and "x=3" and "the answer is 3"; "ampere" and "Ampere"; "H2O" and "water"; longer explanations that conclude with the same result. Do NOT require word-for-word match. Do NOT penalize extra explanation, different phrasing, or formatting. Only ask: does the model\'s answer achieve the same result as the key? Same result = 8-10. Partially same or close = 4-7. Different result = 1-3. No response = 0.'
-      : 'BASIS FOR SCORING: No answer key was provided. Use the WEB SEARCH section below (if present) to fact-check, or use your own knowledge to evaluate correctness. IMPORTANT: If a model\'s response contains a line starting with "Final Answer:", use THAT line as the model\'s answer—ignore any verbose reasoning above it. Focus on factual accuracy. Do NOT penalize for formatting, capitalization, phrasing, or omitting variable names (e.g. "3" and "x=3" are the same answer).',
+      ? 'BASIS FOR SCORING: An ANSWER KEY is provided below. Use it as the reference for the correct result. Your job is to decide whether each model\'s response is FUNCTIONALLY EQUIVALENT to the answer key—i.e. does it reach the same end result? You may equivocate: different wording, phrasing, or structure is fine as long as the meaning or result is the same. For math, the value or expression should be equivalent; for concepts, the same idea. If a model\'s response contains a line starting with "Final Answer:", use THAT line as the model\'s answer (or the same answer stated elsewhere in the response)—ignore any extra repetition or verbose reasoning above it. If there is no "Final Answer:" line, evaluate the full response.\n\nExamples of equivalences: "3" and "x=3"; "Max Planck" and "Planck" and "Final Answer: Max P" (truncated); "ampere" and "Ampere"; "H2O" and "water". Do NOT require word-for-word match. Do NOT penalize concise or minimal phrasing when the answer is correct. Do NOT give a higher score for repeating the answer, matching the key "in format," or being more verbose—same correct answer must receive the same score (e.g. if two models both give the correct answer, score both in the same band: both 10/10 or both 9/10). Same result = 8-10. Partially same or close = 4-7. Different result = 1-3. No response = 0.'
+      : 'BASIS FOR SCORING: No answer key was provided. First use your own knowledge to evaluate correctness. If your own knowledge is not definitive, then use the WEB SEARCH section below (if present) to fact-check. Do not rely on web alone when your knowledge is sufficient. IMPORTANT: If a model\'s response contains a line starting with "Final Answer:", use THAT line as the model\'s answer—ignore any verbose reasoning above it. Do NOT penalize concise phrasing. Same correct answer = same score; do not reward repetition or verbosity. Focus on factual accuracy. Do NOT penalize for formatting, capitalization, phrasing, or omitting variable names (e.g. "3" and "x=3" are the same answer).',
     '',
     `CRITICAL OUTPUT FORMAT: Do NOT output <think> tags, chain-of-thought, reasoning, or any analysis. Do NOT write paragraphs. Your ENTIRE reply must be ONLY the score lines—nothing before them, nothing after. Start your very first character with "Model ${firstSlot}:". Any text before the first "Model" line is a format violation.`,
     '',
@@ -595,7 +603,7 @@ export function buildJudgePrompt({ slotsWithResponses, answerKeyTrimmed, judgeWe
     parts.push('--- ANSWER KEY (base your scoring on this) ---', answerKeyTrimmed, '');
   }
   if (judgeWebContext) {
-    parts.push('--- WEB SEARCH (use to fact-check when no answer key, or to supplement) ---', judgeWebContext, '');
+    parts.push('--- WEB SEARCH (use only when no answer key and your own knowledge is not definitive) ---', judgeWebContext, '');
   }
   parts.push('--- ORIGINAL PROMPT ---', promptText || '(none)', '');
   for (const { slot, msgs } of slotsWithResponses) {
@@ -606,7 +614,7 @@ export function buildJudgePrompt({ slotsWithResponses, answerKeyTrimmed, judgeWe
   const userContent = parts.join('\n');
 
   const systemWithAnswerKey = answerKeyTrimmed
-    ? `You are a judge. An ANSWER KEY is provided—use it as the reference for the correct result. A response is CORRECT if it is functionally equivalent to the key (same end result), not necessarily word-for-word. Use your judgment to equate different phrasings, formats, or explanations that yield the same result. For math, same value or expression; for concepts, same meaning. Score exactly ${competingSlots.length} model(s): ${competingList}. Output exactly one line for each, in that order. No other models. No <think>, no chain-of-thought, no analysis. Start with "Model ${firstSlot}:".`
+    ? `You are a judge. An ANSWER KEY is provided—use it as the reference for the correct result. A response is CORRECT if it is functionally equivalent to the key (same end result), not necessarily word-for-word. Use your judgment to equate different phrasings, formats, or explanations that yield the same result (e.g. "Max Planck", "Planck", or a truncated "Max P" when the key is Max Planck). Do NOT give a higher score for repetition, verbosity, or "matching format"—if two models give the same correct answer, they must receive the same score. Do NOT penalize concise or minimal phrasing. For math, same value or expression; for concepts, same meaning. Score exactly ${competingSlots.length} model(s): ${competingList}. Output exactly one line for each, in that order. No other models. No <think>, no chain-of-thought, no analysis. Start with "Model ${firstSlot}:".`
     : null;
 
   const messages = feedback
@@ -639,6 +647,7 @@ const JUDGE_CRITERIA_SPEC = [
  * Build judge prompt for blind review: responses are anonymized as "Response 1", "Response 2", ...
  * and presented in shuffled order. Judge must output "Response N: X/10 - reason".
  * @param {Object} opts - same as buildJudgePrompt, plus shuffleRandom optional
+ * @param {number|null} [opts.numericPrecision] - when set (0-5), judge scores numeric answers to this many decimal places
  * @returns {{ messages: Array<{ role: string, content: string }>, responseOrder: string[] }}
  */
 export function buildJudgePromptBlind({
@@ -649,6 +658,7 @@ export function buildJudgePromptBlind({
   judgeFeedback,
   judgeInstructions,
   shuffleRandom = Math.random,
+  numericPrecision = null,
 }) {
   const shuffled = shuffleArray(slotsWithResponses, shuffleRandom);
   const responseOrder = shuffled.map((s) => s.slot);
@@ -657,15 +667,22 @@ export function buildJudgePromptBlind({
   const customInstr = typeof judgeInstructions === 'string' ? judgeInstructions.trim() : '';
 
   const criteriaLine = JUDGE_CRITERIA_SPEC.join(', ');
+  const precisionNoteBlind =
+    numericPrecision != null && numericPrecision >= 0 && numericPrecision <= 5
+      ? (numericPrecision === 0
+          ? 'NUMERIC ANSWERS: When the answer key or any response is numeric, compare as integers. Score correct if the value matches to that precision.'
+          : `NUMERIC ANSWERS: When the answer key or any response is numeric, compare to ${numericPrecision} decimal place(s). Score correct if the value matches to that precision.`)
+      : '';
   const parts = [
     customInstr ||
       `You are a judge. Score each response 0-10 (10 = best) with one short reason. Consider: ${criteriaLine}. Do NOT identify or guess which model wrote which response.`,
     '',
     `There are exactly ${n} responses, labeled Response 1 through Response ${n}. You must output exactly one line per response, in order. Format: "Response 1: X/10 - one short reason." then "Response 2: X/10 - ..." and so on. If a response is missing or empty, write: Response N: 0/10 - No response.`,
     '',
+    ...(precisionNoteBlind ? [precisionNoteBlind, ''] : []),
     answerKeyTrimmed
-      ? `BASIS FOR SCORING: An ANSWER KEY is provided—use it as the reference for the correct result. Judge whether each response is FUNCTIONALLY EQUIVALENT (same end result), not word-for-word. You may equivocate between the key and the response: different wording or structure is fine if the result is the same. For math, same value; for concepts, same meaning. If a response contains "Final Answer:", use that line. Same result = 8-10, partial = 4-7, different result = 1-3, no response = 0.`
-      : 'BASIS FOR SCORING: No answer key was provided. Use the web search section (if present) or your own knowledge. Focus on factual accuracy. Score 0-10 with a brief reason.',
+      ? `BASIS FOR SCORING: An ANSWER KEY is provided—use it as the reference for the correct result. Judge whether each response is FUNCTIONALLY EQUIVALENT (same end result), not word-for-word. Equate "Max Planck", "Planck", or truncated "Max P" when the key is Max Planck. If a response contains "Final Answer:", use that line (or the same answer elsewhere). Do NOT give a higher score for repetition or verbosity; do NOT penalize concise phrasing. Same correct answer = same score band (e.g. both 10/10). Same result = 8-10, partial = 4-7, different result = 1-3, no response = 0.`
+      : 'BASIS FOR SCORING: No answer key was provided. First use your own knowledge to evaluate correctness. If your own knowledge is not definitive, then use the WEB SEARCH section below (if present) to fact-check. Do not rely on web alone when your knowledge is sufficient. Same correct answer = same score; do not reward verbosity or penalize conciseness. Focus on factual accuracy. Score 0-10 with a brief reason.',
     '',
     'CRITICAL: Your ENTIRE reply must be ONLY the score lines. No <think>, no preamble, no analysis. Start with "Response 1:".',
     '',
@@ -674,7 +691,7 @@ export function buildJudgePromptBlind({
     parts.push('--- ANSWER KEY ---', answerKeyTrimmed, '');
   }
   if (judgeWebContext) {
-    parts.push('--- WEB SEARCH ---', judgeWebContext, '');
+    parts.push('--- WEB SEARCH (use only when no answer key and your own knowledge is not definitive) ---', judgeWebContext, '');
   }
   parts.push('--- ORIGINAL PROMPT ---', promptText || '(none)', '');
   shuffled.forEach(({ msgs }, i) => {
@@ -685,8 +702,8 @@ export function buildJudgePromptBlind({
   const userContent = parts.join('\n');
 
   const systemContent = answerKeyTrimmed
-    ? `You are a judge. An ANSWER KEY is provided—use it as the reference for the correct result. Score each response 0-10 by whether it is functionally equivalent (same end result) to the key. Use your judgment to equate different phrasings or formats. Consider: ${criteriaLine}. Output ONLY "Response 1: X/10 - reason" through "Response ${n}: X/10 - reason". No other text.`
-    : `You are a judge. No answer key was provided. Use web search (if present) or your knowledge. Score each response 0-10. Consider: ${criteriaLine}. Output ONLY the Response 1..${n} score lines. No other text.`;
+    ? `You are a judge. An ANSWER KEY is provided—use it as the reference for the correct result. Score each response 0-10 by whether it is functionally equivalent (same end result) to the key. Equate different phrasings or formats (e.g. "Max Planck", "Planck", truncated "Max P"). Do NOT give a higher score for repetition or verbosity; do NOT penalize concise phrasing. Same correct answer = same score. Consider: ${criteriaLine}. Output ONLY "Response 1: X/10 - reason" through "Response ${n}: X/10 - reason". No other text.`
+    : `You are a judge. No answer key was provided. First use your own knowledge to evaluate correctness. If your knowledge is not definitive, then use the web search section (if present) to fact-check. Same correct answer = same score; do not reward verbosity or penalize conciseness. Score each response 0-10. Consider: ${criteriaLine}. Output ONLY the Response 1..${n} score lines. No other text.`;
 
   const messages = feedback
     ? [
@@ -702,19 +719,31 @@ export function buildJudgePromptBlind({
 
 /**
  * Build messages for the judge to generate a structured question set (Phase 1).
- * @param {{ categories: string[], questionCount: number, webContext?: string }} opts
+ * @param {{ categories: string[], questionCount: number, webContext?: string, difficultyLevel?: number }} opts
  * @returns {{ role: string, content: string }[]}
  */
-export function buildArenaQuestionGenerationPrompt({ categories = [], questionCount = 10, webContext = '' }) {
+export function buildArenaQuestionGenerationPrompt({ categories = [], questionCount = 10, webContext = '', difficultyLevel = 3 }) {
+  const level = Math.min(5, Math.max(1, Number(difficultyLevel) || 3));
   const categoriesText =
     categories.length > 0
       ? categories.map((c) => c.trim()).filter(Boolean).join(', ')
       : 'general knowledge';
   const systemContent =
     'You are generating a set of quiz questions for an AI model competition. Output ONLY a valid JSON array. Each element must have exactly "question" and "answer" keys (strings). No markdown, no code fence, no explanation—only the raw JSON array.';
+  const difficultyInstructions = {
+    1: 'Difficulty level 1 (easiest): Questions should be solvable by most capable models. Straightforward, widely known facts or simple reasoning.',
+    2: 'Difficulty level 2: Moderately easy. Clear questions with well-established answers; may require a bit of reasoning or common knowledge.',
+    3: 'Difficulty level 3 (medium): Moderate difficulty. Mix of factual and reasoning questions that a strong model can handle with care.',
+    4: 'Difficulty level 4: Hard. Questions that require deep knowledge, multi-step reasoning, or nuance; challenging for many models.',
+    5: 'Difficulty level 5 (frontier only): Highest difficulty. Questions that would typically only be solvable by frontier-level models: subtle, expert-level, or cutting-edge knowledge; complex reasoning; ambiguous or multi-valid-answer cases where only the best models distinguish correctly.',
+  };
   const userParts = [
     `Generate exactly ${questionCount} questions.`,
     `Topics or categories: ${categoriesText}.`,
+    '',
+    `DIFFICULTY LEVEL: ${level} (of 5). ${difficultyInstructions[level]}`,
+    'Generate all questions at this difficulty. Do not mix easier and harder; keep the set consistent.',
+    '',
     'Each question should be clear and answerable in a short phrase or sentence. Provide a concise correct answer for each.',
     'Output format: [{"question":"...","answer":"..."}, ...]',
   ];
@@ -759,33 +788,92 @@ export function parseGeneratedQuestionSet(rawContent) {
   }
 }
 
-// ---------- Witty judge loading messages ----------
+// ---------- Question objects (id-based, for filtering and audit) ----------
 
-export const JUDGE_LOADING_LINES = [
-  { main: 'The judge is entering the courtroom.', sub: '(All rise.)' },
-  { main: 'Summoning the judge…', sub: '(They were napping. Give them a second.)' },
-  { main: 'Loading the judge model…', sub: '(No pressure. Only everyone\'s fate hangs in the balance.)' },
-  { main: 'The judge is warming up.', sub: '(Stretching neurons. Cracking knuckles.)' },
-  { main: 'Judge is being loaded…', sub: '(They take their time. It\'s a power move.)' },
-  { main: 'Calling in the expert.', sub: '(They charge by the token, so let\'s be quick.)' },
-  { main: 'Loading the arbiter of truth.', sub: '(Dramatic entrance in 3… 2… 1…)' },
-  { main: 'Judge incoming.', sub: '(Hope the contestants studied.)' },
-  { main: 'The judge approaches the bench.', sub: '(They\'ve seen things. Terrible answers. This time will be different. Maybe.)' },
-  { main: 'Waking the judge…', sub: '(It\'s not easy being the smartest model in the room.)' },
+/**
+ * Normalize parsed Q&A into question objects with stable ids for filtering and reproducibility.
+ * Use question id (not string match) to hide the current question in panels.
+ * @param {{ questions: string[], answers: string[] }} parsed - output of parseGeneratedQuestionSet
+ * @returns {{ questions: Array<{ id: string, text: string, category?: string, correct_answer?: string, grading_rubric?: string }> }}
+ */
+export function normalizeGeneratedQuestionSet(parsed) {
+  if (!parsed || !Array.isArray(parsed.questions) || parsed.questions.length === 0) {
+    return { questions: [] };
+  }
+  const questions = [];
+  for (let i = 0; i < parsed.questions.length; i++) {
+    const raw = parsed.questions[i];
+    const text = typeof raw === 'string' ? raw.trim() : (raw?.text != null ? String(raw.text).trim() : '');
+    if (!text) continue;
+    const ans = parsed.answers && parsed.answers[i] != null ? String(parsed.answers[i]).trim() : '';
+    questions.push({
+      id: `q-${i}`,
+      text,
+      correct_answer: ans || undefined,
+      category: typeof raw === 'object' && raw != null && raw.category != null ? String(raw.category).trim() : undefined,
+      grading_rubric: typeof raw === 'object' && raw != null && raw.grading_rubric != null ? String(raw.grading_rubric).trim() : undefined,
+    });
+  }
+  return { questions };
+}
+
+// ---------- Witty arena "Build Arena" messages (loading judge to generate question set) ----------
+
+export const ARENA_BUILD_LOADING_LINES = [
+  { main: 'Assembling the knowledge of the universe…', sub: '(Well, a quiz-sized chunk of it. We have limits.)' },
+  { main: 'Building the question set…', sub: '(The judge is writing the test. The judge is the test.)' },
+  { main: 'Loading the architect.', sub: '(Someone has to design the arena. Today it\'s them.)' },
+  { main: 'Warming up the question factory…', sub: '(Input: categories. Output: existential doubt.)' },
+  { main: 'The arena is preparing its challenges.', sub: '(No, you cannot see them early. Nice try.)' },
+  { main: 'Summoning the quizmaster…', sub: '(They take their job very seriously. Too seriously.)' },
+  { main: 'Loading the judge to build your set…', sub: '(Yes, the same judge. They wear many hats. One of them is "writer".)' },
+  { main: 'Generating questions from the void.', sub: '(The void is mostly Wikipedia. And vibes.)' },
+  { main: 'The oracle is drafting the trial.', sub: '(Questions incoming. Contestants: you\'ve been warned.)' },
+  { main: 'Building the arena from scratch…', sub: '(Bricks: knowledge. Mortar: chaos. You\'re welcome.)' },
 ];
 
-// ---------- Witty judge web messages ----------
+// ---------- Witty arena loading messages (scorer / ref model) ----------
+
+export const JUDGE_LOADING_LINES = [
+  { main: 'Arena scorer loading…', sub: '(The one who decides who wins. No pressure.)' },
+  { main: 'Bringing in the ref.', sub: '(Contestants, look sharp.)' },
+  { main: 'Warming up the scoring model…', sub: '(Neurons stretching. You know how it is.)' },
+  { main: 'Scorer incoming.', sub: '(Hope the answers are good.)' },
+  { main: 'Loading the arbiter…', sub: '(Someone has to call it. Might as well be them.)' },
+  { main: 'Summoning the scorer…', sub: '(They charge by the token. Let\'s be quick.)' },
+  { main: 'Arena ref loading.', sub: '(3… 2… 1…)' },
+  { main: 'Scorer coming online.', sub: '(They\'ve seen some answers. Oof.)' },
+  { main: 'The arena is loading its scorer.', sub: '(Not easy being the only one who grades everyone.)' },
+  { main: 'Referee model warming up…', sub: '(Power move: they take their time.)' },
+];
+
+// ---------- Witty arena "loading next contestant" messages (Far Side vibe) ----------
+
+export const ARENA_LOADING_MODEL_LINES = [
+  { main: 'Next contestant loading…', sub: '(Please hold. The arena is judgment-free. Mostly.)' },
+  { main: 'Loading next model…', sub: '(Meanwhile, the previous one is already forgetting the question.)' },
+  { main: 'Swapping in the next contestant.', sub: '(Out with the old parameters. In with the new.)' },
+  { main: 'Next model entering the arena.', sub: '(We could\'ve had a drumroll. We didn\'t.)' },
+  { main: 'Loading next contestant…', sub: '(One of you will be slightly less wrong. We\'ll find out who.)' },
+  { main: 'Warming up the next model.', sub: '(It doesn\'t know it\'s being scored yet. Let\'s keep it that way.)' },
+  { main: 'Next model loading…', sub: '(The question is ready. The question has been ready. The question is bored.)' },
+  { main: 'Bringing in the next contestant.', sub: '(Hope it read the instructions. It didn\'t.)' },
+  { main: 'Loading next model…', sub: '(Somewhere, parameters are adjusting. We choose to believe they care.)' },
+  { main: 'Next contestant incoming.', sub: '(The arena awaits. The arena is patient. The arena has seen things.)' },
+];
+
+// ---------- Witty arena web messages (scorer fact-checking) ----------
 
 export const JUDGE_WEB_LINES = [
-  { main: 'Judge is checking the web…', sub: '(Googling so the judge can fact-check. No, really.)' },
-  { main: 'Judge is checking the internet.', sub: '(Yes, the whole thing. We asked nicely.)' },
-  { main: 'Judge is consulting the oracle.', sub: '(It\'s Google. But "oracle" sounds cooler.)' },
-  { main: 'Judge is fact-checking in the cloud.', sub: '(Someone had to. It\'s not gonna check itself.)' },
-  { main: 'Judge is asking the internet.', sub: '(We\'ll see if it answers. Usually it\'s cats.)' },
-  { main: 'Judge is doing the research.', sub: '(So you don\'t have to. You\'re welcome.)' },
-  { main: 'Judge is verifying things.', sub: '(Rumors say the internet has facts. We\'re testing that.)' },
-  { main: 'Judge is hitting the books.', sub: '(The books are web servers. Same energy.)' },
-  { main: 'Judge is checking the web…', sub: '(Making sure the models didn\'t just make it up. Again.)' },
+  { main: 'Scorer is checking the web…', sub: '(Fact-checking so the arena stays honest.)' },
+  { main: 'Arena is consulting the internet.', sub: '(Yes, the whole thing. We asked nicely.)' },
+  { main: 'Scorer is consulting the oracle.', sub: '(It\'s Google. "Oracle" sounds cooler.)' },
+  { main: 'Fact-checking in the cloud…', sub: '(Someone had to. It\'s not gonna check itself.)' },
+  { main: 'Scorer is asking the internet.', sub: '(We\'ll see if it answers. Usually it\'s cats.)' },
+  { main: 'Doing the research…', sub: '(So you don\'t have to. You\'re welcome.)' },
+  { main: 'Verifying things.', sub: '(Rumors say the internet has facts. We\'re testing that.)' },
+  { main: 'Scorer is hitting the books.', sub: '(The books are web servers. Same energy.)' },
+  { main: 'Making sure the models didn\'t just make it up.', sub: '(Again.)' },
 ];
 
 // ---------- Judge model selection ----------

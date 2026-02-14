@@ -1,4 +1,5 @@
 @echo off
+cd /d "%~dp0"
 title ATOM UI - Open in browser
 :: ============================================================
 :: USE THIS ON ANY DEVICE ON YOUR NETWORK.

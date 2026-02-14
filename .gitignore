@@ -26,3 +26,11 @@ dist-ssr
 # Voice server Python venv and cache
 voice-server/.venv
 voice-server/__pycache__/
+
+# Local backups (keep repo clean; backups stay on your machine)
+*.backup
+*.backup-*
+*-backup
+*-backup.*
+*.pre-enhanced-backup
+*.windows-backup

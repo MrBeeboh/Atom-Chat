@@ -229,6 +229,11 @@ html { --metrics-axis: #d4d4d4; --metrics-grid: #e5e5e5; }
   justify-content: center;
   align-items: center;
 }
+/* In Arena layout, left sidebar is secondary to the main content */
+.arena-sidebar-secondary {
+  border-color: color-mix(in srgb, var(--ui-border) 70%, transparent);
+  background-color: color-mix(in srgb, var(--ui-bg-sidebar) 95%, var(--ui-bg-main));
+}
 @keyframes panel-tab-bounce {
   0% { transform: var(--panel-tab-transform) scale(1); }
   40% { transform: var(--panel-tab-transform) scale(1.15); }

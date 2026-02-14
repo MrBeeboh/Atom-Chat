@@ -240,7 +240,7 @@
       </header>
       <div class="flex flex-1 min-h-0 relative">
         <aside
-          class="shrink-0 border-r overflow-hidden hidden md:flex flex-col transition-[width] duration-200 relative min-w-0"
+          class="shrink-0 border-r overflow-hidden hidden md:flex flex-col transition-[width] duration-200 relative min-w-0 {$layout === 'arena' ? 'arena-sidebar-secondary' : ''}"
           style="width: {$sidebarCollapsed ? '52px' : '13rem'}; background-color: var(--ui-bg-sidebar); border-color: var(--ui-border);">
           {#if $sidebarCollapsed}
             <div class="panel-tab-strip-icon-wrap pr-1" aria-hidden="true">

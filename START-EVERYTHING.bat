@@ -1,6 +1,7 @@
 @echo off
 setlocal
 title AI Stack Launcher
+REM Run from repo root: working dir = folder containing this .bat (project root).
 cd /d "%~dp0"
 
 REM Docker-free startup: LM Studio server + lm-studio-ui dev server.
@@ -36,14 +37,18 @@ call npm install
 :run_ui
 start /min "LM Studio UI" cmd /c "npm run dev"
 
-REM 3) Open browser when Vite is up (Vite default is 5173)
+REM 3) Start voice server for mic (port 8765) — minimized.
+echo [INFO] Starting voice server (port 8765) [minimized]...
+start /min "ATOM Voice Server" cmd /c "cd /d "%~dp0voice-server" && (if exist .venv\Scripts\activate.bat (call .venv\Scripts\activate.bat && uvicorn app:app --host 0.0.0.0 --port 8765) else (python -m uvicorn app:app --host 0.0.0.0 --port 8765))"
+
+REM 4) Open browser when Vite is up (Vite default is 5173)
 timeout /t 5 /nobreak >nul
 start "" "http://localhost:5173"
 
 echo.
 echo [INFO] All services started minimized in the taskbar.
-echo [INFO] LM Studio server (port %LM_PORT%), lm-studio-ui dev server (5173), browser.
-echo [INFO] To stop: close the minimized windows or run kill_atom_ui.bat.
+echo [INFO] LM Studio server (%LM_PORT%), UI (5173), voice server (8765), browser.
+echo [INFO] To stop: close the minimized windows or run kill_atom_ui.bat (from this folder).
 timeout /t 3 /nobreak >nul
 exit /b 0
 

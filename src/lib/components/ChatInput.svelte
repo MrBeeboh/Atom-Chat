@@ -337,12 +337,12 @@
         healthRes = await fetch(`${url}/health`, { method: 'GET', signal: ac.signal });
       } catch (he) {
         clearTimeout(to);
-        voiceError = `Voice server not running at ${url}. Start it: cd voice-server && uvicorn app:app --port 8765`;
+        voiceError = `Voice server not running. Double-click START-VOICE-SERVER.bat in the project folder, or see VOICE-SETUP.md.`;
         return;
       }
       clearTimeout(to);
       if (!healthRes.ok) {
-        voiceError = `Voice server at ${url} returned ${healthRes.status}. Start it: cd voice-server && uvicorn app:app --port 8765`;
+        voiceError = `Voice server at ${url} returned ${healthRes.status}. Restart it with START-VOICE-SERVER.bat or see VOICE-SETUP.md.`;
         return;
       }
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
