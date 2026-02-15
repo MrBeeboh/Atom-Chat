@@ -572,7 +572,7 @@
         {#if onGenerateImageGrok || onGenerateImageDeepSeek}
           <button
             type="button"
-            class="media-icon-btn"
+            class="media-icon-btn {imageGenerating ? 'media-icon-btn-active' : ''}"
             disabled={$isStreaming || imageGenerating || !text.trim()}
             onclick={handleImageClick}
             title={imageGenerating ? 'Generating image…' : (onGenerateImageGrok ? 'Generate image (Grok)' : 'Generate image (DeepInfra)')}
@@ -594,7 +594,7 @@
         {#if onGenerateVideoDeepSeek}
           <button
             type="button"
-            class="media-icon-btn"
+            class="media-icon-btn {videoGenerating ? 'media-icon-btn-active' : ''}"
             disabled={$isStreaming || videoGenerating || !text.trim()}
             onclick={handleVideoClick}
             title={videoGenerating ? `Generating video… ${videoGenElapsed}` : 'Generate video (DeepInfra)'}
@@ -761,6 +761,13 @@
   .media-icon-btn:disabled {
     opacity: 0.3;
     cursor: not-allowed;
+  }
+
+  .media-icon-btn-active:disabled {
+    opacity: 1;
+    cursor: default;
+    color: var(--ui-accent, #3b82f6);
+    background: color-mix(in srgb, var(--ui-accent, #3b82f6) 8%, transparent);
   }
 
   .media-icon-label {

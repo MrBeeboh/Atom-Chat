@@ -651,8 +651,8 @@
               onSend={sendUserMessage}
               onStop={() => chatAbortController?.abort?.()}
               onGenerateImageGrok={$effectiveModelId && isGrokModel($effectiveModelId) && $grokApiKey?.trim() ? handleGrokImage : undefined}
-              onGenerateImageDeepSeek={$effectiveModelId && isDeepSeekModel($effectiveModelId) && getDeepinfraImageKey() ? openImageOptionsModal : undefined}
-              onGenerateVideoDeepSeek={$effectiveModelId && isDeepSeekModel($effectiveModelId) && getDeepinfraImageKey() ? openVideoModal : undefined}
+              onGenerateImageDeepSeek={getDeepinfraImageKey() ? openImageOptionsModal : undefined}
+              onGenerateVideoDeepSeek={getDeepinfraImageKey() ? openVideoModal : undefined}
               imageGenerating={imageGenerating}
               videoGenerating={videoGenerating}
               videoGenElapsed={videoGenElapsed}
@@ -683,8 +683,8 @@
             onSend={sendUserMessage}
             onStop={() => chatAbortController?.abort?.()}
             onGenerateImageGrok={$effectiveModelId && isGrokModel($effectiveModelId) && $grokApiKey?.trim() ? handleGrokImage : undefined}
-            onGenerateImageDeepSeek={$effectiveModelId && isDeepSeekModel($effectiveModelId) && getDeepinfraImageKey() ? openImageOptionsModal : undefined}
-            onGenerateVideoDeepSeek={$effectiveModelId && isDeepSeekModel($effectiveModelId) && getDeepinfraImageKey() ? openVideoModal : undefined}
+            onGenerateImageDeepSeek={getDeepinfraImageKey() ? openImageOptionsModal : undefined}
+            onGenerateVideoDeepSeek={getDeepinfraImageKey() ? openVideoModal : undefined}
             imageGenerating={imageGenerating}
             videoGenerating={videoGenerating}
             videoGenElapsed={videoGenElapsed}

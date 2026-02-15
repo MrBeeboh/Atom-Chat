@@ -761,10 +761,32 @@ export async function requestDeepInfraVideoGeneration({ apiKey, modelId, prompt 
       const msg = data?.detail?.error || data?.detail || JSON.stringify(data) || res.statusText;
       throw new Error(parseChatApiError(res.status, msg, 'deepinfra:video'));
     }
-    const videoPath =
-      data?.video_url ?? data?.videos ?? data?.result?.video_url ?? data?.result?.videos ?? null;
-    const pathStr = typeof videoPath === 'string' ? videoPath : (Array.isArray(videoPath) && videoPath[0]) ? videoPath[0] : null;
-    if (pathStr == null || typeof pathStr !== 'string' || !pathStr.trim()) throw new Error('DeepInfra video response had no video_url or videos.');
+    // Different models return video in different fields. Try all known shapes.
+    const candidates = [
+      data?.video_url,
+      data?.videos,
+      data?.video,
+      data?.output,
+      data?.url,
+      data?.result?.video_url,
+      data?.result?.videos,
+      data?.result?.video,
+      data?.result?.output,
+      data?.result?.url,
+    ];
+    let pathStr = null;
+    for (const c of candidates) {
+      if (typeof c === 'string' && c.trim()) { pathStr = c.trim(); break; }
+      if (Array.isArray(c) && c.length > 0) {
+        const first = typeof c[0] === 'string' ? c[0] : c[0]?.url ?? c[0]?.video_url ?? null;
+        if (typeof first === 'string' && first.trim()) { pathStr = first.trim(); break; }
+      }
+      if (c && typeof c === 'object' && !Array.isArray(c)) {
+        const inner = c.url ?? c.video_url ?? c.video ?? null;
+        if (typeof inner === 'string' && inner.trim()) { pathStr = inner.trim(); break; }
+      }
+    }
+    if (!pathStr) throw new Error(`DeepInfra video: unexpected response shape. Keys: ${Object.keys(data || {}).join(', ')}`);
     const fullVideoUrl =
       pathStr.startsWith('data:') || pathStr.startsWith('http://') || pathStr.startsWith('https://')
         ? pathStr
