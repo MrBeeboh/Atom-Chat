@@ -524,53 +524,6 @@
         {/if}
       </button>
     </div>
-    {#if onGenerateImageGrok || onGenerateImageDeepSeek || onGenerateVideoDeepSeek}
-      <div class="media-toolbar media-toolbar-dropdown">
-        {#if onGenerateImageGrok || onGenerateImageDeepSeek}
-          <button
-            type="button"
-            class="media-icon-btn {imageGenerating ? 'media-icon-btn-active' : ''}"
-            disabled={$isStreaming || imageGenerating || !text.trim()}
-            onclick={handleImageClick}
-            title={imageGenerating ? 'Generating image…' : (onGenerateImageGrok ? 'Generate image (Grok)' : 'Generate image (DeepInfra)')}
-            aria-label={imageGenerating ? 'Generating image' : 'Generate image'}
-          >
-            {#if imageGenerating}
-              <ThinkingAtom size={16} />
-            {:else}
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <rect x="2.5" y="2.5" width="19" height="19" rx="3" stroke="currentColor" stroke-width="1.5"/>
-                <circle cx="8" cy="8" r="2" fill="currentColor" opacity="0.5"/>
-                <path d="M2.5 16l5-5.5 3.5 3.5 3-3L21.5 16v3.5a3 3 0 0 1-3 3h-13a3 3 0 0 1-3-3V16z" fill="currentColor" opacity="0.2"/>
-                <path d="M2.5 16l5-5.5 3.5 3.5 3-3L21.5 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-              <span class="media-icon-label">Image</span>
-            {/if}
-          </button>
-        {/if}
-        {#if onGenerateVideoDeepSeek}
-          <button
-            type="button"
-            class="media-icon-btn {videoGenerating ? 'media-icon-btn-active' : ''}"
-            disabled={$isStreaming || videoGenerating || !text.trim()}
-            onclick={handleVideoClick}
-            title={videoGenerating ? `Generating video… ${videoGenElapsed}` : 'Generate video (DeepInfra)'}
-            aria-label={videoGenerating ? 'Generating video' : 'Generate video'}
-          >
-            {#if videoGenerating}
-              <span class="media-icon-generating"><ThinkingAtom size={16} /><span class="media-elapsed">{videoGenElapsed}</span></span>
-            {:else}
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <rect x="2.5" y="3.5" width="19" height="17" rx="3" stroke="currentColor" stroke-width="1.5"/>
-                <path d="M10 8.5v7l5.5-3.5L10 8.5z" fill="currentColor" opacity="0.35"/>
-                <path d="M10 8.5v7l5.5-3.5L10 8.5z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-              <span class="media-icon-label">Video</span>
-            {/if}
-          </button>
-        {/if}
-      </div>
-    {/if}
   </div>
   <div class="chat-input-main">
     {#if attachments.length > 0}
@@ -603,6 +556,53 @@
       rows="1"
     ></textarea>
   </div>
+  {#if onGenerateImageGrok || onGenerateImageDeepSeek || onGenerateVideoDeepSeek}
+    <div class="media-toolbar media-toolbar-inline">
+      {#if onGenerateImageGrok || onGenerateImageDeepSeek}
+        <button
+          type="button"
+          class="media-icon-btn {imageGenerating ? 'media-icon-btn-active' : ''}"
+          disabled={$isStreaming || imageGenerating || !text.trim()}
+          onclick={handleImageClick}
+          title={imageGenerating ? 'Generating image…' : (onGenerateImageGrok ? 'Generate image (Grok)' : 'Generate image (DeepInfra)')}
+          aria-label={imageGenerating ? 'Generating image' : 'Generate image'}
+        >
+          {#if imageGenerating}
+            <ThinkingAtom size={16} />
+          {:else}
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <rect x="2.5" y="2.5" width="19" height="19" rx="3" stroke="currentColor" stroke-width="1.5"/>
+              <circle cx="8" cy="8" r="2" fill="currentColor" opacity="0.5"/>
+              <path d="M2.5 16l5-5.5 3.5 3.5 3-3L21.5 16v3.5a3 3 0 0 1-3 3h-13a3 3 0 0 1-3-3V16z" fill="currentColor" opacity="0.2"/>
+              <path d="M2.5 16l5-5.5 3.5 3.5 3-3L21.5 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span class="media-icon-label">Image</span>
+          {/if}
+        </button>
+      {/if}
+      {#if onGenerateVideoDeepSeek}
+        <button
+          type="button"
+          class="media-icon-btn {videoGenerating ? 'media-icon-btn-active' : ''}"
+          disabled={$isStreaming || videoGenerating || !text.trim()}
+          onclick={handleVideoClick}
+          title={videoGenerating ? `Generating video… ${videoGenElapsed}` : 'Generate video (DeepInfra)'}
+          aria-label={videoGenerating ? 'Generating video' : 'Generate video'}
+        >
+          {#if videoGenerating}
+            <span class="media-icon-generating"><ThinkingAtom size={16} /><span class="media-elapsed">{videoGenElapsed}</span></span>
+          {:else}
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <rect x="2.5" y="3.5" width="19" height="17" rx="3" stroke="currentColor" stroke-width="1.5"/>
+              <path d="M10 8.5v7l5.5-3.5L10 8.5z" fill="currentColor" opacity="0.35"/>
+              <path d="M10 8.5v7l5.5-3.5L10 8.5z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span class="media-icon-label">Video</span>
+          {/if}
+        </button>
+      {/if}
+    </div>
+  {/if}
   <button
     type="button"
     class="mic-button"
@@ -731,22 +731,31 @@
     justify-content: center;
     padding-left: 8px;
   }
-  .chat-input-bar-attach .media-toolbar-dropdown {
-    display: none;
-    position: absolute;
-    top: 100%;
-    left: 0;
-    margin-top: 4px;
-    padding: 6px 8px;
-    gap: 4px;
-    background: var(--ui-input-bg, #fff);
-    border: 1px solid color-mix(in srgb, var(--ui-border, #e5e7eb) 50%, transparent);
-    border-radius: 10px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-    z-index: 20;
-  }
-  .chat-input-bar-attach:hover .media-toolbar-dropdown {
+  .chat-input-bar .media-toolbar-inline {
     display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+  .chat-input-bar .media-toolbar-inline .media-icon-btn {
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    min-height: 40px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--ui-text-secondary, #6b7280);
+  }
+  .chat-input-bar .media-toolbar-inline .media-icon-btn:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--ui-accent) 10%, transparent);
+    color: var(--ui-accent);
+  }
+  .chat-input-bar .media-toolbar-inline .media-icon-btn .media-icon-label {
+    display: none;
   }
   .chat-input-bar-attach .attach-button-wrap {
     width: 40px;
@@ -913,7 +922,7 @@
     gap: 4px;
     flex-shrink: 0;
   }
-  .media-toolbar:not(.media-toolbar-dropdown) {
+  .media-toolbar:not(.media-toolbar-inline) {
     padding: 2px 8px 4px;
     border-top: 1px solid color-mix(in srgb, var(--ui-border, #e5e7eb) 25%, transparent);
   }
