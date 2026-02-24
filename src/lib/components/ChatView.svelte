@@ -13,6 +13,26 @@
   let chatAbortController = $state(null);
   let imageGenerating = $state(false);
 
+  /** Welcome line on empty chat: one prompt, chosen on mount, fades in to feel alive. */
+  const WELCOME_PROMPTS = [
+    'Ask me anything!',
+    "What's on your mind?",
+    'How can I assist you today?',
+    "What would you like to explore?",
+    "I'm here to help — just ask.",
+  ];
+  let welcomeLine = $state(null);
+  $effect(() => {
+    if ($activeMessages?.length > 0) {
+      welcomeLine = null;
+      return;
+    }
+    const id = setTimeout(() => {
+      welcomeLine = WELCOME_PROMPTS[Math.floor(Math.random() * WELCOME_PROMPTS.length)];
+    }, 400);
+    return () => clearTimeout(id);
+  });
+
   /** Image options modal. Verified config from docs/image-models-and-settings-for-verification.json (Together AI, 2026-02-15). Grok unchanged. */
   const ENGINE_OPTIONS = [
     { label: 'FLUX.1 Schnell', model: 'black-forest-labs/FLUX.1-schnell' },
@@ -652,6 +672,9 @@
         <div class="w-full max-w-[min(40rem,92%)] mx-auto flex flex-col items-center gap-5">
 
           <h1 class="ui-greeting-title text-xl md:text-2xl font-semibold text-center" style="color: var(--ui-text-primary);">What can I help with?</h1>
+          {#if welcomeLine}
+            <p class="ui-greeting-welcome text-sm text-center animate-fade-in" style="color: var(--ui-text-secondary);">{welcomeLine}</p>
+          {/if}
           {#if $chatError}
             <div class="w-full px-4 py-2.5 rounded-lg text-sm flex items-center justify-between gap-2" style="background: color-mix(in srgb, var(--ui-accent-hot, #dc2626) 10%, transparent); color: var(--ui-text-primary);">
               <span>{$chatError}</span>

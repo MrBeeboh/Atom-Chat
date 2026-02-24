@@ -30,6 +30,15 @@ body {
 .dark body {
   background-color: #0d0d0d;
 }
+/* Greeting welcome line: subtle fade-in so the screen feels alive */
+@keyframes greeting-fade-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in {
+  animation: greeting-fade-in 0.5s ease-out forwards;
+}
+
 /* Metrics graph axes/grid (light gray in light mode, subtle light in dark) */
 html { --metrics-axis: #d4d4d4; --metrics-grid: #e5e5e5; }
 .dark { --metrics-axis: rgba(255,255,255,0.18); --metrics-grid: rgba(255,255,255,0.08); }

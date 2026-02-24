@@ -38,6 +38,17 @@
     if ($webSearchInProgress) searchingMessage = pickWitty(COCKPIT_SEARCHING);
   });
 
+  /** Ready to send: has text or attachments. Used for Send button "ready" state. */
+  const canSend = $derived(!!(text.trim() || attachments.length));
+  /** Brief "sending" state for bar animation when user hits Send. */
+  let sending = $state(false);
+  /** Brief success feedback (checkmark) after send. */
+  let justSent = $state(false);
+  /** Brief error feedback if send throws. */
+  let sendError = $state(false);
+  let justSentTimeoutId = $state(/** @type {ReturnType<typeof setTimeout> | null} */ (null));
+  let sendErrorTimeoutId = $state(/** @type {ReturnType<typeof setTimeout> | null} */ (null));
+
   /** Start (or retry) web-search warm-up: spin the globe, hit CORS proxy, set green/red dot. */
   function runWarmUp() {
     webSearchWarmUpAttempted = true;
@@ -183,12 +194,28 @@
     text = '';
     attachments = [];
     attachError = null;
+    sendError = false;
+    if (justSentTimeoutId) clearTimeout(justSentTimeoutId);
+    if (sendErrorTimeoutId) clearTimeout(sendErrorTimeoutId);
 
+    sending = true;
     try {
       if (onSend) await onSend(userMessage, imageDataUrls, videoDataUrls);
+      justSent = true;
+      justSentTimeoutId = setTimeout(() => {
+        justSent = false;
+        justSentTimeoutId = null;
+      }, 1600);
     } catch (err) {
       text = savedText;
       attachments = savedAttachments;
+      sendError = true;
+      sendErrorTimeoutId = setTimeout(() => {
+        sendError = false;
+        sendErrorTimeoutId = null;
+      }, 2200);
+    } finally {
+      sending = false;
     }
   }
 
@@ -470,92 +497,33 @@
     onchange={onFileInputChange}
     aria-label="Attach image or PDF"
   />
-  <div class="chat-input-bar">
-  <div class="chat-input-tools">
-  <div class="attach-button-wrap">
-    {#if clippyBubble}
-      <div class="clippy-bubble" role="status" aria-live="polite">
-        <span class="clippy-bubble-text">{clippyBubble}</span>
-        <span class="clippy-bubble-tail" aria-hidden="true"></span>
-      </div>
-    {/if}
-    <button
-      type="button"
-      class="attach-button"
-      class:clippy-active={clippyBubble}
-      title="Attach image or PDF (or drag & drop, paste)"
-      disabled={$isStreaming || attachProcessing}
-      onclick={() => fileInputEl?.click()}
-      onmouseenter={onAttachHover}
-      onmouseleave={onAttachLeave}
-      aria-label="Attach files"
-    >
-      {#if attachProcessing}
-        <span class="mic-spinner" aria-hidden="true">⟳</span>
-      {:else}
-        <span class="attach-icon" aria-hidden="true">📎</span>
+  <div class="chat-input-bar" class:sending class:just-sent={justSent} class:send-error={sendError}>
+  <div class="chat-input-bar-attach">
+    <div class="attach-button-wrap">
+      {#if clippyBubble}
+        <div class="clippy-bubble" role="status" aria-live="polite">
+          <span class="clippy-bubble-text">{clippyBubble}</span>
+          <span class="clippy-bubble-tail" aria-hidden="true"></span>
+        </div>
       {/if}
-    </button>
-  </div>
-  <button
-    type="button"
-    class="mic-button"
-    title={recording ? 'Stop recording (click again)' : 'Voice input – start Python server first'}
-    disabled={$isStreaming || (voiceProcessing && !recording)}
-    onclick={toggleVoice}
-    aria-label={recording ? 'Stop recording' : 'Start voice input'}
-  >
-    {#if voiceProcessing && !recording}
-      <span class="mic-spinner" aria-hidden="true">⟳</span>
-    {:else if recording}
-      <span class="mic-dot" aria-hidden="true"></span>
-    {:else}
-      <span class="mic-icon" aria-hidden="true">🎤</span>
-    {/if}
-  </button>
-  <button
-    type="button"
-    class="web-search-button"
-    class:active={$webSearchForNextMessage}
-    title={webSearchWarmingUp ? 'Connecting…' : $webSearchForNextMessage ? ($webSearchConnected ? 'Web search on – connected (click to turn off)' : 'Web search on – not connected yet (click globe again to retry)') : 'Search the web for next message'}
-    disabled={$isStreaming}
-    onclick={() => {
-      const on = $webSearchForNextMessage;
-      const connected = $webSearchConnected;
-      if (on && !connected && !webSearchWarmingUp) {
-        /* On but red dot: click = retry connection (don't toggle off). */
-        webSearchWarmUpAttempted = false;
-        runWarmUp();
-        return;
-      }
-      if (on) {
-        /* On + connected (green): click = turn off. */
-        webSearchForNextMessage.set(false);
-        webSearchConnected.set(false);
-        return;
-      }
-      /* Off: click = turn on and immediately start connecting. */
-      webSearchForNextMessage.set(true);
-      runWarmUp();
-    }}
-    aria-label={webSearchWarmingUp ? 'Connecting' : $webSearchForNextMessage ? 'Web search on' : 'Search web for next message'}
-    aria-pressed={$webSearchForNextMessage}
-    aria-busy={webSearchWarmingUp}
-  >
-    <span
-      class="web-search-icon"
-      class:web-search-icon-spin={webSearchWarmingUp}
-      aria-hidden="true"
-      title="Internet"
-    >🌐</span>
-    {#if $webSearchForNextMessage}
-      {#if $webSearchConnected}
-        <span class="web-search-dot web-search-dot-green" aria-hidden="true" title="Connected"></span>
-      {:else}
-        <span class="web-search-dot web-search-dot-red" class:web-search-dot-pulse={webSearchWarmingUp} aria-hidden="true" title="Not connected"></span>
-      {/if}
-    {/if}
-  </button>
+      <button
+        type="button"
+        class="attach-button"
+        class:clippy-active={clippyBubble}
+        title="Attach image or PDF (or drag & drop, paste)"
+        disabled={$isStreaming || attachProcessing}
+        onclick={() => fileInputEl?.click()}
+        onmouseenter={onAttachHover}
+        onmouseleave={onAttachLeave}
+        aria-label="Attach files"
+      >
+        {#if attachProcessing}
+          <span class="mic-spinner" aria-hidden="true">⟳</span>
+        {:else}
+          <span class="attach-icon" aria-hidden="true">📎</span>
+        {/if}
+      </button>
+    </div>
   </div>
   <div class="chat-input-main">
     {#if attachments.length > 0}
@@ -635,16 +603,76 @@
       </div>
     {/if}
   </div>
-
+  <button
+    type="button"
+    class="mic-button"
+    title={recording ? 'Stop recording (click again)' : 'Voice input – start Python server first'}
+    disabled={$isStreaming || (voiceProcessing && !recording)}
+    onclick={toggleVoice}
+    aria-label={recording ? 'Stop recording' : 'Start voice input'}
+  >
+    {#if voiceProcessing && !recording}
+      <span class="mic-spinner" aria-hidden="true">⟳</span>
+    {:else if recording}
+      <span class="mic-dot" aria-hidden="true"></span>
+    {:else}
+      <span class="mic-icon" aria-hidden="true">🎤</span>
+    {/if}
+  </button>
+  <button
+    type="button"
+    class="web-search-button"
+    class:active={$webSearchForNextMessage}
+    title={webSearchWarmingUp ? 'Connecting…' : $webSearchForNextMessage ? ($webSearchConnected ? 'Web search on – connected (click to turn off)' : 'Web search on – not connected yet (click globe again to retry)') : 'Search the web for next message'}
+    disabled={$isStreaming}
+    onclick={() => {
+      const on = $webSearchForNextMessage;
+      const connected = $webSearchConnected;
+      if (on && !connected && !webSearchWarmingUp) {
+        webSearchWarmUpAttempted = false;
+        runWarmUp();
+        return;
+      }
+      if (on) {
+        webSearchForNextMessage.set(false);
+        webSearchConnected.set(false);
+        return;
+      }
+      webSearchForNextMessage.set(true);
+      runWarmUp();
+    }}
+    aria-label={webSearchWarmingUp ? 'Connecting' : $webSearchForNextMessage ? 'Web search on' : 'Search web for next message'}
+    aria-pressed={$webSearchForNextMessage}
+    aria-busy={webSearchWarmingUp}
+  >
+    <span
+      class="web-search-icon"
+      class:web-search-icon-spin={webSearchWarmingUp}
+      aria-hidden="true"
+      title="Internet"
+    >🌐</span>
+    {#if $webSearchForNextMessage}
+      {#if $webSearchConnected}
+        <span class="web-search-dot web-search-dot-green" aria-hidden="true" title="Connected"></span>
+      {:else}
+        <span class="web-search-dot web-search-dot-red" class:web-search-dot-pulse={webSearchWarmingUp} aria-hidden="true" title="Not connected"></span>
+      {/if}
+    {/if}
+  </button>
   {#if $isStreaming && onStop}
     <button type="button" class="send-button" style="background: var(--ui-accent-hot, #dc2626);" onclick={() => onStop()} title="Stop">Stop</button>
   {:else}
     <button
       onclick={handleSubmit}
-      disabled={($isStreaming || $webSearchInProgress || (!text.trim() && attachments.length === 0)) ? true : null}
+      disabled={$isStreaming || $webSearchInProgress || justSent || (!text.trim() && attachments.length === 0)}
       class="send-button"
+      class:send-ready={canSend && !justSent}
     >
-      {#if $webSearchInProgress}
+      {#if justSent}
+        <span class="send-feedback send-feedback-success" aria-live="polite">✓ Sent</span>
+      {:else if sendError}
+        <span class="send-feedback send-feedback-error" aria-live="assertive">✕ Try again</span>
+      {:else if $webSearchInProgress}
         <span class="inline-flex items-center gap-1.5"><ThinkingAtom size={16} />{searchingMessage || 'Searching…'}</span>
       {:else if $isStreaming}
         <span class="inline-flex items-center gap-1.5"><ThinkingAtom size={16} />{sendingMessage || 'Sending…'}</span>
@@ -680,7 +708,7 @@
   .chat-input-bar {
     display: flex;
     flex-direction: row;
-    align-items: stretch;
+    align-items: center;
     gap: 0;
     min-height: 56px;
     border-radius: 14px;
@@ -695,39 +723,37 @@
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent, #3b82f6) 12%, transparent);
   }
 
-  .chat-input-tools {
+  .chat-input-bar-attach {
+    flex-shrink: 0;
     display: flex;
     align-items: center;
-    gap: 2px;
-    flex-shrink: 0;
-    padding: 0 6px 0 10px;
-    border-right: 1px solid color-mix(in srgb, var(--ui-border, #e5e7eb) 40%, transparent);
+    justify-content: center;
+    padding-left: 10px;
   }
-
-  .chat-input-tools .attach-button-wrap,
-  .chat-input-tools .mic-button,
-  .chat-input-tools .web-search-button {
-    flex-shrink: 0;
+  .chat-input-bar-attach .attach-button-wrap {
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    min-height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .chat-input-bar-attach .attach-button {
     width: 40px;
     height: 40px;
     min-height: 40px;
-  }
-  .chat-input-tools .attach-button,
-  .chat-input-tools .mic-button,
-  .chat-input-tools .web-search-button {
     background: transparent;
     border-radius: 6px;
     color: var(--ui-text-secondary, #6b7280);
   }
-  .chat-input-tools .attach-button:hover:not(:disabled),
-  .chat-input-tools .mic-button:hover:not(:disabled),
-  .chat-input-tools .web-search-button:hover:not(:disabled) {
+  .chat-input-bar-attach .attach-button:hover:not(:disabled) {
     background: color-mix(in srgb, var(--ui-accent) 10%, transparent);
     color: var(--ui-accent);
   }
-  .chat-input-tools .web-search-button.active {
-    background: color-mix(in srgb, var(--ui-accent) 12%, transparent);
-    color: var(--ui-accent);
+  .chat-input-bar-attach .attach-button:active:not(:disabled) {
+    transform: scale(0.94);
+    transition: transform 0.1s ease;
   }
 
   .chat-input-main {
@@ -738,12 +764,42 @@
     background: transparent;
     border: none;
     border-radius: 0;
+    align-self: stretch;
+  }
+
+  .chat-input-bar .mic-button,
+  .chat-input-bar .web-search-button {
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    min-height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border-radius: 6px;
+    color: var(--ui-text-secondary, #6b7280);
+  }
+  .chat-input-bar .mic-button:hover:not(:disabled),
+  .chat-input-bar .web-search-button:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--ui-accent) 10%, transparent);
+    color: var(--ui-accent);
+  }
+  .chat-input-bar .web-search-button.active {
+    background: color-mix(in srgb, var(--ui-accent) 12%, transparent);
+    color: var(--ui-accent);
+  }
+  .chat-input-bar .mic-button:active:not(:disabled),
+  .chat-input-bar .web-search-button:active:not(:disabled) {
+    transform: scale(0.94);
+    transition: transform 0.1s ease;
   }
 
   .chat-input-bar .send-button {
     flex-shrink: 0;
     align-self: center;
-    margin: 8px 10px 8px 8px;
+    margin: 8px 10px 8px 6px;
     min-height: 40px;
     padding: 0 20px;
     border-radius: 8px;
@@ -754,7 +810,38 @@
   .chat-input-bar .send-button:hover:not(:disabled) {
     filter: brightness(1.08);
   }
-
+  .chat-input-bar .send-button:active:not(:disabled) {
+    transform: scale(0.98);
+    transition: transform 0.1s ease;
+  }
+  .chat-input-bar .send-button.send-ready:not(:disabled) {
+    animation: send-ready-pulse 2s ease-in-out infinite;
+  }
+  @keyframes send-ready-pulse {
+    0%, 100% { filter: brightness(1); box-shadow: 0 0 0 0 color-mix(in srgb, var(--ui-accent) 25%, transparent); }
+    50% { filter: brightness(1.06); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-accent) 18%, transparent); }
+  }
+  .send-feedback {
+    font-size: 13px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .send-feedback-success {
+    color: #16a34a;
+  }
+  .send-feedback-error {
+    color: var(--ui-accent-hot, #dc2626);
+  }
+  .chat-input-bar.sending {
+    opacity: 0.92;
+    transition: opacity 0.2s ease;
+  }
+  .chat-input-bar.send-error {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent-hot, #dc2626) 25%, transparent);
+    transition: box-shadow 0.2s ease;
+  }
   textarea {
     flex: 0 0 auto;
     width: 100%;
