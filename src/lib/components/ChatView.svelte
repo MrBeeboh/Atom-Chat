@@ -42,6 +42,15 @@
 
   /** DeepInfra model IDs (official docs). Our ENGINE_OPTIONS use dot (FLUX.1); DeepInfra uses hyphen (FLUX-1). */
   const DEEPINFRA_MODEL_IDS = ['black-forest-labs/FLUX-1-schnell', 'black-forest-labs/FLUX-1-dev', 'black-forest-labs/FLUX-1-dev'];
+  /** Subscribed to store so image/video buttons activate when key is saved in Settings. */
+  let hasDeepinfraKey = $state(false);
+  $effect(() => {
+    const unsub = deepinfraApiKey.subscribe((v) => {
+      const key = (v?.trim() || (typeof import.meta !== 'undefined' && import.meta.env?.VITE_DEEPINFRA_API_KEY) || '').trim();
+      hasDeepinfraKey = key.length > 0;
+    });
+    return () => unsub();
+  });
   const getDeepinfraImageKey = () => (get(deepinfraApiKey)?.trim() || (typeof import.meta !== 'undefined' && import.meta.env?.VITE_DEEPINFRA_API_KEY) || '').trim();
 
   /** Video modal (DeepInfra). Per spec: prompt only; no other params. */
@@ -655,8 +664,8 @@
               onSend={sendUserMessage}
               onStop={() => chatAbortController?.abort?.()}
               onGenerateImageGrok={$effectiveModelId && isGrokModel($effectiveModelId) && $grokApiKey?.trim() ? handleGrokImage : undefined}
-              onGenerateImageDeepSeek={getDeepinfraImageKey() ? openImageOptionsModal : undefined}
-              onGenerateVideoDeepSeek={getDeepinfraImageKey() ? openVideoModal : undefined}
+              onGenerateImageDeepSeek={hasDeepinfraKey ? openImageOptionsModal : undefined}
+              onGenerateVideoDeepSeek={hasDeepinfraKey ? openVideoModal : undefined}
               imageGenerating={imageGenerating}
               videoGenerating={videoGenerating}
               videoGenElapsed={videoGenElapsed}
@@ -682,8 +691,8 @@
             onSend={sendUserMessage}
             onStop={() => chatAbortController?.abort?.()}
             onGenerateImageGrok={$effectiveModelId && isGrokModel($effectiveModelId) && $grokApiKey?.trim() ? handleGrokImage : undefined}
-            onGenerateImageDeepSeek={getDeepinfraImageKey() ? openImageOptionsModal : undefined}
-            onGenerateVideoDeepSeek={getDeepinfraImageKey() ? openVideoModal : undefined}
+            onGenerateImageDeepSeek={hasDeepinfraKey ? openImageOptionsModal : undefined}
+            onGenerateVideoDeepSeek={hasDeepinfraKey ? openVideoModal : undefined}
             imageGenerating={imageGenerating}
             videoGenerating={videoGenerating}
             videoGenElapsed={videoGenElapsed}

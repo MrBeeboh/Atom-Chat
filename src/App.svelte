@@ -155,58 +155,51 @@
   {#if $layout === 'cockpit'}
     <div class="flex h-full flex-col">
       <!-- Cockpit header: 3-zone layout — left (brand+layout), center (model+preset), right (theme+status) -->
-      <header class="cockpit-header shrink-0 flex items-center px-4 py-2.5 border-b" style="border-color: var(--ui-border); background-color: var(--ui-bg-sidebar);">
+      <header class="cockpit-header shrink-0 flex items-center px-4 py-2.5" style="background-color: var(--ui-bg-sidebar);">
         <!-- Left: brand + layout toggle -->
         <div class="flex items-center gap-2 shrink-0" role="group" aria-label="Brand and layout">
           <span class="flex items-center gap-1.5 font-semibold shrink-0" style="color: var(--ui-accent);"><AtomLogo size={20} />ATOM</span>
           <span class="text-xs font-medium shrink-0" style="color: var(--ui-text-secondary);">Mode:</span>
           <nav class="flex items-center gap-0.5 shrink-0" aria-label="Layout: Cockpit or Arena">
             {#each LAYOUT_OPTS as opt}
-              <button type="button" class="cockpit-header-btn h-7 px-2 rounded-md text-xs font-semibold shrink-0 transition-opacity hover:opacity-90" style="border: 1px solid {$layout === opt.value ? 'var(--ui-accent)' : 'var(--ui-border)'}; background: {$layout === opt.value ? 'color-mix(in srgb, var(--ui-accent) 14%, transparent)' : 'var(--ui-input-bg)'}; color: {$layout === opt.value ? 'var(--ui-accent)' : 'var(--ui-text-primary)'};" onclick={() => layout.set(opt.value)}>{opt.label}</button>
+              <button type="button" class="h-7 px-2.5 rounded-md text-xs font-medium shrink-0 transition-opacity hover:opacity-90" style="background: {$layout === opt.value ? 'color-mix(in srgb, var(--ui-accent) 12%, transparent)' : 'transparent'}; color: {$layout === opt.value ? 'var(--ui-accent)' : 'var(--ui-text-secondary)'};" onclick={() => layout.set(opt.value)}>{opt.label}</button>
             {/each}
           </nav>
         </div>
-        <!-- Center: model selector + preset — flexes to fill, centered -->
-        <div class="flex-1 flex items-center justify-center gap-3 min-w-0 px-4">
-          <div class="cockpit-header-group flex items-center gap-2 rounded-lg pl-2.5 pr-2.5 py-1.5 min-w-0" style="background: color-mix(in srgb, var(--ui-accent) 8%, transparent);" role="group" aria-label="Model and preset">
-            <span class="text-xs font-semibold uppercase tracking-wider shrink-0" style="color: var(--ui-text-secondary);">Model</span>
-            <div class="min-w-0" style="{HEADER_MODEL_MIN}"><ModelSelector /></div>
-            <div class="shrink-0" style="{HEADER_PRESET_MIN}"><PresetSelect compact={true} /></div>
-          </div>
+        <!-- Center: model selector + preset -->
+        <div class="flex-1 flex items-center justify-center gap-3 min-w-0 px-4" role="group" aria-label="Model and preset">
+          <span class="text-xs font-semibold uppercase tracking-wider shrink-0" style="color: var(--ui-text-secondary);">Model</span>
+          <div class="min-w-0" style="{HEADER_MODEL_MIN}"><ModelSelector /></div>
+          <div class="shrink-0" style="{HEADER_PRESET_MIN}"><PresetSelect compact={true} /></div>
         </div>
         <!-- Right: theme + status -->
-        <div class="flex items-center gap-3 shrink-0">
-          <div class="flex flex-col items-start gap-0.5 shrink-0 rounded-lg pl-2.5 pr-2.5 py-1.5" style="background: color-mix(in srgb, var(--ui-accent) 8%, transparent); min-width: 8.5rem;" role="group" aria-label="Appearance">
-            <span class="text-[11px] font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400 mb-0.5" style="letter-spacing:0.04em;">Theme</span>
-            <div class="flex items-center gap-2 w-full">
-              <UiThemeSelect compact={true} />
-              <ThemeToggle />
-            </div>
+        <div class="flex items-center gap-4 shrink-0" role="group" aria-label="Appearance and status">
+          <div class="flex items-center gap-2 shrink-0" style="min-width: 8.5rem;">
+            <UiThemeSelect compact={true} />
+            <ThemeToggle />
           </div>
-          <div class="flex items-center gap-1.5 shrink-0 rounded-lg pl-2.5 pr-3 py-1.5" style="background: color-mix(in srgb, {$lmStudioConnected === true ? '#22c55e' : $lmStudioConnected === false ? ($cloudApisAvailable ? '#3b82f6' : '#ef4444') : '#94a3b8'} 8%, transparent);" role="group" aria-label="Status">
+          <span class="flex items-center gap-1.5 shrink-0 text-xs font-medium" style="color: var(--ui-text-primary);" title={lmStatusMessage} aria-label={lmStatusMessage}>
             <span class="w-2 h-2 rounded-full shrink-0" style="background-color: {$lmStudioConnected === true ? '#22c55e' : $lmStudioConnected === false ? ($cloudApisAvailable ? '#3b82f6' : '#ef4444') : '#94a3b8'};" aria-hidden="true"></span>
-            <span class="text-xs font-medium shrink-0" style="color: var(--ui-text-primary);" title={lmStatusMessage} aria-label={lmStatusMessage}>
-              <span class="hidden sm:inline">{lmStatusMessage}</span>
-            </span>
-          </div>
+            <span class="hidden sm:inline">{lmStatusMessage}</span>
+          </span>
         </div>
       </header>
-      <div class="flex flex-1 min-h-0 min-w-0 relative">
+      <div class="flex flex-1 min-h-0 min-w-0 relative gap-0">
         <ConvoRail />
-        <main class="flex-1 flex flex-col min-w-0 min-h-0" style="background-color: var(--ui-bg-main);">
+        <main class="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden" style="background-color: var(--ui-bg-main);">
           <ChatView />
         </main>
         {#if $cockpitIntelOpen}
           <aside
-            class="w-[280px] shrink-0 border-l overflow-visible flex flex-col relative"
-            style="border-color: var(--ui-border);"
+            class="w-[280px] shrink-0 overflow-visible flex flex-col relative"
+            style="background-color: var(--ui-bg-sidebar);"
             in:fly={{ x: 280, duration: 400, easing: backOut }}
             out:fly={{ x: 280, duration: 300, easing: quintOut }}
           >
             <button
               type="button"
               class="panel-tab {intelTabBounce ? 'panel-tab-bounce' : ''}"
-              style="--panel-tab-transform: translate(-100%, -50%); left: 0; top: 50%; border-right: none; border-radius: 6px 0 0 6px;"
+              style="--panel-tab-transform: translate(-100%, -50%); left: 0; top: 50%;"
               title="Close Intel panel"
               aria-label="Close Intel panel"
               onclick={toggleIntel}
@@ -219,11 +212,11 @@
           </aside>
         {:else}
           <!-- Visible strip so the open tab is never clipped (root has overflow-hidden) -->
-          <div class="intel-tab-strip shrink-0 w-7 flex items-center justify-center relative min-h-0 border-l" style="background-color: var(--ui-bg-sidebar); border-color: var(--ui-border);">
+          <div class="intel-tab-strip shrink-0 w-7 flex items-center justify-center relative min-h-0" style="background-color: var(--ui-bg-sidebar);">
             <button
               type="button"
               class="panel-tab {intelTabBounce ? 'panel-tab-bounce' : ''}"
-              style="--panel-tab-transform: translateY(-50%); left: 0; top: 50%; border-right: none; border-radius: 6px 0 0 6px;"
+              style="--panel-tab-transform: translateY(-50%); left: 0; top: 50%;"
               title="Open Intel panel"
               aria-label="Open Intel panel"
               onclick={toggleIntel}
@@ -237,22 +230,22 @@
 
   {:else if $layout === 'arena'}
     <div class="flex h-full flex-col">
-      <header class="shrink-0 flex items-center flex-wrap px-3 py-2 text-sm" style="background: color-mix(in srgb, var(--ui-border) 8%, var(--ui-bg-sidebar)); color: var(--ui-text-secondary); gap: {HEADER_BETWEEN_GROUPS};">
+      <header class="shrink-0 flex items-center flex-wrap px-3 py-2 text-sm" style="background: var(--ui-bg-sidebar); color: var(--ui-text-secondary); gap: {HEADER_BETWEEN_GROUPS};">
         <div class="flex items-center shrink-0" style="{HEADER_GROUP_GAP}" role="group" aria-label="Brand and layout">
-          <button type="button" class="md:hidden p-2 rounded-lg min-h-[44px] min-w-[44px] flex items-center justify-center" style="color: var(--ui-text-secondary);" onclick={() => sidebarOpen.set(true)} aria-label="Open menu">☰</button>
+          <button type="button" class="md:hidden p-2 rounded-md min-h-[44px] min-w-[44px] flex items-center justify-center transition-opacity hover:opacity-80" style="color: var(--ui-text-secondary);" onclick={() => sidebarOpen.set(true)} aria-label="Open menu">☰</button>
           <span class="flex items-center gap-1.5 font-semibold shrink-0" style="color: var(--ui-accent);"><AtomLogo size={20} />ATOM Arena</span>
           <span class="text-[11px] font-medium shrink-0" style="color: var(--ui-text-secondary);">Mode</span>
           <nav class="flex items-center gap-0.5 shrink-0" aria-label="Layout: Cockpit or Arena">
             {#each LAYOUT_OPTS as opt}
-              <button type="button" class="px-2.5 py-1 rounded-lg text-xs {$layout === opt.value ? 'font-medium' : ''}" style="color: {$layout === opt.value ? 'var(--ui-accent)' : 'var(--ui-text-secondary)'}; background: {$layout === opt.value ? 'color-mix(in srgb, var(--ui-accent) 12%, transparent)' : 'transparent'};" onclick={() => layout.set(opt.value)}>{opt.label}</button>
+              <button type="button" class="px-2.5 py-1 rounded-md text-xs {$layout === opt.value ? 'font-medium' : ''}" style="color: {$layout === opt.value ? 'var(--ui-accent)' : 'var(--ui-text-secondary)'}; background: {$layout === opt.value ? 'color-mix(in srgb, var(--ui-accent) 12%, transparent)' : 'transparent'};" onclick={() => layout.set(opt.value)}>{opt.label}</button>
             {/each}
           </nav>
         </div>
         <div class="flex items-center gap-2 shrink-0" style="{HEADER_GROUP_GAP}" role="group" aria-label="Arena panels">
           <span class="text-[11px]" style="color: var(--ui-text-secondary);" title="Alt+1–4">Panels</span>
-          <div class="flex rounded-lg overflow-hidden" style="background: color-mix(in srgb, var(--ui-border) 15%, var(--ui-bg-main));" role="group" aria-label="Arena panel count">
+          <div class="flex gap-0.5" role="group" aria-label="Arena panel count">
             {#each [1, 2, 3, 4] as n}
-              <button type="button" class="w-8 h-7 text-xs font-medium transition-opacity {$arenaPanelCount === n ? '' : 'opacity-60'}" style="{$arenaPanelCount === n ? 'background: var(--ui-sidebar-active); color: var(--ui-text-primary);' : 'color: var(--ui-text-secondary);'}" onclick={() => arenaPanelCount.set(n)} aria-label="{n} panel{n === 1 ? '' : 's'} (Alt+{n})" aria-pressed={$arenaPanelCount === n} title="{n} panel{n === 1 ? '' : 's'} — Alt+{n}">{n}</button>
+              <button type="button" class="w-8 h-7 rounded-md text-xs font-medium transition-opacity {$arenaPanelCount === n ? '' : 'opacity-60'}" style="{$arenaPanelCount === n ? 'background: color-mix(in srgb, var(--ui-accent) 14%, transparent); color: var(--ui-accent);' : 'color: var(--ui-text-secondary);'}" onclick={() => arenaPanelCount.set(n)} aria-label="{n} panel{n === 1 ? '' : 's'} (Alt+{n})" aria-pressed={$arenaPanelCount === n} title="{n} panel{n === 1 ? '' : 's'} — Alt+{n}">{n}</button>
             {/each}
           </div>
           <span class="text-[11px]" style="color: var(--ui-text-secondary);">Chat → A</span>
@@ -272,8 +265,8 @@
       </header>
       <div class="flex flex-1 min-h-0 relative">
         <aside
-          class="shrink-0 border-r overflow-hidden hidden md:flex flex-col transition-[width] duration-200 relative min-w-0 {$layout === 'arena' ? 'arena-sidebar-secondary' : ''}"
-          style="width: {$sidebarCollapsed ? '52px' : '13rem'}; background-color: var(--ui-bg-sidebar); border-color: var(--ui-border);">
+          class="shrink-0 overflow-hidden hidden md:flex flex-col transition-[width] duration-200 relative min-w-0 {$layout === 'arena' ? 'arena-sidebar-secondary' : ''}"
+          style="width: {$sidebarCollapsed ? '52px' : '13rem'}; background-color: var(--ui-bg-sidebar);">
           {#if $sidebarCollapsed}
             <div class="panel-tab-strip-icon-wrap pr-1" aria-hidden="true">
               <span class="panel-tab-strip-icon" title="Conversations">
@@ -284,7 +277,7 @@
           <button
             type="button"
             class="panel-tab {sidebarTabBounce ? 'panel-tab-bounce' : ''}"
-            style="--panel-tab-transform: translate(100%, -50%); top: 50%; right: 0; border-left: none; border-radius: 0 6px 6px 0;"
+            style="--panel-tab-transform: translate(100%, -50%); top: 50%; right: 0;"
             title={$sidebarCollapsed ? 'Expand sidebar (conversations)' : 'Collapse sidebar'}
             aria-label={$sidebarCollapsed ? 'Expand sidebar (conversations)' : 'Collapse sidebar'}
             onclick={toggleSidebarCollapsed}>
@@ -301,10 +294,10 @@
         {#if $sidebarOpen}
           <div class="fixed inset-0 z-40 md:hidden" role="dialog" aria-modal="true" aria-label="Sidebar">
             <div class="absolute inset-0 bg-black/40" role="button" tabindex="0" aria-label="Close sidebar" onclick={() => sidebarOpen.set(false)} onkeydown={(e) => e.key === 'Enter' || e.key === ' ' ? (e.preventDefault(), sidebarOpen.set(false)) : null}></div>
-            <aside class="absolute left-0 top-0 bottom-0 w-64 bg-white dark:bg-zinc-900 border-r shadow-xl" style="background-color: var(--ui-bg-sidebar); border-color: var(--ui-border);"><Sidebar /></aside>
+            <aside class="absolute left-0 top-0 bottom-0 w-64 shadow-xl rounded-r-xl overflow-hidden" style="background-color: var(--ui-bg-sidebar);"><Sidebar /></aside>
           </div>
         {/if}
-        <div class="flex-1 flex flex-col min-w-0 min-h-0">
+        <div class="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden" style="background-color: var(--ui-bg-main);">
           <DashboardArena />
         </div>
       </div>

@@ -123,13 +123,13 @@
 </script>
 
 <div
-  class="convo-rail flex flex-col shrink-0 border-r overflow-visible transition-[width] duration-200 relative min-w-0"
-  style="width: {expanded ? '200px' : '44px'}; max-width: {expanded ? '200px' : '44px'}; background-color: var(--ui-bg-sidebar); border-color: var(--ui-border);">
+  class="convo-rail flex flex-col shrink-0 overflow-visible transition-[width] duration-200 relative min-w-0"
+  style="width: {expanded ? '200px' : '44px'}; max-width: {expanded ? '200px' : '44px'}; background-color: var(--ui-bg-sidebar);">
   <!-- Protruded arrow tab midway on right edge: out = expand, in = retract -->
   <button
     type="button"
     class="panel-tab {tabBounce ? 'panel-tab-bounce' : ''}"
-    style="--panel-tab-transform: translate(100%, -50%); top: 50%; right: 0; border-left: none; border-radius: 0 6px 6px 0;"
+    style="--panel-tab-transform: translate(100%, -50%); top: 50%; right: 0;"
     title={expanded ? 'Collapse ([)' : 'Expand ([)'}
     aria-label={expanded ? 'Collapse rail' : 'Expand rail'}
     onclick={toggleExpanded}>
@@ -222,8 +222,8 @@
         <div class="shrink-0 px-2 pt-2 pb-1">
           <input
             type="search"
-            class="w-full py-1.5 px-2 text-xs rounded border min-w-0"
-            style="background: var(--ui-bg-main); border-color: var(--ui-border); color: var(--ui-text-primary);"
+            class="w-full py-1.5 px-2 text-xs rounded min-w-0"
+            style="background: color-mix(in srgb, var(--ui-border) 15%, var(--ui-bg-main)); color: var(--ui-text-primary);"
             placeholder="Search chats..."
             bind:value={searchQuery}
             aria-label="Search conversations" />
