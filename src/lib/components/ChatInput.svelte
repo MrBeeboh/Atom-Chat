@@ -470,6 +470,8 @@
     onchange={onFileInputChange}
     aria-label="Attach image or PDF"
   />
+  <div class="chat-input-bar">
+  <div class="chat-input-tools">
   <div class="attach-button-wrap">
     {#if clippyBubble}
       <div class="clippy-bubble" role="status" aria-live="polite">
@@ -554,6 +556,7 @@
       {/if}
     {/if}
   </button>
+  </div>
   <div class="chat-input-main">
     {#if attachments.length > 0}
       <div class="attachments-row">
@@ -650,6 +653,7 @@
       {/if}
     </button>
   {/if}
+  </div>
   {#if recording}
     <span class="voice-recording-hint" aria-live="polite">
       <span class="recording-dot" aria-hidden="true"></span>
@@ -668,19 +672,62 @@
   .chat-input-container {
     position: relative;
     display: flex;
-    align-items: flex-start;
-    gap: 12px;
+    flex-direction: column;
+    gap: 0;
     padding: 16px;
   }
 
-  .chat-input-container > .attach-button-wrap,
-  .chat-input-container > .mic-button,
-  .chat-input-container > .web-search-button,
-  .chat-input-container > .send-button {
+  .chat-input-bar {
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    gap: 0;
+    min-height: 56px;
+    border-radius: 14px;
+    background: var(--ui-input-bg, #fff);
+    border: 1px solid color-mix(in srgb, var(--ui-border, #e5e7eb) 50%, transparent);
+    transition: border-color 150ms, box-shadow 150ms;
+    overflow: hidden;
+  }
+
+  .chat-input-bar:focus-within {
+    border-color: color-mix(in srgb, var(--ui-accent, #3b82f6) 45%, var(--ui-border));
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent, #3b82f6) 12%, transparent);
+  }
+
+  .chat-input-tools {
+    display: flex;
+    align-items: center;
+    gap: 2px;
     flex-shrink: 0;
-    height: 44px;
-    min-height: 44px;
-    align-self: flex-start;
+    padding: 0 6px 0 10px;
+    border-right: 1px solid color-mix(in srgb, var(--ui-border, #e5e7eb) 40%, transparent);
+  }
+
+  .chat-input-tools .attach-button-wrap,
+  .chat-input-tools .mic-button,
+  .chat-input-tools .web-search-button {
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+    min-height: 40px;
+  }
+  .chat-input-tools .attach-button,
+  .chat-input-tools .mic-button,
+  .chat-input-tools .web-search-button {
+    background: transparent;
+    border-radius: 6px;
+    color: var(--ui-text-secondary, #6b7280);
+  }
+  .chat-input-tools .attach-button:hover:not(:disabled),
+  .chat-input-tools .mic-button:hover:not(:disabled),
+  .chat-input-tools .web-search-button:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--ui-accent) 10%, transparent);
+    color: var(--ui-accent);
+  }
+  .chat-input-tools .web-search-button.active {
+    background: color-mix(in srgb, var(--ui-accent) 12%, transparent);
+    color: var(--ui-accent);
   }
 
   .chat-input-main {
@@ -688,16 +735,24 @@
     min-width: 0;
     display: flex;
     flex-direction: column;
-    border: 1px solid color-mix(in srgb, var(--ui-border, #e5e7eb) 60%, transparent);
-    border-radius: 12px;
-    background: var(--ui-input-bg, #fff);
-    transition: border-color 150ms, box-shadow 150ms;
-    overflow: hidden;
+    background: transparent;
+    border: none;
+    border-radius: 0;
   }
 
-  .chat-input-main:focus-within {
-    border-color: color-mix(in srgb, var(--ui-accent, #3b82f6) 50%, var(--ui-border));
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent, #3b82f6) 10%, transparent);
+  .chat-input-bar .send-button {
+    flex-shrink: 0;
+    align-self: center;
+    margin: 8px 10px 8px 8px;
+    min-height: 40px;
+    padding: 0 20px;
+    border-radius: 8px;
+    font-weight: 600;
+    background: var(--ui-accent);
+    color: var(--ui-bg-main);
+  }
+  .chat-input-bar .send-button:hover:not(:disabled) {
+    filter: brightness(1.08);
   }
 
   textarea {
@@ -750,10 +805,10 @@
   .media-toolbar {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 4px 8px 6px;
+    gap: 4px;
+    padding: 2px 8px 4px;
     flex-shrink: 0;
-    border-top: 1px solid color-mix(in srgb, var(--ui-border, #e5e7eb) 35%, transparent);
+    border-top: 1px solid color-mix(in srgb, var(--ui-border, #e5e7eb) 25%, transparent);
   }
 
   .media-icon-btn {

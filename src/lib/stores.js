@@ -81,14 +81,18 @@ export const cockpitIntelOpen = writable(false);
 export const pinnedContent = writable(null);
 
 
-/** Color scheme: lavender | sage | obsidian (see themeOptions.js) */
-const VALID_UI_THEMES = ['lavender', 'sage', 'obsidian'];
+/** Color scheme: forge | sage | obsidian (see themeOptions.js) */
+const VALID_UI_THEMES = ['forge', 'sage', 'obsidian'];
 function getInitialUiTheme() {
-  if (typeof localStorage === 'undefined') return 'lavender';
-  const raw = localStorage.getItem('uiTheme') || 'lavender';
-  if (VALID_UI_THEMES.includes(raw)) return raw;
-  localStorage.setItem('uiTheme', 'lavender');
-  return 'lavender';
+  if (typeof localStorage === 'undefined') return 'forge';
+  const raw = localStorage.getItem('uiTheme') || 'forge';
+  const migrated = raw === 'lavender' ? 'forge' : raw;
+  if (VALID_UI_THEMES.includes(migrated)) {
+    if (migrated !== raw) localStorage.setItem('uiTheme', migrated);
+    return migrated;
+  }
+  localStorage.setItem('uiTheme', 'forge');
+  return 'forge';
 }
 export const uiTheme = writable(getInitialUiTheme());
 

@@ -12,7 +12,7 @@
 
   /** Preview colors for theme swatches (bg + accent). */
   const PREVIEW = {
-    lavender: { bg: '#f8f6fc', accent: '#8b7ab8', text: '#1e1b2e' },
+    forge:    { bg: '#f4f4f5', accent: '#b45309', text: '#18181b' },
     sage:     { bg: '#f6f5f2', accent: '#6b7c5a', text: '#2d2a26' },
     obsidian: { bg: '#16181d', accent: '#5eead4', text: '#e2e8f0' },
   };

@@ -369,46 +369,46 @@ html { --metrics-axis: #d4d4d4; --metrics-grid: #e5e5e5; }
   }
 }
 
-/* ========== UI theme variables (3 themes: Lavender, Sage, Obsidian) ========== */
+/* ========== UI theme variables (3 themes: Forge, Sage, Obsidian) ========== */
 
-/* Lavender — Digital Lavender + mint (2026 wellness/calm tech). Calm, trust, prolonged sessions. */
-[data-ui-theme="lavender"] {
-  --ui-bg-main: #f8f6fc;
-  --ui-bg-sidebar: #f0ecf8;
-  --ui-accent: #8b7ab8;
-  --ui-accent-hot: #a855f7;
-  --ui-accent-cool: #a78bfa;
-  --ui-text-primary: #1e1b2e;
-  --ui-text-secondary: #5c5676;
-  --ui-border: rgba(139, 122, 184, 0.2);
-  --ui-sidebar-active: #e8e4f0;
-  --ui-sidebar-hover: #ebe8f2;
+/* Forge — Bold amber/copper on slate. Strong, industrial, high contrast. */
+[data-ui-theme="forge"] {
+  --ui-bg-main: #f4f4f5;
+  --ui-bg-sidebar: #e4e4e7;
+  --ui-accent: #b45309;
+  --ui-accent-hot: #c2410c;
+  --ui-accent-cool: #92400e;
+  --ui-text-primary: #18181b;
+  --ui-text-secondary: #52525b;
+  --ui-border: rgba(180, 83, 9, 0.22);
+  --ui-sidebar-active: #d4d4d8;
+  --ui-sidebar-hover: #dcdce0;
   --ui-input-bg: #ffffff;
-  --ui-input-border: #e0dce8;
-  --ui-glow: rgba(139, 122, 184, 0.2);
-  --atom-accent: #8b7ab8;
-  --atom-accent-light: #a78bfa;
-  --atom-teal: #6ee7c0;
-  --atom-amber: #c4b5fd;
+  --ui-input-border: #d4d4d8;
+  --ui-glow: rgba(180, 83, 9, 0.2);
+  --atom-accent: #b45309;
+  --atom-accent-light: #d97706;
+  --atom-teal: #0d9488;
+  --atom-amber: #d97706;
 }
-.dark[data-ui-theme="lavender"] {
-  --ui-bg-main: #1a1820;
-  --ui-bg-sidebar: #221f2a;
-  --ui-accent: #c4b5fd;
-  --ui-accent-hot: #e879f9;
-  --ui-accent-cool: #a78bfa;
-  --ui-text-primary: #f5f3f7;
-  --ui-text-secondary: #a8a2b3;
-  --ui-border: rgba(196, 181, 253, 0.15);
-  --ui-sidebar-active: #2d2935;
-  --ui-sidebar-hover: #352f40;
-  --ui-input-bg: #221f2a;
-  --ui-input-border: #3d3748;
-  --ui-glow: rgba(196, 181, 253, 0.2);
-  --atom-accent: #c4b5fd;
-  --atom-accent-light: #ddd6fe;
-  --atom-teal: #6ee7c0;
-  --atom-amber: #c4b5fd;
+.dark[data-ui-theme="forge"] {
+  --ui-bg-main: #18181b;
+  --ui-bg-sidebar: #27272a;
+  --ui-accent: #f59e0b;
+  --ui-accent-hot: #fb923c;
+  --ui-accent-cool: #eab308;
+  --ui-text-primary: #fafafa;
+  --ui-text-secondary: #a1a1aa;
+  --ui-border: rgba(245, 158, 11, 0.2);
+  --ui-sidebar-active: #3f3f46;
+  --ui-sidebar-hover: #52525b;
+  --ui-input-bg: #27272a;
+  --ui-input-border: #3f3f46;
+  --ui-glow: rgba(245, 158, 11, 0.25);
+  --atom-accent: #f59e0b;
+  --atom-accent-light: #fbbf24;
+  --atom-teal: #2dd4bf;
+  --atom-amber: #fbbf24;
 }
 
 /* Sage — Eco-brutalism / grounded neutrals (2026 credibility). Organic, minimal, honest. */
