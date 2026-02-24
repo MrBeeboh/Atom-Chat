@@ -26,7 +26,14 @@
     aria-label="Keyboard shortcuts"
     transition:fade={{ duration: 150 }}
   >
-    <div class="absolute inset-0 bg-black/50" onclick={close}></div>
+    <div
+      class="absolute inset-0 bg-black/50"
+      role="button"
+      tabindex="0"
+      aria-label="Close"
+      onclick={close}
+      onkeydown={(e) => e.key === 'Enter' || e.key === ' ' ? (e.preventDefault(), close()) : null}
+    ></div>
     <div
       class="relative rounded-xl border shadow-xl max-w-sm w-full p-4"
       style="background-color: var(--ui-bg-sidebar); border-color: var(--ui-border);"

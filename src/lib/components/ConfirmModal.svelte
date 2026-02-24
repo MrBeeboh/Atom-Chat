@@ -29,7 +29,11 @@
   >
     <div
       class="absolute inset-0 bg-black/50"
+      role="button"
+      tabindex="0"
+      aria-label="Close"
       onclick={onCancel}
+      onkeydown={(e) => e.key === 'Enter' || e.key === ' ' ? (e.preventDefault(), onCancel()) : null}
     ></div>
     <div
       class="relative rounded-xl border shadow-xl max-w-md w-full p-4"

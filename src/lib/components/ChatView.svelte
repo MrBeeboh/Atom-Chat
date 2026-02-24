@@ -644,9 +644,9 @@
 
           <h1 class="ui-greeting-title text-2xl md:text-3xl font-semibold mb-8 text-center" style="color: var(--ui-text-primary);">What can I help with?</h1>
           {#if $chatError}
-            <div class="mb-4 w-full px-3 py-2 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-sm flex items-center justify-between gap-2">
+            <div class="mb-4 w-full px-4 py-3 rounded-xl text-sm flex items-center justify-between gap-2" style="background: color-mix(in srgb, var(--ui-accent-hot, #dc2626) 10%, transparent); color: var(--ui-text-primary);">
               <span>{$chatError}</span>
-              <button type="button" class="shrink-0 p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/30" onclick={() => chatError.set(null)} aria-label="Dismiss">×</button>
+              <button type="button" class="shrink-0 p-1.5 rounded-lg transition-opacity hover:opacity-80" style="color: var(--ui-text-secondary);" onclick={() => chatError.set(null)} aria-label="Dismiss">×</button>
             </div>
           {/if}
           <div class="ui-splash-divider mb-6 w-full max-w-[min(52rem,92%)]" aria-hidden="true"></div>
@@ -667,20 +667,15 @@
       </div>
     {:else}
       <!-- After first message: messages above, input fixed at bottom -->
-      <div class="shrink-0 flex items-center gap-2 px-4 py-1.5 border-b" style="border-color: var(--ui-border); background: color-mix(in srgb, var(--ui-bg-sidebar) 50%, var(--ui-bg-main));">
-        <div class="max-w-[min(52rem,92%)] mx-auto w-full flex flex-wrap items-center gap-2">
-          <button type="button" class="text-xs px-2.5 py-1.5 rounded-lg border transition-colors" style="border-color: var(--ui-border); color: var(--ui-text-secondary); background: var(--ui-input-bg);" onclick={clearChat} title="Clear all messages">Clear</button>
-        </div>
-      </div>
       <div class="flex-1 overflow-y-auto min-h-0">
         <MessageList />
       </div>
-      <div class="shrink-0 p-4 chat-input-dock" style="background-color: var(--ui-bg-main); border-top: 1px solid var(--ui-border);">
+      <div class="shrink-0 p-4 chat-input-dock" style="background: color-mix(in srgb, var(--ui-border) 8%, var(--ui-bg-main));">
         <div class="max-w-[min(52rem,92%)] mx-auto w-full">
           {#if $chatError}
-            <div class="mb-3 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-sm flex items-center justify-between gap-2">
+            <div class="mb-3 px-4 py-3 rounded-xl text-sm flex items-center justify-between gap-2" style="background: color-mix(in srgb, var(--ui-accent-hot, #dc2626) 10%, transparent); color: var(--ui-text-primary);">
               <span>{$chatError}</span>
-              <button type="button" class="shrink-0 p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/30" onclick={() => chatError.set(null)} aria-label="Dismiss">×</button>
+              <button type="button" class="shrink-0 p-1.5 rounded-lg transition-opacity hover:opacity-80" style="color: var(--ui-text-secondary);" onclick={() => chatError.set(null)} aria-label="Dismiss">×</button>
             </div>
           {/if}
           <ChatInput

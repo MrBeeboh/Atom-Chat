@@ -29,6 +29,11 @@
     { value: 'cockpit', label: 'Cockpit' },
     { value: 'arena', label: 'Arena' },
   ];
+  // Ensure layout is always cockpit or arena (guard against bad storage)
+  $effect(() => {
+    const v = $layout;
+    if (v !== 'cockpit' && v !== 'arena') layout.set('cockpit');
+  });
   const HEADER_MODEL_MIN = 'min-width: 22rem;';
   const HEADER_PRESET_MIN = 'min-width: 7rem;';
   const HEADER_THEME_MIN = 'min-width: 10rem;';
@@ -125,14 +130,14 @@
     activeConversationId.set(id);
   }
 
-  let intelTabBounce = false;
+  let intelTabBounce = $state(false);
   function toggleIntel() {
     cockpitIntelOpen.update((v) => !v);
     intelTabBounce = true;
     setTimeout(() => (intelTabBounce = false), 420);
   }
 
-  let sidebarTabBounce = false;
+  let sidebarTabBounce = $state(false);
   function toggleSidebarCollapsed() {
     sidebarCollapsed.update((v) => !v);
     sidebarTabBounce = true;
@@ -154,7 +159,8 @@
         <!-- Left: brand + layout toggle -->
         <div class="flex items-center gap-2 shrink-0" role="group" aria-label="Brand and layout">
           <span class="flex items-center gap-1.5 font-semibold shrink-0" style="color: var(--ui-accent);"><AtomLogo size={20} />ATOM</span>
-          <nav class="flex items-center gap-0.5 shrink-0" aria-label="Layout">
+          <span class="text-xs font-medium shrink-0" style="color: var(--ui-text-secondary);">Mode:</span>
+          <nav class="flex items-center gap-0.5 shrink-0" aria-label="Layout: Cockpit or Arena">
             {#each LAYOUT_OPTS as opt}
               <button type="button" class="cockpit-header-btn h-7 px-2 rounded-md text-xs font-semibold shrink-0 transition-opacity hover:opacity-90" style="border: 1px solid {$layout === opt.value ? 'var(--ui-accent)' : 'var(--ui-border)'}; background: {$layout === opt.value ? 'color-mix(in srgb, var(--ui-accent) 14%, transparent)' : 'var(--ui-input-bg)'}; color: {$layout === opt.value ? 'var(--ui-accent)' : 'var(--ui-text-primary)'};" onclick={() => layout.set(opt.value)}>{opt.label}</button>
             {/each}
@@ -231,27 +237,28 @@
 
   {:else if $layout === 'arena'}
     <div class="flex h-full flex-col">
-      <header class="shrink-0 flex items-center flex-wrap px-3 py-2 border-b text-sm" style="border-color: var(--ui-border); background-color: var(--ui-bg-sidebar); color: var(--ui-text-secondary); gap: {HEADER_BETWEEN_GROUPS};">
+      <header class="shrink-0 flex items-center flex-wrap px-3 py-2 text-sm" style="background: color-mix(in srgb, var(--ui-border) 8%, var(--ui-bg-sidebar)); color: var(--ui-text-secondary); gap: {HEADER_BETWEEN_GROUPS};">
         <div class="flex items-center shrink-0" style="{HEADER_GROUP_GAP}" role="group" aria-label="Brand and layout">
-          <button type="button" class="md:hidden p-2 rounded min-h-[44px] min-w-[44px] flex items-center justify-center" style="color: var(--ui-text-secondary);" onclick={() => sidebarOpen.set(true)} aria-label="Open menu">☰</button>
+          <button type="button" class="md:hidden p-2 rounded-lg min-h-[44px] min-w-[44px] flex items-center justify-center" style="color: var(--ui-text-secondary);" onclick={() => sidebarOpen.set(true)} aria-label="Open menu">☰</button>
           <span class="flex items-center gap-1.5 font-semibold shrink-0" style="color: var(--ui-accent);"><AtomLogo size={20} />ATOM Arena</span>
-          <nav class="flex items-center gap-0.5 shrink-0" aria-label="Layout">
+          <span class="text-[11px] font-medium shrink-0" style="color: var(--ui-text-secondary);">Mode</span>
+          <nav class="flex items-center gap-0.5 shrink-0" aria-label="Layout: Cockpit or Arena">
             {#each LAYOUT_OPTS as opt}
-              <button type="button" class="px-2 py-1 rounded text-xs {$layout === opt.value ? 'font-medium' : ''}" style="color: {$layout === opt.value ? 'var(--ui-accent)' : 'var(--ui-text-secondary)'}; background: {$layout === opt.value ? 'color-mix(in srgb, var(--ui-accent) 15%, transparent)' : 'transparent'};" onclick={() => layout.set(opt.value)}>{opt.label}</button>
+              <button type="button" class="px-2.5 py-1 rounded-lg text-xs {$layout === opt.value ? 'font-medium' : ''}" style="color: {$layout === opt.value ? 'var(--ui-accent)' : 'var(--ui-text-secondary)'}; background: {$layout === opt.value ? 'color-mix(in srgb, var(--ui-accent) 12%, transparent)' : 'transparent'};" onclick={() => layout.set(opt.value)}>{opt.label}</button>
             {/each}
           </nav>
         </div>
         <div class="flex items-center gap-2 shrink-0" style="{HEADER_GROUP_GAP}" role="group" aria-label="Arena panels">
-          <span class="text-xs" style="color: var(--ui-text-secondary);" title="Alt+1 through Alt+4 to switch">Panels</span>
-          <div class="flex rounded-lg border overflow-hidden" style="border-color: var(--ui-border);" role="group" aria-label="Arena panel count">
+          <span class="text-[11px]" style="color: var(--ui-text-secondary);" title="Alt+1–4">Panels</span>
+          <div class="flex rounded-lg overflow-hidden" style="background: color-mix(in srgb, var(--ui-border) 15%, var(--ui-bg-main));" role="group" aria-label="Arena panel count">
             {#each [1, 2, 3, 4] as n}
-              <button type="button" class="w-8 h-7 text-xs font-medium transition-colors {$arenaPanelCount === n ? '' : 'opacity-70'}" style="{$arenaPanelCount === n ? 'background-color: var(--ui-sidebar-active); color: var(--ui-text-primary);' : 'background-color: var(--ui-bg-main); color: var(--ui-text-secondary);'}" onclick={() => arenaPanelCount.set(n)} aria-label="{n} panel{n === 1 ? '' : 's'} (Alt+{n})" aria-pressed={$arenaPanelCount === n} title="{n} panel{n === 1 ? '' : 's'} — Alt+{n}">{n}</button>
+              <button type="button" class="w-8 h-7 text-xs font-medium transition-opacity {$arenaPanelCount === n ? '' : 'opacity-60'}" style="{$arenaPanelCount === n ? 'background: var(--ui-sidebar-active); color: var(--ui-text-primary);' : 'color: var(--ui-text-secondary);'}" onclick={() => arenaPanelCount.set(n)} aria-label="{n} panel{n === 1 ? '' : 's'} (Alt+{n})" aria-pressed={$arenaPanelCount === n} title="{n} panel{n === 1 ? '' : 's'} — Alt+{n}">{n}</button>
             {/each}
           </div>
-          <span class="text-xs" style="color: var(--ui-text-secondary);">Chat uses Model A</span>
+          <span class="text-[11px]" style="color: var(--ui-text-secondary);">Chat → A</span>
         </div>
-        <div class="shrink-0" style="{HEADER_PRESET_MIN}" title="Global system prompt preset. Arena slots can override this via per-slot Options."><PresetSelect compact={true} /></div>
-        <div class="flex items-center shrink-0 pl-2 border-l" style="border-color: var(--ui-border); {HEADER_GROUP_GAP} {HEADER_THEME_MIN}" role="group" aria-label="Appearance">
+        <div class="shrink-0" style="{HEADER_PRESET_MIN}" title="Global system prompt preset. Arena slots can override via Options."><PresetSelect compact={true} /></div>
+        <div class="flex items-center shrink-0 pl-3" style="{HEADER_GROUP_GAP} {HEADER_THEME_MIN}" role="group" aria-label="Appearance">
           <UiThemeSelect compact={true} />
           <ThemeToggle />
         </div>
@@ -293,7 +300,7 @@
         </aside>
         {#if $sidebarOpen}
           <div class="fixed inset-0 z-40 md:hidden" role="dialog" aria-modal="true" aria-label="Sidebar">
-            <div class="absolute inset-0 bg-black/40" onclick={() => sidebarOpen.set(false)}></div>
+            <div class="absolute inset-0 bg-black/40" role="button" tabindex="0" aria-label="Close sidebar" onclick={() => sidebarOpen.set(false)} onkeydown={(e) => e.key === 'Enter' || e.key === ' ' ? (e.preventDefault(), sidebarOpen.set(false)) : null}></div>
             <aside class="absolute left-0 top-0 bottom-0 w-64 bg-white dark:bg-zinc-900 border-r shadow-xl" style="background-color: var(--ui-bg-sidebar); border-color: var(--ui-border);"><Sidebar /></aside>
           </div>
         {/if}

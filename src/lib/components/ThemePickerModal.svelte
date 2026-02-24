@@ -10,32 +10,11 @@
     open = false;
   }
 
-  /** Preview colors extracted from app.css theme definitions. bg + accent for swatch. */
+  /** Preview colors for theme swatches (bg + accent). */
   const PREVIEW = {
-    atom:             { bg: '#0c0c0c', accent: '#00d4aa', text: '#f5f5f5' },
-    default:          { bg: '#fafafa', accent: '#B22234', text: '#18181b' },
-    newsprint:        { bg: '#f4f1ea', accent: '#8b2500', text: '#1c1917' },
-    dailyedition:     { bg: '#f2efe6', accent: '#8b6914', text: '#1a1a1a' },
-    neural:           { bg: '#0b0c10', accent: '#66fcf1', text: '#c5c6c7' },
-    arctic:           { bg: '#f8fafc', accent: '#f97316', text: '#0f172a' },
-    neon:             { bg: '#ffffff', accent: '#eab308', text: '#171717' },
-    mint:             { bg: '#f0fdf4', accent: '#10b981', text: '#064e3b' },
-    coral:            { bg: '#fffbeb', accent: '#f97316', text: '#1c1917' },
-    highcontrast:     { bg: '#ffffff', accent: '#2563eb', text: '#000000' },
-    cybercitrus:      { bg: '#fefce8', accent: '#65a30d', text: '#14532d' },
-    industrialhazard: { bg: '#ffffff', accent: '#facc15', text: '#000000' },
-    fireice:          { bg: '#0c4a6e', accent: '#ff6b35', text: '#f0f9ff' },
-    hacker:           { bg: '#001a00', accent: '#00ff41', text: '#33ff77' },
-    medical:          { bg: '#f8f9fa', accent: '#0077b6', text: '#212529' },
-    radioactivelab:   { bg: '#0a0a0a', accent: '#ccff00', text: '#ffffff' },
-    coppercircuit:    { bg: '#1a1410', accent: '#ff6b35', text: '#fef5e7' },
-    arcticneon:       { bg: '#e8f4f8', accent: '#00d9ff', text: '#001a1f' },
-    sunsetgradient:   { bg: '#fff5f5', accent: '#ff6b35', text: '#2d1b1e' },
-    racingstripe:     { bg: '#ffffff', accent: '#e30613', text: '#000000' },
-    jungleterminal:   { bg: '#f0f4f0', accent: '#2d5016', text: '#1a1a1a' },
-    magmaflow:        { bg: '#1a0a00', accent: '#ff4500', text: '#fff5ee' },
-    chromeglass:      { bg: '#f8f9fa', accent: '#0066cc', text: '#212529' },
-    toxicwaste:       { bg: '#000000', accent: '#ffff00', text: '#ffff00' },
+    lavender: { bg: '#f8f6fc', accent: '#8b7ab8', text: '#1e1b2e' },
+    sage:     { bg: '#f6f5f2', accent: '#6b7c5a', text: '#2d2a26' },
+    obsidian: { bg: '#16181d', accent: '#5eead4', text: '#e2e8f0' },
   };
 </script>
 

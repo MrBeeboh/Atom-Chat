@@ -41,9 +41,9 @@ call npm install
 :run_ui
 start /min "LM Studio UI" cmd /c "npm run dev"
 
-REM 3) Start voice server for mic (port 8765) — minimized.
+REM 3) Start voice server for mic (port 8765) — minimized. Uses START-VOICE-SERVER.bat in project folder.
 echo [INFO] Starting voice server (port 8765) [minimized]...
-start /min "ATOM Voice Server" cmd /c "cd /d "%~dp0voice-server" && (if exist .venv\Scripts\activate.bat (call .venv\Scripts\activate.bat && uvicorn app:app --host 0.0.0.0 --port 8765) else (python -m uvicorn app:app --host 0.0.0.0 --port 8765))"
+start /min "ATOM Voice Server" cmd /c "%~dp0START-VOICE-SERVER.bat"
 
 REM 4) Open browser when Vite is up (Vite default is 5173)
 timeout /t 5 /nobreak >nul

@@ -376,20 +376,28 @@
     }
     voiceError = null;
     try {
-      // Check server is up before grabbing the mic
-      const ac = new AbortController();
-      const to = setTimeout(() => ac.abort(), 3000);
+      // Check server is up before grabbing the mic (retry once after 2s if server is still starting)
+      async function checkHealth() {
+        const ac = new AbortController();
+        const to = setTimeout(() => ac.abort(), 3000);
+        const res = await fetch(`${url}/health`, { method: 'GET', signal: ac.signal });
+        clearTimeout(to);
+        return res;
+      }
       let healthRes;
       try {
-        healthRes = await fetch(`${url}/health`, { method: 'GET', signal: ac.signal });
-      } catch (he) {
-        clearTimeout(to);
-        voiceError = `Voice server not running. Double-click START-VOICE-SERVER.bat in the project folder, or see VOICE-SETUP.md.`;
-        return;
+        healthRes = await checkHealth();
+      } catch (_) {
+        await new Promise((r) => setTimeout(r, 2000));
+        try {
+          healthRes = await checkHealth();
+        } catch (__) {
+          voiceError = `Voice server not running. Start the app with the startup script (scripts/start-atom.sh or the ATOM desktop icon) to run it automatically, or see VOICE-SETUP.md.`;
+          return;
+        }
       }
-      clearTimeout(to);
       if (!healthRes.ok) {
-        voiceError = `Voice server at ${url} returned ${healthRes.status}. Restart it with START-VOICE-SERVER.bat or see VOICE-SETUP.md.`;
+        voiceError = `Voice server at ${url} returned ${healthRes.status}. Restart the app with the startup script or see VOICE-SETUP.md.`;
         return;
       }
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -680,16 +688,16 @@
     min-width: 0;
     display: flex;
     flex-direction: column;
-    border: 2px solid var(--ui-input-border, var(--ui-border, #e5e7eb));
+    border: 1px solid color-mix(in srgb, var(--ui-border, #e5e7eb) 60%, transparent);
     border-radius: 12px;
-    background-color: var(--ui-input-bg, #fff);
+    background: var(--ui-input-bg, #fff);
     transition: border-color 150ms, box-shadow 150ms;
     overflow: hidden;
   }
 
   .chat-input-main:focus-within {
-    border-color: var(--ui-accent, #3b82f6);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-accent, #3b82f6) 12%, transparent);
+    border-color: color-mix(in srgb, var(--ui-accent, #3b82f6) 50%, var(--ui-border));
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent, #3b82f6) 10%, transparent);
   }
 
   textarea {
@@ -745,7 +753,7 @@
     gap: 6px;
     padding: 4px 8px 6px;
     flex-shrink: 0;
-    border-top: 1px solid color-mix(in srgb, var(--ui-border, #e5e7eb) 50%, transparent);
+    border-top: 1px solid color-mix(in srgb, var(--ui-border, #e5e7eb) 35%, transparent);
   }
 
   .media-icon-btn {
@@ -802,9 +810,9 @@
     flex-shrink: 0;
     width: 44px;
     min-height: 44px;
-    border-radius: 8px;
-    border: 2px solid var(--ui-border, #e5e7eb);
-    background: var(--ui-input-bg, #fff);
+    border-radius: 10px;
+    border: none;
+    background: color-mix(in srgb, var(--ui-border, #e5e7eb) 25%, var(--ui-input-bg, #fff));
     color: var(--ui-text-primary, #111);
     cursor: pointer;
     display: flex;
@@ -814,8 +822,8 @@
     transition: all 150ms;
   }
   .mic-button:hover:not(:disabled) {
-    border-color: var(--ui-accent, #3b82f6);
-    background: color-mix(in srgb, var(--ui-accent, #3b82f6) 10%, transparent);
+    background: color-mix(in srgb, var(--ui-accent, #3b82f6) 14%, var(--ui-input-bg, #fff));
+    color: var(--ui-accent, #3b82f6);
   }
   .mic-button:disabled {
     opacity: 0.5;
@@ -869,12 +877,11 @@
     left: 16px;
     right: 80px;
     margin: 0 0 4px 0;
-    padding: 6px 10px;
+    padding: 8px 12px;
     font-size: 12px;
-    border-radius: 6px;
-    background: color-mix(in srgb, #dc2626 15%, var(--ui-bg-main));
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--ui-accent-hot, #dc2626) 12%, var(--ui-bg-main));
     color: var(--ui-text-primary);
-    border: 1px solid var(--ui-accent-hot, #dc2626);
   }
   .hidden-file-input {
     position: absolute;
@@ -963,9 +970,9 @@
     flex-shrink: 0;
     width: 44px;
     min-height: 44px;
-    border-radius: 8px;
-    border: 2px solid var(--ui-border, #e5e7eb);
-    background: var(--ui-input-bg, #fff);
+    border-radius: 10px;
+    border: none;
+    background: color-mix(in srgb, var(--ui-border, #e5e7eb) 25%, var(--ui-input-bg, #fff));
     color: var(--ui-text-primary, #111);
     cursor: pointer;
     display: flex;
@@ -975,8 +982,8 @@
     transition: all 150ms;
   }
   .attach-button:hover:not(:disabled) {
-    border-color: var(--ui-accent, #3b82f6);
-    background: color-mix(in srgb, var(--ui-accent, #3b82f6) 10%, transparent);
+    background: color-mix(in srgb, var(--ui-accent, #3b82f6) 14%, var(--ui-input-bg, #fff));
+    color: var(--ui-accent, #3b82f6);
   }
   .attach-button:disabled {
     opacity: 0.5;
@@ -987,23 +994,24 @@
     flex-shrink: 0;
     width: 44px;
     min-height: 44px;
-    border-radius: 8px;
-    border: 2px solid var(--ui-border, #e5e7eb);
-    background: var(--ui-input-bg, #fff);
+    border-radius: 10px;
+    border: none;
+    background: color-mix(in srgb, var(--ui-border, #e5e7eb) 25%, var(--ui-input-bg, #fff));
     color: var(--ui-text-primary, #111);
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: border-color 0.15s, background 0.15s;
+    font-size: 1.25rem;
+    transition: all 150ms;
   }
   .web-search-button:hover:not(:disabled) {
-    border-color: var(--ui-accent, #3b82f6);
-    background: color-mix(in srgb, var(--ui-accent, #3b82f6) 10%, transparent);
+    background: color-mix(in srgb, var(--ui-accent, #3b82f6) 14%, var(--ui-input-bg, #fff));
+    color: var(--ui-accent, #3b82f6);
   }
   .web-search-button.active {
-    border-color: var(--ui-accent, #3b82f6);
-    background: color-mix(in srgb, var(--ui-accent, #3b82f6) 14%, transparent);
+    background: color-mix(in srgb, var(--ui-accent, #3b82f6) 18%, var(--ui-input-bg, #fff));
+    color: var(--ui-accent, #3b82f6);
   }
   .web-search-button:disabled {
     opacity: 0.5;

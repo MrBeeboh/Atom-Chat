@@ -3,7 +3,6 @@
   import { fly } from "svelte/transition";
   import { quintOut } from "svelte/easing";
   import { get } from "svelte/store";
-  import PerfStats from "$lib/components/PerfStats.svelte";
   import AuthVideo from "$lib/components/AuthVideo.svelte";
   import { pinnedContent, deepinfraApiKey } from "$lib/stores.js";
 
@@ -46,6 +45,11 @@
     isAssistant && content && !hasThinkingOrAnswer
       ? renderMarkdown(content)
       : "",
+  );
+  const imageThumbUrls = $derived(
+    isAssistant && content && content.includes("[Image: http")
+      ? Array.from(content.matchAll(/\[Image: (https?:\/\/[^\]]+)\]/g)).map((m) => m[1])
+      : [],
   );
 
   let copyFeedback = $state(false);
@@ -190,10 +194,6 @@
             </div>
           {/if}
         </div>
-      // Extract Brave image thumbnails from content
-      $: imageThumbUrls = (isAssistant && content && content.includes('[Image: http'))
-        ? Array.from(content.matchAll(/\[Image: (https?:\/\/[^\]]+)\]/g)).map(m => m[1])
-        : [];
       {/if}
       {#if isAssistant && imageRefs.length}
         <div class="mt-3 flex gap-2 overflow-x-auto pb-1 rounded-lg" role="list" aria-label="Searched images">
@@ -341,13 +341,6 @@
           {/if}
         </button>
       </div>
-      {#if isAssistant && (message.stats || content)}
-        <PerfStats
-          stats={message.stats}
-          contentLength={content.length}
-          elapsedMs={message.stats?.elapsed_ms}
-        />
-      {/if}
     {/if}
   </div>
 </div>

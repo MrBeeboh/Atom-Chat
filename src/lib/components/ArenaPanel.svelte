@@ -98,14 +98,14 @@
 </script>
 
 <div
-  class="flex flex-col min-h-0 h-full overflow-hidden rounded-lg atom-panel-wrap border"
-  style="background-color: var(--ui-bg-main); border-color: var(--ui-border);"
+  class="flex flex-col min-h-0 h-full overflow-hidden rounded-xl atom-panel-wrap"
+  style="background: color-mix(in srgb, var(--ui-border) 6%, var(--ui-bg-main));"
   role="region"
   aria-label="Model {slot} panel"
   in:fly={{ x: 200, duration: 800, easing: quintOut }}
 >
   <!-- Header -->
-  <div class="shrink-0 flex items-center justify-between gap-2 px-2 py-1.5 border-b text-[11px]" style="color: var(--ui-text-secondary); border-color: var(--ui-border);">
+  <div class="shrink-0 flex items-center justify-between gap-2 px-3 py-2 text-[11px]" style="color: var(--ui-text-secondary);">
     <div class="flex items-center gap-2">
       <span class="font-medium">{slot}</span>
       {#if loadStatus === 'loading'}
@@ -125,7 +125,7 @@
 
   <!-- Options accordion -->
   {#if optionsOpen}
-    <div class="shrink-0 p-2 border-b text-xs" style="border-color: var(--ui-border); background-color: var(--ui-input-bg);">
+    <div class="shrink-0 p-3 text-xs" style="background: color-mix(in srgb, var(--ui-border) 10%, var(--ui-bg-main));">
       <p class="font-medium mb-1.5" style="color: var(--ui-text-secondary);">Model {slot} settings</p>
       <div class="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1.5 items-center">
         <label class="text-zinc-500 dark:text-zinc-400">Temperature</label>
@@ -169,19 +169,19 @@
   </div>
 
   <!-- Footer -->
-  <div class="shrink-0 flex justify-between items-center gap-2 px-2.5 py-2 border-t text-[11px]" style="border-color: var(--ui-border);">
+  <div class="shrink-0 flex justify-between items-center gap-2 px-3 py-2 text-[11px]" style="background: color-mix(in srgb, var(--ui-border) 8%, var(--ui-bg-main));">
     {#if showScore}
       <div class="flex items-center gap-2 min-w-0">
-        <span class="arena-panel-score font-bold tabular-nums shrink-0 px-2 py-0.5 rounded text-xs" style="color: {accentColor}; background: color-mix(in srgb, {accentColor} 14%, transparent);">{score} pts</span>
-        <span class="text-[10px] font-medium uppercase tracking-wide opacity-90" style="color: var(--ui-text-secondary);">{standingLabel}</span>
+        <span class="arena-panel-score font-bold tabular-nums shrink-0" style="color: {accentColor};">{score} pts</span>
+        <span class="text-[10px] font-medium uppercase tracking-wide opacity-85" style="color: var(--ui-text-secondary);">{standingLabel}</span>
       </div>
     {:else}
       <div></div>
     {/if}
-    <div class="flex items-center gap-1">
-      <button type="button" class="arena-panel-options-btn flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border text-xs font-medium transition-opacity hover:opacity-90" style="border-color: var(--ui-border); background: var(--ui-input-bg); color: var(--ui-text-primary);" onclick={onToggleOptions} aria-label="Model {slot} options" aria-expanded={optionsOpen} title="Model {slot} options">⚙ <span>Options</span></button>
-      {#if running}<span style="color: var(--ui-accent);">Running…</span>{:else if tps}{@const c = Number(tps) >= 40 ? 'var(--atom-teal)' : Number(tps) >= 20 ? 'var(--atom-amber)' : 'var(--atom-accent)'}<span class="font-mono px-1.5 py-0.5 rounded" style="background: color-mix(in srgb, {c} 20%, transparent); color: {c};">{tps} t/s</span>{/if}
-      {#if messages.length > 0}<button type="button" class="p-0.5 rounded opacity-50 hover:opacity-100" style="color: var(--ui-text-secondary);" onclick={onClear} aria-label="Clear slot {slot}">✕</button>{/if}
+    <div class="flex items-center gap-2">
+      <button type="button" class="arena-panel-options-btn flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-medium transition-opacity hover:opacity-90" style="background: var(--ui-input-bg); color: var(--ui-text-primary);" onclick={onToggleOptions} aria-label="Model {slot} options" aria-expanded={optionsOpen} title="Model {slot} options">⚙ Options</button>
+      {#if running}<span class="text-xs" style="color: var(--ui-accent);">Running…</span>{:else if tps}{@const c = Number(tps) >= 40 ? 'var(--atom-teal)' : Number(tps) >= 20 ? 'var(--atom-amber)' : 'var(--atom-accent)'}<span class="font-mono text-[10px]" style="color: {c};">{tps} t/s</span>{/if}
+      {#if messages.length > 0}<button type="button" class="p-1 rounded-lg opacity-50 hover:opacity-100 transition-opacity" style="color: var(--ui-text-secondary);" onclick={onClear} aria-label="Clear slot {slot}">✕</button>{/if}
     </div>
   </div>
 </div>

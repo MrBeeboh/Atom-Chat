@@ -365,138 +365,133 @@ html { --metrics-axis: #d4d4d4; --metrics-grid: #e5e5e5; }
 @media (prefers-reduced-motion: reduce) {
   .ui-input-breathe,
   .ui-odometer-active::after,
-  .ui-gpu-meter-active::after,
-  [data-ui-theme="radioactivelab"] .ui-btn-accent,
-  [data-ui-theme="radioactivelab"] .ui-sidebar-active,
-  [data-ui-theme="toxicwaste"] .ui-btn-accent {
+  .ui-gpu-meter-active::after {
     animation: none !important;
   }
 }
 
-/* ========== UI theme variables (data-ui-theme on root) ========== */
-[data-ui-theme="default"] {
-  --ui-bg-main: #fafafa;
-  --ui-bg-sidebar: rgba(255,255,255,0.8);
-  --ui-accent: #B22234;
-  --ui-accent-hot: #dc2626;
-  --ui-text-primary: #18181b;
-  --ui-text-secondary: #71717a;
-  --ui-border: rgba(0,0,0,0.08);
-  --ui-sidebar-active: #f4f4f5;
-  --ui-sidebar-hover: #fafafa;
+/* ========== UI theme variables (3 themes: Lavender, Sage, Obsidian) ========== */
+
+/* Lavender — Digital Lavender + mint (2026 wellness/calm tech). Calm, trust, prolonged sessions. */
+[data-ui-theme="lavender"] {
+  --ui-bg-main: #f8f6fc;
+  --ui-bg-sidebar: #f0ecf8;
+  --ui-accent: #8b7ab8;
+  --ui-accent-hot: #a855f7;
+  --ui-accent-cool: #a78bfa;
+  --ui-text-primary: #1e1b2e;
+  --ui-text-secondary: #5c5676;
+  --ui-border: rgba(139, 122, 184, 0.2);
+  --ui-sidebar-active: #e8e4f0;
+  --ui-sidebar-hover: #ebe8f2;
   --ui-input-bg: #ffffff;
-  --ui-input-border: #e4e4e7;
-  --ui-glow: rgba(178, 34, 52, 0.25);
+  --ui-input-border: #e0dce8;
+  --ui-glow: rgba(139, 122, 184, 0.2);
+  --atom-accent: #8b7ab8;
+  --atom-accent-light: #a78bfa;
+  --atom-teal: #6ee7c0;
+  --atom-amber: #c4b5fd;
 }
-.dark[data-ui-theme="default"] {
-  --ui-bg-main: #0d0d0d;
-  --ui-bg-sidebar: rgba(24,24,27,0.9);
-  --ui-accent: #E03c51;
-  --ui-accent-hot: #f87171;
-  --ui-text-primary: #fafafa;
-  --ui-text-secondary: #a1a1aa;
-  --ui-border: rgba(255,255,255,0.1);
-  --ui-sidebar-active: rgba(63,63,70,0.8);
-  --ui-sidebar-hover: rgba(39,39,42,0.8);
-  --ui-input-bg: #27272a;
-  --ui-input-border: #52525b;
-  --ui-glow: rgba(224, 60, 81, 0.3);
-}
-
-/* Newsprint (Editorial) – warm paper, dark ink, masthead accent */
-[data-ui-theme="newsprint"] {
-  --ui-bg-main: #f4f1ea;
-  --ui-bg-sidebar: #ebe6dc;
-  --ui-accent: #8b2500;
-  --ui-accent-hot: #b33a0a;
-  --ui-accent-cool: #5c4033;
-  --ui-text-primary: #1c1917;
-  --ui-text-secondary: #57534e;
-  --ui-border: #b8a99a;
-  --ui-sidebar-active: #e8e2d8;
-  --ui-sidebar-hover: #e0d9cc;
-  --ui-input-bg: #fefdfb;
-  --ui-input-border: #b8a99a;
-  --ui-glow: rgba(139, 37, 0, 0.15);
-  --atom-accent: #8b2500;
-  --atom-accent-light: #a03008;
-  --atom-teal: #5c4033;
-  --atom-amber: #b45309;
-}
-[data-ui-theme="newsprint"] body {
-  background: #f4f1ea;
-  font-family: 'Georgia', 'Times New Roman', Times, serif;
+.dark[data-ui-theme="lavender"] {
+  --ui-bg-main: #1a1820;
+  --ui-bg-sidebar: #221f2a;
+  --ui-accent: #c4b5fd;
+  --ui-accent-hot: #e879f9;
+  --ui-accent-cool: #a78bfa;
+  --ui-text-primary: #f5f3f7;
+  --ui-text-secondary: #a8a2b3;
+  --ui-border: rgba(196, 181, 253, 0.15);
+  --ui-sidebar-active: #2d2935;
+  --ui-sidebar-hover: #352f40;
+  --ui-input-bg: #221f2a;
+  --ui-input-border: #3d3748;
+  --ui-glow: rgba(196, 181, 253, 0.2);
+  --atom-accent: #c4b5fd;
+  --atom-accent-light: #ddd6fe;
+  --atom-teal: #6ee7c0;
+  --atom-amber: #c4b5fd;
 }
 
-/* Daily Edition (Front Page) – Grok-style newspaper: masthead strip, column feel, gold accent */
-[data-ui-theme="dailyedition"] {
-  --ui-bg-main: #f2efe6;
-  --ui-bg-sidebar: #e8e4d9;
-  --ui-accent: #1a1a1a;
-  --ui-accent-hot: #8b6914;
-  --ui-accent-cool: #5c4a2a;
-  --ui-text-primary: #1a1a1a;
-  --ui-text-secondary: #4a4540;
-  --ui-border: #a89f8f;
-  --ui-sidebar-active: #ddd8cc;
-  --ui-sidebar-hover: #d4cfc2;
-  --ui-input-bg: #fcfbf7;
-  --ui-input-border: #a89f8f;
-  --ui-glow: rgba(139, 105, 20, 0.12);
-  --atom-accent: #8b6914;
-  --atom-accent-light: #a67c1a;
-  --atom-teal: #5c4a2a;
-  --atom-amber: #8b6914;
+/* Sage — Eco-brutalism / grounded neutrals (2026 credibility). Organic, minimal, honest. */
+[data-ui-theme="sage"] {
+  --ui-bg-main: #f6f5f2;
+  --ui-bg-sidebar: #ebe9e4;
+  --ui-accent: #6b7c5a;
+  --ui-accent-hot: #8b7355;
+  --ui-accent-cool: #5c6b4a;
+  --ui-text-primary: #2d2a26;
+  --ui-text-secondary: #5a5650;
+  --ui-border: #c5bfb4;
+  --ui-sidebar-active: #e2dfd8;
+  --ui-sidebar-hover: #d8d4cc;
+  --ui-input-bg: #ffffff;
+  --ui-input-border: #c5bfb4;
+  --ui-glow: rgba(107, 124, 90, 0.18);
+  --atom-accent: #6b7c5a;
+  --atom-accent-light: #8a9b76;
+  --atom-teal: #6b7c5a;
+  --atom-amber: #8b7355;
 }
-[data-ui-theme="dailyedition"] body {
-  background: #f2efe6;
-  font-family: 'Georgia', 'Times New Roman', Times, serif;
+.dark[data-ui-theme="sage"] {
+  --ui-bg-main: #1c1b18;
+  --ui-bg-sidebar: #262420;
+  --ui-accent: #8a9b76;
+  --ui-accent-hot: #b8986b;
+  --ui-accent-cool: #7a8c65;
+  --ui-text-primary: #e8e6e1;
+  --ui-text-secondary: #9a968e;
+  --ui-border: #3d3a35;
+  --ui-sidebar-active: #2f2d28;
+  --ui-sidebar-hover: #38352e;
+  --ui-input-bg: #262420;
+  --ui-input-border: #3d3a35;
+  --ui-glow: rgba(138, 155, 118, 0.2);
+  --atom-accent: #8a9b76;
+  --atom-accent-light: #a8b892;
+  --atom-teal: #8a9b76;
+  --atom-amber: #b8986b;
 }
-/* Masthead-style strip below header (newspaper “below the fold” rule) */
-[data-ui-theme="dailyedition"] header {
-  position: relative;
-  border-bottom: 2px solid var(--ui-border);
+
+/* Obsidian — Dark Mode 2.0 (2026). Deep charcoal + navy depth, no pure black. OLED-friendly. */
+[data-ui-theme="obsidian"] {
+  --ui-bg-main: #16181d;
+  --ui-bg-sidebar: #1c1f26;
+  --ui-accent: #5eead4;
+  --ui-accent-hot: #f472b6;
+  --ui-accent-cool: #2dd4bf;
+  --ui-text-primary: #e2e8f0;
+  --ui-text-secondary: #94a3b8;
+  --ui-border: #2d333b;
+  --ui-sidebar-active: #252930;
+  --ui-sidebar-hover: #2a2e36;
+  --ui-input-bg: #1c1f26;
+  --ui-input-border: #334155;
+  --ui-glow: rgba(94, 234, 212, 0.22);
+  --atom-accent: #5eead4;
+  --atom-accent-light: #99f6e4;
+  --atom-teal: #2dd4bf;
+  --atom-amber: #fcd34d;
 }
-[data-ui-theme="dailyedition"] header::after {
-  content: '';
-  display: block;
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -2px;
-  height: 4px;
-  background: linear-gradient(90deg, var(--ui-accent) 0%, var(--ui-accent) 20%, transparent 20%, transparent 80%, var(--ui-accent) 80%);
-  opacity: 0.4;
+.dark[data-ui-theme="obsidian"] {
+  --ui-bg-main: #0f1114;
+  --ui-bg-sidebar: #15181e;
+  --ui-accent: #67e8f9;
+  --ui-accent-hot: #f9a8d4;
+  --ui-accent-cool: #22d3ee;
+  --ui-text-primary: #f1f5f9;
+  --ui-text-secondary: #94a3b8;
+  --ui-border: #1e293b;
+  --ui-sidebar-active: #1a1f28;
+  --ui-sidebar-hover: #1f242d;
+  --ui-input-bg: #15181e;
+  --ui-input-border: #334155;
+  --ui-glow: rgba(103, 232, 249, 0.25);
+  --atom-accent: #67e8f9;
+  --atom-accent-light: #a5f3fc;
+  --atom-teal: #22d3ee;
+  --atom-amber: #fde047;
 }
-/* Main chat area: subtle column-rule (vertical line like newspaper columns) */
-[data-ui-theme="dailyedition"] main {
-  border-left: 1px solid var(--ui-border);
-  box-shadow: inset 1px 0 0 rgba(0, 0, 0, 0.04);
-}
-/* Right panel: “sidebar column” look (slightly darker paper) */
-[data-ui-theme="dailyedition"] aside {
-  background-color: #e8e4d9 !important;
-  border-left: 2px solid var(--ui-border);
-}
-/* Send / primary buttons: muted gold (newspaper ad accent) */
-[data-ui-theme="dailyedition"] .send-button:not([style*="background: var(--ui-accent-hot)"]) {
-  background: #8b6914 !important;
-  color: #fcfbf7 !important;
-}
-[data-ui-theme="dailyedition"] .send-button:hover:not(:disabled):not([style*="background: var(--ui-accent-hot)"]) {
-  background: #a67c1a !important;
-}
-/* Daily Edition: headline – title case, less aggressive (capitalize, font-weight 700) */
-[data-ui-theme="dailyedition"] .ui-greeting-title {
-  font-family: 'Anton', 'Georgia', serif;
-  font-size: clamp(2.5rem, 7vw, 4.5rem);
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  line-height: 1.05;
-  text-transform: capitalize;
-  color: var(--ui-text-primary);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
-}
+
 
 /* Splash: ATOM wordmark above headline */
 .ui-splash-branding {
@@ -524,526 +519,6 @@ html { --metrics-axis: #d4d4d4; --metrics-grid: #e5e5e5; }
   to { opacity: 1; }
 }
 
-/* Neural Network Blue */
-[data-ui-theme="neural"] {
-  --ui-bg-main: #0b0c10;
-  --ui-bg-sidebar: #1f2833;
-  --ui-accent: #66fcf1;
-  --ui-accent-hot: #ff6b6b;
-  --ui-text-primary: #c5c6c7;
-  --ui-text-secondary: #66fcf1;
-  --ui-border: #2d3748;
-  --ui-sidebar-active: #0b0c10;
-  --ui-sidebar-hover: #2d3748;
-  --ui-input-bg: #1f2833;
-  --ui-input-border: #2d3748;
-  --ui-glow: rgba(102, 252, 241, 0.3);
-  --atom-accent: #66fcf1;
-  --atom-accent-light: #66fcf1;
-  --atom-teal: #66fcf1;
-  --atom-amber: #45a29e;
-}
-[data-ui-theme="neural"] body {
-  background: linear-gradient(135deg, #0b0c10 0%, #1f2833 50%, #0b0c10 100%);
-  background-size: 200% 200%;
-  animation: ui-gradient-shift 18s ease infinite;
-}
-
-/* ========== Light themes ========== */
-
-/* Arctic Command (light + electric) */
-[data-ui-theme="arctic"] {
-  --ui-bg-main: #f8fafc;
-  --ui-bg-sidebar: #e0f2fe;
-  --ui-accent: #f97316;
-  --ui-accent-hot: #dc2626;
-  --ui-accent-cool: #0ea5e9;
-  --ui-text-primary: #0f172a;
-  --ui-text-secondary: #64748b;
-  --ui-border: #cbd5e1;
-  --ui-sidebar-active: #f8fafc;
-  --ui-sidebar-hover: #f8fafc;
-  --ui-input-bg: #ffffff;
-  --ui-input-border: #cbd5e1;
-  --ui-glow: rgba(14, 165, 233, 0.25);
-  --atom-accent: #0ea5e9;
-  --atom-accent-light: #06b6d4;
-  --atom-teal: #06b6d4;
-  --atom-amber: #f97316;
-}
-
-/* Neon Daylight (retro-future bright) */
-[data-ui-theme="neon"] {
-  --ui-bg-main: #ffffff;
-  --ui-bg-sidebar: #fef3c7;
-  --ui-accent: #eab308;
-  --ui-accent-hot: #dc2626;
-  --ui-accent-cool: #06b6d4;
-  --ui-text-primary: #171717;
-  --ui-text-secondary: #525252;
-  --ui-border: #e5e5e5;
-  --ui-sidebar-active: #ffffff;
-  --ui-sidebar-hover: #fef9c3;
-  --ui-input-bg: #ffffff;
-  --ui-input-border: #e5e5e5;
-  --ui-glow: rgba(234, 179, 8, 0.3);
-  --atom-accent: #eab308;
-  --atom-accent-light: #06b6d4;
-  --atom-teal: #06b6d4;
-  --atom-amber: #dc2626;
-}
-
-/* Mint Laboratory (fresh + technical) */
-[data-ui-theme="mint"] {
-  --ui-bg-main: #f0fdf4;
-  --ui-bg-sidebar: #d1fae5;
-  --ui-accent: #10b981;
-  --ui-accent-hot: #f59e0b;
-  --ui-accent-cool: #3b82f6;
-  --ui-text-primary: #064e3b;
-  --ui-text-secondary: #6b7280;
-  --ui-border: #d1d5db;
-  --ui-sidebar-active: #f0fdf4;
-  --ui-sidebar-hover: #ecfdf5;
-  --ui-input-bg: #ffffff;
-  --ui-input-border: #d1d5db;
-  --ui-glow: rgba(16, 185, 129, 0.25);
-  --atom-accent: #10b981;
-  --atom-accent-light: #3b82f6;
-  --atom-teal: #10b981;
-  --atom-amber: #f59e0b;
-}
-
-/* Coral Reef (warm + energetic) */
-[data-ui-theme="coral"] {
-  --ui-bg-main: #fffbeb;
-  --ui-bg-sidebar: #fed7aa;
-  --ui-accent: #f97316;
-  --ui-accent-hot: #dc2626;
-  --ui-accent-cool: #0891b2;
-  --ui-text-primary: #1c1917;
-  --ui-text-secondary: #78716c;
-  --ui-border: #e7e5e4;
-  --ui-sidebar-active: #fffbeb;
-  --ui-sidebar-hover: #fff7ed;
-  --ui-input-bg: #ffffff;
-  --ui-input-border: #e7e5e4;
-  --ui-glow: rgba(249, 115, 22, 0.25);
-  --atom-accent: #f97316;
-  --atom-accent-light: #0891b2;
-  --atom-teal: #0891b2;
-  --atom-amber: #dc2626;
-}
-
-/* High Contrast Lab (maximum pop) */
-[data-ui-theme="highcontrast"] {
-  --ui-bg-main: #ffffff;
-  --ui-bg-sidebar: #f3f4f6;
-  --ui-accent: #2563eb;
-  --ui-accent-hot: #dc2626;
-  --ui-text-primary: #000000;
-  --ui-text-secondary: #6b7280;
-  --ui-border: #d1d5db;
-  --ui-sidebar-active: #ffffff;
-  --ui-sidebar-hover: #e5e7eb;
-  --ui-input-bg: #ffffff;
-  --ui-input-border: #d1d5db;
-  --ui-glow: rgba(37, 99, 235, 0.25);
-  --atom-accent: #2563eb;
-  --atom-accent-light: #3b82f6;
-  --atom-teal: #16a34a;
-  --atom-amber: #ea580c;
-}
-
-/* Cyber Citrus (unconventional + bold) */
-[data-ui-theme="cybercitrus"] {
-  --ui-bg-main: #fefce8;
-  --ui-bg-sidebar: #fef08a;
-  --ui-accent: #65a30d;
-  --ui-accent-hot: #dc2626;
-  --ui-accent-cool: #0284c7;
-  --ui-text-primary: #14532d;
-  --ui-text-secondary: #4d7c0f;
-  --ui-border: #d9f99d;
-  --ui-sidebar-active: #fefce8;
-  --ui-sidebar-hover: #fef9c3;
-  --ui-input-bg: #ffffff;
-  --ui-input-border: #d9f99d;
-  --ui-glow: rgba(101, 163, 13, 0.3);
-  --atom-accent: #65a30d;
-  --atom-accent-light: #0284c7;
-  --atom-teal: #65a30d;
-  --atom-amber: #dc2626;
-}
-
-/* Option 7: Industrial Hazard (Yellow/Black - Maximum Visibility) */
-[data-ui-theme="industrialhazard"] {
-  --ui-bg-main: #ffffff;
-  --ui-bg-sidebar: #fef9c3;
-  --ui-accent: #facc15;
-  --ui-accent-hot: #000000;
-  --ui-accent-cool: #000000;
-  --ui-text-primary: #000000;
-  --ui-text-secondary: #404040;
-  --ui-border: #000000;
-  --ui-sidebar-active: #fef08a;
-  --ui-sidebar-hover: #fef9c3;
-  --ui-input-bg: #ffffff;
-  --ui-input-border: #000000;
-  --ui-glow: rgba(250, 204, 21, 0.4);
-  --atom-accent: #facc15;
-  --atom-accent-light: #dc2626;
-  --atom-teal: #16a34a;
-  --atom-amber: #000000;
-}
-
-/* Option 8: Fire & Ice (Extreme Contrast) */
-[data-ui-theme="fireice"] {
-  --ui-bg-main: #0c4a6e;
-  --ui-bg-sidebar: #075985;
-  --ui-accent: #ff6b35;
-  --ui-accent-hot: #fbbf24;
-  --ui-accent-cool: #38bdf8;
-  --ui-text-primary: #f0f9ff;
-  --ui-text-secondary: #7dd3fc;
-  --ui-border: #0e7490;
-  --ui-sidebar-active: #0c4a6e;
-  --ui-sidebar-hover: #0369a1;
-  --ui-input-bg: #075985;
-  --ui-input-border: #0e7490;
-  --ui-glow: rgba(255, 107, 53, 0.35);
-  --atom-accent: #ff6b35;
-  --atom-accent-light: #38bdf8;
-  --atom-teal: #38bdf8;
-  --atom-amber: #fbbf24;
-}
-[data-ui-theme="fireice"] body {
-  background: linear-gradient(135deg, #0c4a6e 0%, #075985 50%, #0c4a6e 100%);
-  background-size: 200% 200%;
-  animation: ui-gradient-shift 18s ease infinite;
-}
-
-/* Option 9: Hacker Terminal Green (Modern) */
-[data-ui-theme="hacker"] {
-  --ui-bg-main: #001a00;
-  --ui-bg-sidebar: #003300;
-  --ui-accent: #00ff41;
-  --ui-accent-hot: #ffff00;
-  --ui-accent-cool: #00cc33;
-  --ui-text-primary: #33ff77;
-  --ui-text-secondary: #00cc33;
-  --ui-border: #004d00;
-  --ui-sidebar-active: #001a00;
-  --ui-sidebar-hover: #002200;
-  --ui-input-bg: #003300;
-  --ui-input-border: #004d00;
-  --ui-glow: rgba(0, 255, 65, 0.35);
-  --atom-accent: #00ff41;
-  --atom-accent-light: #ffff00;
-  --atom-teal: #00ff41;
-  --atom-amber: #ffff00;
-}
-[data-ui-theme="hacker"] body {
-  background: #001a00;
-}
-
-/* Option 10: Medical Grade (Clinical Precision) */
-[data-ui-theme="medical"] {
-  --ui-bg-main: #f8f9fa;
-  --ui-bg-sidebar: #e9ecef;
-  --ui-accent: #0077b6;
-  --ui-accent-hot: #d62828;
-  --ui-accent-cool: #52b788;
-  --ui-accent-warning: #f77f00;
-  --ui-text-primary: #212529;
-  --ui-text-secondary: #6c757d;
-  --ui-border: #dee2e6;
-  --ui-sidebar-active: #f8f9fa;
-  --ui-sidebar-hover: #e9ecef;
-  --ui-input-bg: #ffffff;
-  --ui-input-border: #dee2e6;
-  --ui-glow: rgba(0, 119, 182, 0.25);
-  --atom-accent: #0077b6;
-  --atom-accent-light: #52b788;
-  --atom-teal: #52b788;
-  --atom-amber: #f77f00;
-}
-
-/* Option 11: Radioactive Lab (Neon Lime Science) – dynamic: subtle accent pulse */
-[data-ui-theme="radioactivelab"] {
-  --ui-bg-main: #0a0a0a;
-  --ui-bg-sidebar: #1a1a1a;
-  --ui-accent: #ccff00;
-  --ui-accent-hot: #ff3366;
-  --ui-accent-cool: #00ffff;
-  --ui-accent-warning: #ffff00;
-  --ui-text-primary: #ffffff;
-  --ui-text-secondary: #99ff00;
-  --ui-border: #333333;
-  --ui-sidebar-active: #252525;
-  --ui-sidebar-hover: #2a2a2a;
-  --ui-input-bg: #1a1a1a;
-  --ui-input-border: #333333;
-  --ui-glow: rgba(204, 255, 0, 0.35);
-  --atom-accent: #ccff00;
-  --atom-accent-light: #99ff00;
-  --atom-teal: #00ffff;
-  --atom-amber: #ff3366;
-}
-[data-ui-theme="radioactivelab"] body {
-  background: #0a0a0a;
-}
-[data-ui-theme="radioactivelab"] .ui-btn-accent,
-[data-ui-theme="radioactivelab"] .ui-sidebar-active {
-  animation: theme-heartbeat 2s ease-in-out infinite;
-}
-
-/* Option 12: Copper Circuit (Warm Industrial) */
-[data-ui-theme="coppercircuit"] {
-  --ui-bg-main: #1a1410;
-  --ui-bg-sidebar: #2d2319;
-  --ui-accent: #ff6b35;
-  --ui-accent-secondary: #d4af37;
-  --ui-accent-hot: #ff6b35;
-  --ui-accent-cool: #4a9eff;
-  --ui-text-primary: #fef5e7;
-  --ui-text-secondary: #c19a6b;
-  --ui-border: #3d2f1f;
-  --ui-sidebar-active: #3d2f1f;
-  --ui-sidebar-hover: #4a3a28;
-  --ui-input-bg: #2d2319;
-  --ui-input-border: #3d2f1f;
-  --ui-glow: rgba(255, 107, 53, 0.3);
-  --atom-accent: #ff6b35;
-  --atom-accent-light: #d4af37;
-  --atom-teal: #4a9eff;
-  --atom-amber: #d4af37;
-}
-[data-ui-theme="coppercircuit"] body {
-  background: #1a1410;
-}
-
-/* Option 13: Arctic Neon (Ice + Electric) – dynamic: subtle body gradient */
-[data-ui-theme="arcticneon"] {
-  --ui-bg-main: #e8f4f8;
-  --ui-bg-sidebar: #b8e6f0;
-  --ui-accent: #00d9ff;
-  --ui-accent-hot: #ff1744;
-  --ui-accent-cool: #00bfa5;
-  --ui-text-primary: #001a1f;
-  --ui-text-secondary: #004d5c;
-  --ui-border: #80deea;
-  --ui-sidebar-active: #e0f7fa;
-  --ui-sidebar-hover: #b2ebf2;
-  --ui-input-bg: #ffffff;
-  --ui-input-border: #80deea;
-  --ui-glow: rgba(0, 217, 255, 0.3);
-  --atom-accent: #00d9ff;
-  --atom-accent-light: #00bfa5;
-  --atom-teal: #00bfa5;
-  --atom-amber: #ff1744;
-}
-[data-ui-theme="arcticneon"] body {
-  background: linear-gradient(135deg, #e8f4f8 0%, #b8e6f0 50%, #e8f4f8 100%);
-  background-size: 200% 200%;
-  animation: ui-gradient-shift 20s ease infinite;
-}
-
-/* Option 14: Sunset Gradient (Orange/Pink Dynamic) – gradient accent */
-[data-ui-theme="sunsetgradient"] {
-  --ui-bg-main: #fff5f5;
-  --ui-bg-sidebar: #ffe0e0;
-  --ui-accent: #ff6b35;
-  --ui-accent-hot: #ff1744;
-  --ui-text-primary: #2d1b1e;
-  --ui-text-secondary: #8b4049;
-  --ui-border: #ffb3ba;
-  --ui-sidebar-active: #ffebee;
-  --ui-sidebar-hover: #ffcdd2;
-  --ui-input-bg: #ffffff;
-  --ui-input-border: #ffb3ba;
-  --ui-glow: rgba(255, 107, 53, 0.3);
-  --ui-accent-gradient: linear-gradient(135deg, #ff8c42 0%, #ff6b6b 100%);
-  --atom-accent: #ff6b35;
-  --atom-accent-light: #ff6b6b;
-  --atom-teal: #ff8c42;
-  --atom-amber: #ff1744;
-}
-[data-ui-theme="sunsetgradient"] body {
-  background: linear-gradient(180deg, #fff5f5 0%, #ffe0e0 100%);
-  background-size: 100% 200%;
-  animation: ui-gradient-shift 25s ease infinite;
-}
-[data-ui-theme="sunsetgradient"] .ui-btn-accent {
-  background: var(--ui-accent-gradient);
-  color: #2d1b1e;
-}
-
-/* Option 15: Racing Stripe (Red/White/Black Speed) */
-[data-ui-theme="racingstripe"] {
-  --ui-bg-main: #ffffff;
-  --ui-bg-sidebar: #f5f5f5;
-  --ui-accent: #e30613;
-  --ui-accent-secondary: #000000;
-  --ui-accent-cool: #c0c0c0;
-  --ui-text-primary: #000000;
-  --ui-text-secondary: #666666;
-  --ui-border: #dddddd;
-  --ui-sidebar-active: #ffffff;
-  --ui-sidebar-hover: #eeeeee;
-  --ui-input-bg: #ffffff;
-  --ui-input-border: #dddddd;
-  --ui-glow: rgba(227, 6, 19, 0.35);
-  --atom-accent: #e30613;
-  --atom-accent-light: #000000;
-  --atom-teal: #c0c0c0;
-  --atom-amber: #e30613;
-}
-[data-ui-theme="racingstripe"] body {
-  background: #ffffff;
-}
-
-/* Option 16: Jungle Terminal (Green, Not Matrix) */
-[data-ui-theme="jungleterminal"] {
-  --ui-bg-main: #f0f4f0;
-  --ui-bg-sidebar: #d4e7d4;
-  --ui-accent: #2d5016;
-  --ui-accent-hot: #ff6b35;
-  --ui-accent-cool: #004d40;
-  --ui-text-primary: #1a1a1a;
-  --ui-text-secondary: #4a6741;
-  --ui-border: #a8c99c;
-  --ui-sidebar-active: #e8f0e8;
-  --ui-sidebar-hover: #dce8dc;
-  --ui-input-bg: #ffffff;
-  --ui-input-border: #a8c99c;
-  --ui-glow: rgba(45, 80, 22, 0.3);
-  --atom-accent: #2d5016;
-  --atom-accent-light: #004d40;
-  --atom-teal: #004d40;
-  --atom-amber: #ff6b35;
-}
-[data-ui-theme="jungleterminal"] body {
-  background: #f0f4f0;
-}
-
-/* Option 17: Magma Flow (Red/Orange/Black Heat) – dynamic: heat gradient shift */
-[data-ui-theme="magmaflow"] {
-  --ui-bg-main: #1a0a00;
-  --ui-bg-sidebar: #2d1400;
-  --ui-accent: #ff4500;
-  --ui-accent-hot: #ff6347;
-  --ui-accent-cool: #ffa500;
-  --ui-text-primary: #fff5ee;
-  --ui-text-secondary: #ffb366;
-  --ui-border: #4d2600;
-  --ui-sidebar-active: #3d1a00;
-  --ui-sidebar-hover: #4d2600;
-  --ui-input-bg: #2d1400;
-  --ui-input-border: #4d2600;
-  --ui-glow: rgba(255, 69, 0, 0.4);
-  --atom-accent: #ff4500;
-  --atom-accent-light: #ff6347;
-  --atom-teal: #ffa500;
-  --atom-amber: #ff6347;
-}
-[data-ui-theme="magmaflow"] body {
-  background: linear-gradient(135deg, #1a0a00 0%, #2d1400 40%, #4d2600 70%, #1a0a00 100%);
-  background-size: 200% 200%;
-  animation: ui-gradient-shift 18s ease infinite;
-}
-
-/* Option 18: Chrome & Glass (Ultra Modern) – glassmorphism */
-[data-ui-theme="chromeglass"] {
-  --ui-bg-main: #f8f9fa;
-  --ui-bg-sidebar: rgba(233, 236, 239, 0.85);
-  --ui-accent: #0066cc;
-  --ui-accent-metallic: #c0c0c0;
-  --ui-text-primary: #212529;
-  --ui-text-secondary: #6c757d;
-  --ui-border: #dee2e6;
-  --ui-sidebar-active: rgba(255, 255, 255, 0.5);
-  --ui-sidebar-hover: rgba(255, 255, 255, 0.3);
-  --ui-input-bg: rgba(255, 255, 255, 0.9);
-  --ui-input-border: #dee2e6;
-  --ui-glow: rgba(0, 102, 204, 0.25);
-  --ui-glass: rgba(255, 255, 255, 0.15);
-  --atom-accent: #0066cc;
-  --atom-accent-light: #3399ff;
-  --atom-teal: #0066cc;
-  --atom-amber: #c0c0c0;
-}
-[data-ui-theme="chromeglass"] body {
-  background: #f8f9fa;
-}
-[data-ui-theme="chromeglass"] aside,
-[data-ui-theme="chromeglass"] [class*="backdrop-blur"],
-[data-ui-theme="chromeglass"] .ui-card-style {
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
-  background: color-mix(in srgb, var(--ui-bg-sidebar) 90%, var(--ui-glass));
-}
-
-/* Option 19: Toxic Waste (Yellow/Black Hazard) – dynamic: accent pulse */
-[data-ui-theme="toxicwaste"] {
-  --ui-bg-main: #000000;
-  --ui-bg-sidebar: #1a1a00;
-  --ui-accent: #ffff00;
-  --ui-accent-hot: #ff00ff;
-  --ui-accent-cool: #00ff00;
-  --ui-text-primary: #ffff00;
-  --ui-text-secondary: #cccc00;
-  --ui-border: #333300;
-  --ui-sidebar-active: #2a2a00;
-  --ui-sidebar-hover: #333300;
-  --ui-input-bg: #1a1a00;
-  --ui-input-border: #333300;
-  --ui-glow: rgba(255, 255, 0, 0.4);
-  --atom-accent: #ffff00;
-  --atom-accent-light: #00ff00;
-  --atom-teal: #00ff00;
-  --atom-amber: #ff00ff;
-}
-[data-ui-theme="toxicwaste"] body {
-  background: #000000;
-}
-[data-ui-theme="toxicwaste"] .ui-btn-accent {
-  animation: theme-heartbeat 2.2s ease-in-out infinite;
-}
-
-/* ATOM — Clinical, high-contrast dark (Unified Multimedia Gatekeeper default) */
-[data-ui-theme="atom"] {
-  --ui-bg-main: #0c0c0c;
-  --ui-bg-sidebar: #141414;
-  --ui-accent: #00d4aa;
-  --ui-accent-hot: #00ffcc;
-  --ui-accent-cool: #00a88a;
-  --ui-text-primary: #f5f5f5;
-  --ui-text-secondary: #a3a3a3;
-  --ui-border: #262626;
-  --ui-sidebar-active: #1a1a1a;
-  --ui-sidebar-hover: #1f1f1f;
-  --ui-input-bg: #141414;
-  --ui-input-border: #262626;
-  --ui-glow: rgba(0, 212, 170, 0.25);
-  --atom-accent: #00d4aa;
-  --atom-accent-light: #00ffcc;
-  --atom-teal: #00a88a;
-  --atom-amber: #00d4aa;
-}
-[data-ui-theme="atom"] body {
-  background: #0c0c0c;
-}
-
-@keyframes theme-heartbeat {
-  0%, 100% { opacity: 1; box-shadow: 0 4px 15px var(--ui-glow); }
-  50% { opacity: 0.92; box-shadow: 0 4px 24px var(--ui-glow); }
-}
-
-@keyframes ui-gradient-shift {
-  0%, 100% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-}
 
 /* Theme-aware utilities (glow, etc.) */
 .ui-input-glow:focus-within {
@@ -1108,7 +583,7 @@ body {
   --arena-bar-bg: var(--ui-input-bg);
 }
 
-/* Q1, model names, and bar controls: always use clear sans-serif for readability (avoids serif from newsprint/dailyedition) */
+/* Q1, model names, and bar controls: clear sans-serif for readability */
 .arena-question-bar,
 .arena-question-bar *,
 .ui-model-selector,
@@ -1126,10 +601,9 @@ body {
   background: color-mix(in srgb, var(--ui-accent) 8%, transparent);
 }
 .arena-web-tab.active {
-  background: color-mix(in srgb, var(--ui-accent) 18%, transparent);
+  background: color-mix(in srgb, var(--ui-accent) 14%, transparent);
   color: var(--ui-accent);
-  font-weight: 700;
-  box-shadow: inset 0 -2px 0 var(--ui-accent);
+  font-weight: 600;
 }
 
 /* Arena globe button (web connect/disconnect) */

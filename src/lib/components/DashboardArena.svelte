@@ -38,6 +38,7 @@
     confirm,
     arenaBuilderInternetEnabled,
     arenaDebugMode,
+    arenaSlotAIsJudge,
   } from "$lib/stores.js";
   import { playClick, playComplete } from "$lib/audio.js";
   import {
@@ -1036,6 +1037,7 @@
     }
 
     const n = get(arenaPanelCount);
+    const slotAIsJudge = get(arenaSlotAIsJudge);
     const slotsActive = [
       "A",
       ...(n >= 2 ? ["B"] : []),
@@ -1047,7 +1049,7 @@
       { slot: "B", modelId: $dashboardModelB },
       { slot: "C", modelId: $dashboardModelC },
       { slot: "D", modelId: $dashboardModelD },
-    ].filter((s) => s.modelId && slotsActive.includes(s.slot));
+    ].filter((s) => s.modelId && slotsActive.includes(s.slot) && !(slotAIsJudge && s.slot === "A"));
 
     if (!selected.length) {
       chatError.set("Select at least one model (A–D) before sending.");
@@ -1219,6 +1221,9 @@
         isStreaming.set(false);
         liveTokens.set(null);
         liveTokPerSec.set(null);
+        /* Show judge phase immediately so the user sees progress; then run judgment after a short delay. */
+        judgeLoadingMessageIndex = getNextWittyJudgeLoading();
+        arenaTransitionPhase = "loading_judge";
         setTimeout(() => runJudgment(), 500);
       }
       if (failedSlots.length > 0 && completedCount > 0) {
@@ -1231,7 +1236,8 @@
         chatError.set(err?.message || "Something went wrong. Try again.");
       }
     } finally {
-      arenaTransitionPhase = null;
+      /* Don't clear transition when judge phase is starting (runJudgment will clear it). */
+      if (arenaTransitionPhase !== "loading_judge") arenaTransitionPhase = null;
       isStreaming.set(false);
       liveTokens.set(null);
       liveTokPerSec.set(null);
@@ -1428,25 +1434,43 @@
   async function runJudgment() {
     if ($isStreaming) return;
     const n = get(arenaPanelCount);
+    const slotAIsJudge = get(arenaSlotAIsJudge);
+    /** Contestant model IDs (when Slot A is judge, only B/C/D are contestants so A can be used as judge). */
     const contestantIds = [
-      get(dashboardModelA),
+      slotAIsJudge ? null : get(dashboardModelA),
       n >= 2 ? get(dashboardModelB) : null,
       n >= 3 ? get(dashboardModelC) : null,
       n >= 4 ? get(dashboardModelD) : null,
     ].filter(Boolean);
-    const pick = pickJudgeModel({
-      userChoice: get(arenaScoringModelId)?.trim() || "",
-      contestantIds,
-      availableModels: get(models),
-    });
-    if (!pick.id) {
-      chatError.set(pick.error || "No judge model available. Load a model that is not assigned to any Arena slot.");
+    let judgeId = null;
+    if (slotAIsJudge && get(dashboardModelA)) {
+      judgeId = get(dashboardModelA);
+    } else {
+      const pick = pickJudgeModel({
+        userChoice: get(arenaScoringModelId)?.trim() || "",
+        contestantIds,
+        availableModels: get(models),
+      });
+      if (pick.id) {
+        judgeId = pick.id;
+        if (pick.fallback && typeof console !== "undefined") {
+          console.log("[Arena] Judge auto-selected:", pick.id, "(user choice was a contestant or unset)");
+        }
+      } else if (contestantIds.length > 0) {
+        /* No separate judge model: use first contestant as judge so the flow doesn't stop after the last answer. */
+        judgeId = contestantIds[0];
+        if (typeof console !== "undefined" && console.log) {
+          console.log("[Arena] Using first contestant as judge (no other model available).");
+        }
+      }
+    }
+    if (!judgeId) {
+      arenaTransitionPhase = null;
+      chatError.set(
+        "No judge model available. Load a model in LM Studio (or add a cloud API key) that is not in any Arena slot, or enable \"Slot A is judge\" and set Slot A."
+      );
       return;
     }
-    if (pick.fallback && typeof console !== "undefined") {
-      console.log("[Arena] Judge auto-selected:", pick.id, "(user choice was a contestant or unset)");
-    }
-    const judgeId = pick.id;
     if (arenaCurrentRunMeta) arenaCurrentRunMeta.judge_model = judgeId;
     const feedback =
       typeof judgeFeedback === "string" ? judgeFeedback.trim() : "";
@@ -2019,8 +2043,8 @@
   <!-- === Sticky question text bar (always visible above panels) === -->
   {#if currentQuestionTotal > 0 && currentQuestionText}
     <div
-      class="shrink-0 flex items-center gap-3 px-4 py-2.5 border-b"
-      style="background-color: color-mix(in srgb, var(--ui-accent) 6%, var(--ui-bg-main)); border-color: var(--ui-border);"
+      class="shrink-0 flex items-center gap-3 px-4 py-2.5"
+      style="background: color-mix(in srgb, var(--ui-accent) 5%, var(--ui-bg-main));"
     >
       <span
         class="text-xs font-bold tabular-nums shrink-0"
@@ -2037,7 +2061,7 @@
   <!-- === Response panels A–D (resizable) === -->
   <div
     bind:this={gridEl}
-    class="flex-1 min-h-0 grid gap-2 p-3 atom-layout-transition relative grid-rows-[minmax(0,1fr)]"
+    class="flex-1 min-h-0 grid gap-3 p-4 atom-layout-transition relative grid-rows-[minmax(0,1fr)]"
     style="grid-template-columns: {responsiveGridCols};"
   >
     {#each slotData as data, i (data.slot)}
@@ -2160,8 +2184,8 @@
 
   {#if arenaTransitionPhase}
     <div
-      class="shrink-0 flex flex-col items-center justify-center gap-1 py-3 px-2 rounded-lg mx-2 mb-1 border"
-      style="background-color: var(--ui-input-bg); border-color: var(--ui-border); color: var(--ui-text-primary);"
+      class="shrink-0 flex flex-col items-center justify-center gap-1 py-3 px-4 rounded-xl mx-3 mb-2"
+      style="background: color-mix(in srgb, var(--ui-accent) 6%, var(--ui-bg-main)); color: var(--ui-text-primary);"
       role="status"
       aria-live="polite"
     >
@@ -2211,13 +2235,13 @@
 
   <!-- Minimal footer: chat error + send -->
   <div
-    class="shrink-0 border-t px-3 py-2"
-    style="background-color: var(--ui-bg-sidebar); border-color: var(--ui-border);"
+    class="shrink-0 px-4 py-3"
+    style="background: color-mix(in srgb, var(--ui-border) 6%, var(--ui-bg-sidebar));"
   >
     {#if $chatError}
       <div
-        class="mb-2 px-3 py-2 rounded-lg text-sm flex items-center justify-between gap-2"
-        style="background: rgba(239,68,68,0.1); color: var(--ui-accent-hot); border: 1px solid var(--ui-border);"
+        class="mb-2 px-3 py-2 rounded-xl text-sm flex items-center justify-between gap-2"
+        style="background: color-mix(in srgb, var(--ui-accent-hot, #dc2626) 12%, transparent); color: var(--ui-accent-hot, #dc2626);"
         role="alert"
       >
         <span>{$chatError}</span>
