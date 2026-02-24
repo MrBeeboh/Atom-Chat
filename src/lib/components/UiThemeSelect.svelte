@@ -12,12 +12,22 @@
 
 <button
   type="button"
-  class="rounded-lg px-2 text-xs font-semibold cursor-pointer border transition-colors focus:outline-none focus:ring-1 truncate {compact ? 'py-1.5' : 'py-2'}"
-  style="background: var(--ui-input-bg); color: var(--ui-text-primary); border-color: var(--ui-border); min-width: {compact ? '8rem' : '10rem'}; letter-spacing: 0.02em; text-transform: none;"
+  class="ui-theme-btn rounded-lg px-2 text-xs font-semibold cursor-pointer border transition-colors focus:outline-none focus:ring-1 truncate inline-flex items-center gap-1.5 {compact ? 'py-1.5' : 'py-2'}"
+  style="background: var(--ui-input-bg); color: var(--ui-text-primary); border-color: var(--ui-border); min-width: {compact ? '6rem' : '8rem'}; letter-spacing: 0.02em; text-transform: none;"
   title="UI color theme"
   aria-label="UI color theme"
   onclick={() => (pickerOpen = true)}>
-  <span style="opacity:0.7; font-weight:600; margin-right:0.4em;">Theme</span> {currentLabel}
+  <span class="ui-theme-swatch" style="background: {currentLabel === 'Forge' ? '#f59e0b' : currentLabel === 'Sage' ? '#6b7280' : '#1e293b'};"></span>
+  {currentLabel}
 </button>
 
 <ThemePickerModal bind:open={pickerOpen} />
+
+<style>
+  .ui-theme-swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+</style>

@@ -156,13 +156,12 @@
     <div class="flex h-full flex-col">
       <!-- Cockpit header: 3-zone layout — left (brand+layout), center (model+preset), right (theme+status) -->
       <header class="cockpit-header shrink-0 flex items-center px-4 py-2.5" style="background-color: var(--ui-bg-sidebar);">
-        <!-- Left: brand + layout toggle -->
-        <div class="flex items-center gap-2 shrink-0" role="group" aria-label="Brand and layout">
-          <span class="flex items-center gap-1.5 font-semibold shrink-0" style="color: var(--ui-accent);"><AtomLogo size={20} />ATOM</span>
-          <span class="text-xs font-medium shrink-0" style="color: var(--ui-text-secondary);">Mode:</span>
-          <nav class="flex items-center gap-0.5 shrink-0" aria-label="Layout: Cockpit or Arena">
+        <!-- Left: brand + layout pill -->
+        <div class="flex items-center gap-3 shrink-0" role="group" aria-label="Brand and layout">
+          <span class="cockpit-brand flex items-center gap-1.5 shrink-0 text-lg font-bold" style="color: var(--ui-accent);"><AtomLogo size={22} />ATOM</span>
+          <nav class="layout-pill flex rounded-full p-0.5 shrink-0 text-xs font-medium" style="background: color-mix(in srgb, var(--ui-border) 60%, transparent);" aria-label="Layout: Cockpit or Arena">
             {#each LAYOUT_OPTS as opt}
-              <button type="button" class="h-7 px-2.5 rounded-md text-xs font-medium shrink-0 transition-opacity hover:opacity-90" style="background: {$layout === opt.value ? 'color-mix(in srgb, var(--ui-accent) 12%, transparent)' : 'transparent'}; color: {$layout === opt.value ? 'var(--ui-accent)' : 'var(--ui-text-secondary)'};" onclick={() => layout.set(opt.value)}>{opt.label}</button>
+              <button type="button" class="layout-pill-btn rounded-full px-3 py-1.5 transition-all" style="background: {$layout === opt.value ? 'var(--ui-accent)' : 'transparent'}; color: {$layout === opt.value ? 'var(--ui-bg-main)' : 'var(--ui-text-secondary)'};" onclick={() => layout.set(opt.value)}>{opt.label}</button>
             {/each}
           </nav>
         </div>
@@ -233,11 +232,10 @@
       <header class="shrink-0 flex items-center flex-wrap px-3 py-2 text-sm" style="background: var(--ui-bg-sidebar); color: var(--ui-text-secondary); gap: {HEADER_BETWEEN_GROUPS};">
         <div class="flex items-center shrink-0" style="{HEADER_GROUP_GAP}" role="group" aria-label="Brand and layout">
           <button type="button" class="md:hidden p-2 rounded-md min-h-[44px] min-w-[44px] flex items-center justify-center transition-opacity hover:opacity-80" style="color: var(--ui-text-secondary);" onclick={() => sidebarOpen.set(true)} aria-label="Open menu">☰</button>
-          <span class="flex items-center gap-1.5 font-semibold shrink-0" style="color: var(--ui-accent);"><AtomLogo size={20} />ATOM Arena</span>
-          <span class="text-[11px] font-medium shrink-0" style="color: var(--ui-text-secondary);">Mode</span>
-          <nav class="flex items-center gap-0.5 shrink-0" aria-label="Layout: Cockpit or Arena">
+          <span class="flex items-center gap-1.5 text-lg font-bold shrink-0" style="color: var(--ui-accent);"><AtomLogo size={22} />ATOM Arena</span>
+          <nav class="layout-pill flex rounded-full p-0.5 shrink-0 text-xs font-medium" style="background: color-mix(in srgb, var(--ui-border) 60%, transparent);" aria-label="Layout: Cockpit or Arena">
             {#each LAYOUT_OPTS as opt}
-              <button type="button" class="px-2.5 py-1 rounded-md text-xs {$layout === opt.value ? 'font-medium' : ''}" style="color: {$layout === opt.value ? 'var(--ui-accent)' : 'var(--ui-text-secondary)'}; background: {$layout === opt.value ? 'color-mix(in srgb, var(--ui-accent) 12%, transparent)' : 'transparent'};" onclick={() => layout.set(opt.value)}>{opt.label}</button>
+              <button type="button" class="layout-pill-btn rounded-full px-3 py-1.5 transition-all" style="background: {$layout === opt.value ? 'var(--ui-accent)' : 'transparent'}; color: {$layout === opt.value ? 'var(--ui-bg-main)' : 'var(--ui-text-secondary)'};" onclick={() => layout.set(opt.value)}>{opt.label}</button>
             {/each}
           </nav>
         </div>

@@ -497,66 +497,66 @@
     onchange={onFileInputChange}
     aria-label="Attach image or PDF"
   />
-  <div class="chat-input-bar" class:sending class:just-sent={justSent} class:send-error={sendError}>
-  <div class="chat-input-bar-attach">
-    <div class="attach-button-wrap">
-      {#if clippyBubble}
-        <div class="clippy-bubble" role="status" aria-live="polite">
-          <span class="clippy-bubble-text">{clippyBubble}</span>
-          <span class="clippy-bubble-tail" aria-hidden="true"></span>
+  {#if attachments.length > 0}
+    <div class="attachments-row">
+      {#each attachments as att, i}
+        <div class="attachment-thumb">
+          {#if att.isVideo}
+            <div class="thumb-video-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" opacity="0.7"><polygon points="10 8 16 12 10 16"/></svg>
+            </div>
+          {:else if att.dataUrl.startsWith('data:image')}
+            <img src={att.dataUrl} alt="" class="thumb-img" />
+          {:else}
+            <span class="thumb-placeholder">IMG</span>
+          {/if}
+          <span class="thumb-label" title={att.label}>{att.label.length > 12 ? att.label.slice(0, 10) + '…' : att.label}</span>
+          <button type="button" class="thumb-remove" onclick={() => removeAttachment(i)} aria-label="Remove">×</button>
         </div>
-      {/if}
-      <button
-        type="button"
-        class="attach-button"
-        class:clippy-active={clippyBubble}
-        title="Attach image or PDF (or drag & drop, paste)"
-        disabled={$isStreaming || attachProcessing}
-        onclick={() => fileInputEl?.click()}
-        onmouseenter={onAttachHover}
-        onmouseleave={onAttachLeave}
-        aria-label="Attach files"
-      >
-        {#if attachProcessing}
-          <span class="mic-spinner" aria-hidden="true">⟳</span>
-        {:else}
-          <span class="attach-icon" aria-hidden="true">📎</span>
-        {/if}
-      </button>
+      {/each}
     </div>
-  </div>
-  <div class="chat-input-main">
-    {#if attachments.length > 0}
-      <div class="attachments-row">
-        {#each attachments as att, i}
-          <div class="attachment-thumb">
-            {#if att.isVideo}
-              <div class="thumb-video-icon">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" opacity="0.7"><polygon points="10 8 16 12 10 16"/></svg>
-              </div>
-            {:else if att.dataUrl.startsWith('data:image')}
-              <img src={att.dataUrl} alt="" class="thumb-img" />
-            {:else}
-              <span class="thumb-placeholder">IMG</span>
-            {/if}
-            <span class="thumb-label" title={att.label}>{att.label.length > 12 ? att.label.slice(0, 10) + '…' : att.label}</span>
-            <button type="button" class="thumb-remove" onclick={() => removeAttachment(i)} aria-label="Remove">×</button>
+  {/if}
+  <div class="chat-input-bar" class:sending class:just-sent={justSent} class:send-error={sendError}>
+    <div class="chat-input-bar-attach">
+      <div class="attach-button-wrap">
+        {#if clippyBubble}
+          <div class="clippy-bubble" role="status" aria-live="polite">
+            <span class="clippy-bubble-text">{clippyBubble}</span>
+            <span class="clippy-bubble-tail" aria-hidden="true"></span>
           </div>
-        {/each}
+        {/if}
+        <button
+          type="button"
+          class="attach-button"
+          class:clippy-active={clippyBubble}
+          title="Attach image or PDF (or drag & drop, paste)"
+          disabled={$isStreaming || attachProcessing}
+          onclick={() => fileInputEl?.click()}
+          onmouseenter={onAttachHover}
+          onmouseleave={onAttachLeave}
+          aria-label="Attach files"
+        >
+          {#if attachProcessing}
+            <span class="mic-spinner" aria-hidden="true">⟳</span>
+          {:else}
+            <span class="attach-icon" aria-hidden="true">📎</span>
+          {/if}
+        </button>
       </div>
-    {/if}
-    <textarea
-      bind:this={textareaEl}
-      bind:value={text}
-      onkeydown={handleKeydown}
-      oninput={autoResize}
-      onpaste={onPaste}
-      disabled={$isStreaming ? true : null}
-      placeholder={placeholderText}
-      rows="1"
-    ></textarea>
-  </div>
-  {#if onGenerateImageGrok || onGenerateImageDeepSeek || onGenerateVideoDeepSeek}
+    </div>
+    <div class="chat-input-main">
+      <textarea
+        bind:this={textareaEl}
+        bind:value={text}
+        onkeydown={handleKeydown}
+        oninput={autoResize}
+        onpaste={onPaste}
+        disabled={$isStreaming ? true : null}
+        placeholder={placeholderText}
+        rows="1"
+      ></textarea>
+    </div>
+    {#if onGenerateImageGrok || onGenerateImageDeepSeek || onGenerateVideoDeepSeek}
     <div class="media-toolbar media-toolbar-inline">
       {#if onGenerateImageGrok || onGenerateImageDeepSeek}
         <button
@@ -709,9 +709,9 @@
     display: flex;
     flex-direction: row;
     align-items: center;
-    gap: 6px;
-    min-height: 48px;
-    border-radius: 14px;
+    gap: 4px;
+    min-height: 44px;
+    border-radius: 12px;
     background: var(--ui-input-bg, #fff);
     border: 1px solid color-mix(in srgb, var(--ui-border, #e5e7eb) 50%, transparent);
     transition: border-color 150ms, box-shadow 150ms;
@@ -787,7 +787,7 @@
     flex: 1;
     min-width: 0;
     display: flex;
-    flex-direction: column;
+    align-items: center;
     background: transparent;
     border: none;
     border-radius: 0;
@@ -825,11 +825,11 @@
 
   .chat-input-bar .send-button {
     flex-shrink: 0;
-    align-self: center;
-    margin: 6px 8px 6px 0;
-    min-height: 40px;
-    padding: 0 20px;
-    border-radius: 8px;
+    align-self: stretch;
+    margin: 0;
+    min-height: 44px;
+    padding: 0 16px;
+    border-radius: 0 12px 12px 0;
     font-weight: 600;
     background: var(--ui-accent);
     color: var(--ui-bg-main);
@@ -869,9 +869,10 @@
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent-hot, #dc2626) 25%, transparent);
     transition: box-shadow 0.2s ease;
   }
-  textarea {
-    flex: 0 0 auto;
+  .chat-input-main textarea {
+    flex: 1;
     width: 100%;
+    min-width: 0;
     padding: 10px 12px;
     border: none;
     font-family: inherit;

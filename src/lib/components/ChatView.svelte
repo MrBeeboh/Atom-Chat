@@ -671,9 +671,10 @@
       <div class="ui-splash-wrap flex-1 flex flex-col items-center justify-center px-4 py-6 min-h-0">
         <div class="w-full max-w-[min(40rem,92%)] mx-auto flex flex-col items-center gap-5">
 
-          <h1 class="ui-greeting-title text-xl md:text-2xl font-semibold text-center" style="color: var(--ui-text-primary);">What can I help with?</h1>
+          <h1 class="ui-greeting-title text-2xl md:text-3xl font-bold text-center" style="color: var(--ui-text-primary);">ATOM Chat</h1>
+          <p class="ui-greeting-welcome text-sm text-center" style="color: var(--ui-text-secondary);">Local AI. No cloud. No compromise.</p>
           {#if welcomeLine}
-            <p class="ui-greeting-welcome text-sm text-center animate-fade-in" style="color: var(--ui-text-secondary);">{welcomeLine}</p>
+            <p class="ui-greeting-welcome text-sm text-center animate-fade-in opacity-80" style="color: var(--ui-text-secondary);">{welcomeLine}</p>
           {/if}
           {#if $chatError}
             <div class="w-full px-4 py-2.5 rounded-lg text-sm flex items-center justify-between gap-2" style="background: color-mix(in srgb, var(--ui-accent-hot, #dc2626) 10%, transparent); color: var(--ui-text-primary);">

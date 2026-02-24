@@ -143,7 +143,7 @@
   <div class="flex flex-1 flex-col min-w-0 overflow-hidden">
     {#if !expanded}
       <!-- Collapsed: icon buttons with text labels below each icon -->
-      <div class="flex flex-col items-center gap-1.5 pt-4 shrink-0" style="color: var(--ui-text-secondary);">
+      <div class="rail-icons flex flex-col items-center gap-1.5 pt-4 shrink-0" style="color: var(--ui-text-secondary);">
         <button
           type="button"
           class="rail-icon-labeled"
@@ -151,37 +151,40 @@
           onclick={newChat}
           title="New chat"
           aria-label="New chat">
-          <svg class="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14" /></svg>
+          <svg class="rail-icon-svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14" /></svg>
           <span class="rail-icon-label">New</span>
         </button>
         <button
           type="button"
           class="rail-icon-labeled"
+          class:rail-active={activeSection === 'search'}
           style:color={activeSection === 'search' ? 'var(--ui-accent)' : 'var(--ui-text-secondary)'}
           onclick={() => expandTo('search')}
           title="Search chats"
           aria-label="Search">
-          <svg class="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" /></svg>
+          <svg class="rail-icon-svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" /></svg>
           <span class="rail-icon-label">Search</span>
         </button>
         <button
           type="button"
           class="rail-icon-labeled"
+          class:rail-active={activeSection === 'pinned'}
           style:color={activeSection === 'pinned' ? 'var(--ui-accent)' : 'var(--ui-text-secondary)'}
           onclick={() => expandTo('pinned')}
           title="Pinned chats"
           aria-label="Pinned">
-          <svg class="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5" /><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78 9.09A1 1 0 0 1 5 21v-1a1 1 0 0 1 .89-.99l1.81-.18" /><path d="M15 10.76a2 2 0 0 0 1.11 1.79l1.78 9.09A1 1 0 0 0 19 21v-1a1 1 0 0 0-.89-.99l-1.81-.18" /><path d="M20 10.76a2 2 0 0 0-1.11 1.79l-1.78 9.09A1 1 0 0 1 15 21v-1a1 1 0 0 1 .89-.99l1.81-.18" /><path d="M4 10.76a2 2 0 0 1 1.11 1.79l1.78 9.09A1 1 0 0 0 9 21v-1a1 1 0 0 0-.89-.99L6.3 19" /></svg>
+          <svg class="rail-icon-svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5" /><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78 9.09A1 1 0 0 1 5 21v-1a1 1 0 0 1 .89-.99l1.81-.18" /><path d="M15 10.76a2 2 0 0 0 1.11 1.79l1.78 9.09A1 1 0 0 0 19 21v-1a1 1 0 0 0-.89-.99l-1.81-.18" /><path d="M20 10.76a2 2 0 0 0-1.11 1.79l-1.78 9.09A1 1 0 0 1 15 21v-1a1 1 0 0 1 .89-.99l1.81-.18" /><path d="M4 10.76a2 2 0 0 1 1.11 1.79l1.78 9.09A1 1 0 0 0 9 21v-1a1 1 0 0 0-.89-.99L6.3 19" /></svg>
           <span class="rail-icon-label">Pinned</span>
         </button>
         <button
           type="button"
           class="rail-icon-labeled"
+          class:rail-active={activeSection === 'history'}
           style:color={activeSection === 'history' ? 'var(--ui-accent)' : 'var(--ui-text-secondary)'}
           onclick={() => expandTo('history')}
           title="Chat history"
           aria-label="History">
-          <svg class="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></svg>
+          <svg class="rail-icon-svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></svg>
           <span class="rail-icon-label">History</span>
         </button>
         <div class="w-6 my-1" style="height: 1px; background: var(--ui-border);" aria-hidden="true"></div>
@@ -192,7 +195,7 @@
           onclick={openSettings}
           title="Settings"
           aria-label="Settings">
-          <svg class="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" /><circle cx="12" cy="12" r="3" /></svg>
+          <svg class="rail-icon-svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" /><circle cx="12" cy="12" r="3" /></svg>
           <span class="rail-icon-label">Settings</span>
         </button>
       </div>
@@ -316,13 +319,17 @@
 </div>
 
 <style>
+  .rail-icon-svg {
+    width: 20px;
+    height: 20px;
+  }
   .rail-icon-labeled {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     gap: 2px;
-    width: 40px;
+    width: 44px;
     padding: 4px 0;
     border-radius: 8px;
     border: none;
@@ -333,15 +340,21 @@
   .rail-icon-labeled:hover {
     background: color-mix(in srgb, var(--ui-accent) 12%, transparent);
   }
+  .rail-icon-labeled.rail-active {
+    background: color-mix(in srgb, var(--ui-accent) 14%, transparent);
+    border-left: 3px solid var(--ui-accent);
+    border-radius: 4px 8px 8px 4px;
+  }
   .rail-icon-labeled:focus-visible {
     box-shadow: none;
     outline: none;
   }
   .rail-icon-label {
-    font-size: 9px;
+    font-size: 11px;
     font-weight: 600;
-    letter-spacing: 0.01em;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
     line-height: 1;
-    opacity: 0.85;
+    opacity: 0.9;
   }
 </style>
