@@ -148,17 +148,19 @@
         {@const icon = getModelIcon(m.id, $modelIconOverrides)}
         <button
           type="button"
-          class="flex items-center gap-2 w-full px-4 py-2.5 text-left text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700/80 transition-colors {m.id === $selectedModelId ? 'bg-zinc-50 dark:bg-zinc-700/50 font-medium' : ''}"
+          class="model-row flex items-center gap-2 w-full px-4 py-2.5 text-left text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700/80 transition-colors {m.id === $selectedModelId ? 'bg-zinc-50 dark:bg-zinc-700/50 font-medium' : ''}"
           role="option"
           aria-selected={m.id === $selectedModelId}
           onclick={() => select(m.id)}>
           <img src={icon} alt="" class="w-5 h-5 shrink-0 rounded object-contain" />
           <span class="min-w-0 flex-1 flex items-center gap-1.5">
             <span class="truncate">{modelDisplayName(m.id)}</span>
-            {#if getModelTypeTag(m.id)}
-              <span class="shrink-0 text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded" style="background: color-mix(in srgb, var(--ui-accent) 12%, transparent); color: var(--ui-accent);">{getModelTypeTag(m.id)}</span>
-            {/if}
-            <ModelCapabilityBadges modelId={m.id} />
+            <span class="model-row-actions shrink-0 flex items-center gap-1.5">
+              {#if getModelTypeTag(m.id)}
+                <span class="text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded" style="background: color-mix(in srgb, var(--ui-accent) 12%, transparent); color: var(--ui-accent);">{getModelTypeTag(m.id)}</span>
+              {/if}
+              <ModelCapabilityBadges modelId={m.id} />
+            </span>
           </span>
         </button>
       {/each}
@@ -181,3 +183,13 @@
     </p>
   {/if}
 </div>
+
+<style>
+  .model-row-actions {
+    opacity: 0;
+    transition: opacity 0.15s ease;
+  }
+  .model-row:hover .model-row-actions {
+    opacity: 1;
+  }
+</style>

@@ -558,7 +558,7 @@
     </div>
   </div>
 
-  <!-- 3. Inference parameters -->
+  <!-- 3. Inference parameters (collapsible Basic / Advanced) -->
   <div>
     <div class="font-medium mb-1.5 text-xs flex items-center gap-1" style="color: var(--ui-text-primary);">
       Parameters
@@ -566,104 +566,114 @@
         <span class="w-3.5 h-3.5 rounded-full border flex items-center justify-center text-[9px] cursor-help opacity-60 hover:opacity-100" style="border-color: var(--ui-border);">i</span>
       </InfoTooltip>
     </div>
-    <div class="space-y-3">
-      <div>
-        <div class="flex justify-between text-xs mb-0.5"><span>Temperature<InfoTooltip text="Randomness of output. 0 = deterministic, 2 = very creative."><span class="ml-0.5 w-3 h-3 rounded-full border inline-flex items-center justify-center text-[8px] cursor-help opacity-60 hover:opacity-100" style="border-color: var(--ui-border);">i</span></InfoTooltip></span><span class="font-mono">{temperature}</span></div>
-        <input
-          type="range"
-          min="0"
-          max="2"
-          step="0.05"
-          value={temperature}
-          oninput={onTempInput}
-          class="w-full h-1.5 rounded-full"
-          style="background: var(--ui-input-bg); accent-color: var(--ui-accent);" />
-      </div>
-      <div>
-        <div class="flex justify-between text-xs mb-0.5"><span>Max tokens<InfoTooltip text="Maximum number of tokens the model can generate in one response. Higher = longer answers (50 JSON Q&A pairs ≈ 5000 tokens). Most models support up to 8192–32768. Uses more VRAM at higher values."><span class="ml-0.5 w-3 h-3 rounded-full border inline-flex items-center justify-center text-[8px] cursor-help opacity-60 hover:opacity-100" style="border-color: var(--ui-border);">i</span></InfoTooltip></span><span class="font-mono">{maxTokens}</span></div>
-        <input
-          type="range"
-          min="64"
-          max="32768"
-          step="64"
-          value={maxTokens}
-          oninput={onMaxTokensInput}
-          class="w-full h-1.5 rounded-full"
-          style="background: var(--ui-input-bg); accent-color: var(--ui-accent);" />
-        <div class="flex justify-between text-[10px] mt-0.5" style="color: var(--ui-text-secondary);"><span>64</span><span>32768</span></div>
-      </div>
-      <div>
-        <div class="flex justify-between text-xs mb-0.5"><span>Top-P<InfoTooltip text="Nucleus sampling: only consider tokens whose cumulative probability is below this. 1 = no cutoff."><span class="ml-0.5 w-3 h-3 rounded-full border inline-flex items-center justify-center text-[8px] cursor-help opacity-60 hover:opacity-100" style="border-color: var(--ui-border);">i</span></InfoTooltip></span><span class="font-mono">{topP}</span></div>
-        <input
-          type="range"
-          min="0"
-          max="1"
-          step="0.05"
-          value={topP}
-          oninput={onTopPInput}
-          class="w-full h-1.5 rounded-full"
-          style="background: var(--ui-input-bg); accent-color: var(--ui-accent);" />
-      </div>
-      <div>
-        <div class="flex justify-between text-xs mb-0.5"><span>Top-K<InfoTooltip text="Limit sampling to the top K most likely tokens. Higher = more variety."><span class="ml-0.5 w-3 h-3 rounded-full border inline-flex items-center justify-center text-[8px] cursor-help opacity-60 hover:opacity-100" style="border-color: var(--ui-border);">i</span></InfoTooltip></span><span class="font-mono">{topK}</span></div>
-        <input
-          type="range"
-          min="1"
-          max="200"
-          step="1"
-          value={topK}
-          oninput={onTopKInput}
-          class="w-full h-1.5 rounded-full"
-          style="background: var(--ui-input-bg); accent-color: var(--ui-accent);" />
-      </div>
-      <div>
-        <div class="flex justify-between text-xs mb-0.5"><span>Repeat penalty<InfoTooltip text="Penalize repeated tokens. Higher = less repetition."><span class="ml-0.5 w-3 h-3 rounded-full border inline-flex items-center justify-center text-[8px] cursor-help opacity-60 hover:opacity-100" style="border-color: var(--ui-border);">i</span></InfoTooltip></span><span class="font-mono">{repeatPenalty}</span></div>
-        <input
-          type="range"
-          min="1"
-          max="2"
-          step="0.05"
-          value={repeatPenalty}
-          oninput={onRepeatPenaltyInput}
-          class="w-full h-1.5 rounded-full"
-          style="background: var(--ui-input-bg); accent-color: var(--ui-accent);" />
-      </div>
-      <div>
-        <div class="flex justify-between text-xs mb-0.5"><span>Presence penalty<InfoTooltip text="Penalize tokens that already appear in the context. -2 to 2."><span class="ml-0.5 w-3 h-3 rounded-full border inline-flex items-center justify-center text-[8px] cursor-help opacity-60 hover:opacity-100" style="border-color: var(--ui-border);">i</span></InfoTooltip></span><span class="font-mono">{presencePenalty}</span></div>
-        <input
-          type="range"
-          min="-2"
-          max="2"
-          step="0.1"
-          value={presencePenalty}
-          oninput={onPresencePenaltyInput}
-          class="w-full h-1.5 rounded-full"
-          style="background: var(--ui-input-bg); accent-color: var(--ui-accent);" />
-      </div>
-      <div>
-        <div class="flex justify-between text-xs mb-0.5"><span>Frequency penalty<InfoTooltip text="Penalize tokens by how often they appear. -2 to 2."><span class="ml-0.5 w-3 h-3 rounded-full border inline-flex items-center justify-center text-[8px] cursor-help opacity-60 hover:opacity-100" style="border-color: var(--ui-border);">i</span></InfoTooltip></span><span class="font-mono">{frequencyPenalty}</span></div>
-        <input
-          type="range"
-          min="-2"
-          max="2"
-          step="0.1"
-          value={frequencyPenalty}
-          oninput={onFrequencyPenaltyInput}
-          class="w-full h-1.5 rounded-full"
-          style="background: var(--ui-input-bg); accent-color: var(--ui-accent);" />
-      </div>
-      <div>
-        <div class="flex justify-between text-xs mb-0.5"><span>Context<InfoTooltip text="Max context length in tokens. Higher = more history but more VRAM."><span class="ml-0.5 w-3 h-3 rounded-full border inline-flex items-center justify-center text-[8px] cursor-help opacity-60 hover:opacity-100" style="border-color: var(--ui-border);">i</span></InfoTooltip></span><span class="font-mono">{contextLength}</span></div>
-        <input
-          type="range"
-          min="512"
-          max="131072"
-          step="1024"
-          value={contextLength}
-          oninput={onContextInput}
-          class="w-full h-1.5 rounded-full"
-          style="background: var(--ui-input-bg); accent-color: var(--ui-accent);" />
-      </div>
+    <div class="params-sections">
+      <details class="params-details" open>
+        <summary class="params-summary">Basic</summary>
+        <div class="params-group">
+          <div class="param-row">
+            <div class="flex justify-between text-xs mb-0.5"><span>Temperature<InfoTooltip text="Randomness of output. 0 = deterministic, 2 = very creative."><span class="ml-0.5 w-3 h-3 rounded-full border inline-flex items-center justify-center text-[8px] cursor-help opacity-60 hover:opacity-100" style="border-color: var(--ui-border);">i</span></InfoTooltip></span><span class="font-mono">{temperature}</span></div>
+            <input
+              type="range"
+              min="0"
+              max="2"
+              step="0.05"
+              value={temperature}
+              oninput={onTempInput}
+              class="w-full h-1.5 rounded-full"
+              style="background: var(--ui-input-bg); accent-color: var(--ui-accent);" />
+          </div>
+          <div class="param-row">
+            <div class="flex justify-between text-xs mb-0.5"><span>Max tokens<InfoTooltip text="Maximum number of tokens the model can generate in one response. Higher = longer answers (50 JSON Q&A pairs ≈ 5000 tokens). Most models support up to 8192–32768. Uses more VRAM at higher values."><span class="ml-0.5 w-3 h-3 rounded-full border inline-flex items-center justify-center text-[8px] cursor-help opacity-60 hover:opacity-100" style="border-color: var(--ui-border);">i</span></InfoTooltip></span><span class="font-mono">{maxTokens}</span></div>
+            <input
+              type="range"
+              min="64"
+              max="32768"
+              step="64"
+              value={maxTokens}
+              oninput={onMaxTokensInput}
+              class="w-full h-1.5 rounded-full"
+              style="background: var(--ui-input-bg); accent-color: var(--ui-accent);" />
+            <div class="flex justify-between text-[10px] mt-0.5" style="color: var(--ui-text-secondary);"><span>64</span><span>32768</span></div>
+          </div>
+          <div class="param-row">
+            <div class="flex justify-between text-xs mb-0.5"><span>Context<InfoTooltip text="Max context length in tokens. Higher = more history but more VRAM."><span class="ml-0.5 w-3 h-3 rounded-full border inline-flex items-center justify-center text-[8px] cursor-help opacity-60 hover:opacity-100" style="border-color: var(--ui-border);">i</span></InfoTooltip></span><span class="font-mono">{contextLength}</span></div>
+            <input
+              type="range"
+              min="512"
+              max="131072"
+              step="1024"
+              value={contextLength}
+              oninput={onContextInput}
+              class="w-full h-1.5 rounded-full"
+              style="background: var(--ui-input-bg); accent-color: var(--ui-accent);" />
+          </div>
+        </div>
+      </details>
+      <details class="params-details">
+        <summary class="params-summary">Advanced</summary>
+        <div class="params-group">
+          <div class="param-row">
+            <div class="flex justify-between text-xs mb-0.5"><span>Top-P<InfoTooltip text="Nucleus sampling: only consider tokens whose cumulative probability is below this. 1 = no cutoff."><span class="ml-0.5 w-3 h-3 rounded-full border inline-flex items-center justify-center text-[8px] cursor-help opacity-60 hover:opacity-100" style="border-color: var(--ui-border);">i</span></InfoTooltip></span><span class="font-mono">{topP}</span></div>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              value={topP}
+              oninput={onTopPInput}
+              class="w-full h-1.5 rounded-full"
+              style="background: var(--ui-input-bg); accent-color: var(--ui-accent);" />
+          </div>
+          <div class="param-row">
+            <div class="flex justify-between text-xs mb-0.5"><span>Top-K<InfoTooltip text="Limit sampling to the top K most likely tokens. Higher = more variety."><span class="ml-0.5 w-3 h-3 rounded-full border inline-flex items-center justify-center text-[8px] cursor-help opacity-60 hover:opacity-100" style="border-color: var(--ui-border);">i</span></InfoTooltip></span><span class="font-mono">{topK}</span></div>
+            <input
+              type="range"
+              min="1"
+              max="200"
+              step="1"
+              value={topK}
+              oninput={onTopKInput}
+              class="w-full h-1.5 rounded-full"
+              style="background: var(--ui-input-bg); accent-color: var(--ui-accent);" />
+          </div>
+          <div class="param-row">
+            <div class="flex justify-between text-xs mb-0.5"><span>Repeat penalty<InfoTooltip text="Penalize repeated tokens. Higher = less repetition."><span class="ml-0.5 w-3 h-3 rounded-full border inline-flex items-center justify-center text-[8px] cursor-help opacity-60 hover:opacity-100" style="border-color: var(--ui-border);">i</span></InfoTooltip></span><span class="font-mono">{repeatPenalty}</span></div>
+            <input
+              type="range"
+              min="1"
+              max="2"
+              step="0.05"
+              value={repeatPenalty}
+              oninput={onRepeatPenaltyInput}
+              class="w-full h-1.5 rounded-full"
+              style="background: var(--ui-input-bg); accent-color: var(--ui-accent);" />
+          </div>
+          <div class="param-row">
+            <div class="flex justify-between text-xs mb-0.5"><span>Presence penalty<InfoTooltip text="Penalize tokens that already appear in the context. -2 to 2."><span class="ml-0.5 w-3 h-3 rounded-full border inline-flex items-center justify-center text-[8px] cursor-help opacity-60 hover:opacity-100" style="border-color: var(--ui-border);">i</span></InfoTooltip></span><span class="font-mono">{presencePenalty}</span></div>
+            <input
+              type="range"
+              min="-2"
+              max="2"
+              step="0.1"
+              value={presencePenalty}
+              oninput={onPresencePenaltyInput}
+              class="w-full h-1.5 rounded-full"
+              style="background: var(--ui-input-bg); accent-color: var(--ui-accent);" />
+          </div>
+          <div class="param-row">
+            <div class="flex justify-between text-xs mb-0.5"><span>Frequency penalty<InfoTooltip text="Penalize tokens by how often they appear. -2 to 2."><span class="ml-0.5 w-3 h-3 rounded-full border inline-flex items-center justify-center text-[8px] cursor-help opacity-60 hover:opacity-100" style="border-color: var(--ui-border);">i</span></InfoTooltip></span><span class="font-mono">{frequencyPenalty}</span></div>
+            <input
+              type="range"
+              min="-2"
+              max="2"
+              step="0.1"
+              value={frequencyPenalty}
+              oninput={onFrequencyPenaltyInput}
+              class="w-full h-1.5 rounded-full"
+              style="background: var(--ui-input-bg); accent-color: var(--ui-accent);" />
+          </div>
+        </div>
+      </details>
     </div>
   </div>
 
@@ -842,3 +852,24 @@
     </button>
   </div>
 </div>
+
+<style>
+  .params-sections { display: flex; flex-direction: column; gap: 0; }
+  .params-details + .params-details { padding-top: 16px; }
+  .params-summary {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    opacity: 0.6;
+    cursor: pointer;
+    padding: 8px 0 4px 0;
+    user-select: none;
+    list-style: none;
+  }
+  .params-summary::-webkit-details-marker { display: none; }
+  .params-summary::marker { content: none; }
+  .params-summary:hover { opacity: 0.85; }
+  .params-group { padding-top: 4px; }
+  .param-row { margin-bottom: 14px; }
+  .param-row:last-child { margin-bottom: 0; }
+</style>
