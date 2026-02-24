@@ -17,7 +17,7 @@
   title="UI color theme"
   aria-label="UI color theme"
   onclick={() => (pickerOpen = true)}>
-  <span class="ui-theme-swatch" style="background: {currentLabel === 'Forge' ? '#f59e0b' : currentLabel === 'Sage' ? '#6b7280' : '#1e293b'};"></span>
+  <span class="ui-theme-swatch" style="background: {currentLabel === 'Forge' ? '#f59e0b' : currentLabel === 'Sage' ? '#6b7280' : currentLabel === 'Obsidian' ? '#1e293b' : currentLabel === 'Nova' ? '#3b82f6' : '#10a37f'};"></span>
   {currentLabel}
 </button>
 

@@ -15,6 +15,8 @@
     forge:    { bg: '#f4f4f5', accent: '#b45309', text: '#18181b' },
     sage:     { bg: '#f6f5f2', accent: '#6b7c5a', text: '#2d2a26' },
     obsidian: { bg: '#16181d', accent: '#5eead4', text: '#e2e8f0' },
+    nova:     { bg: '#0f1117', accent: '#3b82f6', text: '#e8eaf6' },
+    studio:   { bg: '#ffffff', accent: '#10a37f', text: '#0d0d0d' },
   };
 </script>
 

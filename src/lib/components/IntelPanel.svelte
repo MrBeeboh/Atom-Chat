@@ -677,10 +677,10 @@
     </div>
   </div>
 
-  <!-- 4. Context: delegated (slider) vs remaining capacity (complementary); then used in this chat -->
+  <!-- 4. Context Budget: delegated (slider) vs remaining capacity (complementary); then used in this chat -->
   <div>
     <div class="font-medium mb-1.5 text-xs flex items-center gap-1" style="color: var(--ui-text-primary);">
-      Context
+      Context Budget
       <InfoTooltip text="Total capacity is fixed. Slider = how much you delegate to this chat. Remaining = capacity left in the pool. Used = how much of the delegated amount this chat has used.">
         <span class="w-3.5 h-3.5 rounded-full border flex items-center justify-center text-[9px] cursor-help opacity-60 hover:opacity-100" style="border-color: var(--ui-border);">i</span>
       </InfoTooltip>

@@ -500,6 +500,86 @@ html { --metrics-axis: #d4d4d4; --metrics-grid: #e5e5e5; }
   --atom-amber: #fde047;
 }
 
+/* Nova — OpenWebUI inspired: deep navy/charcoal, electric blue accents, techy/terminal feel. */
+[data-ui-theme="nova"] {
+  --ui-bg-main: #0f1117;
+  --ui-bg-sidebar: #0d1021;
+  --ui-accent: #3b82f6;
+  --ui-accent-hot: #2563eb;
+  --ui-accent-cool: #3b82f6;
+  --ui-text-primary: #e8eaf6;
+  --ui-text-secondary: #9ea8d0;
+  --ui-border: #2e3352;
+  --ui-sidebar-active: #21253a;
+  --ui-sidebar-hover: #2a2f47;
+  --ui-input-bg: #1a1d27;
+  --ui-input-border: #2e3352;
+  --ui-glow: rgba(59, 130, 246, 0.22);
+  --atom-accent: #3b82f6;
+  --atom-accent-light: #60a5fa;
+  --atom-teal: #3b82f6;
+  --atom-amber: #60a5fa;
+}
+.dark[data-ui-theme="nova"] {
+  --ui-bg-main: #0f1117;
+  --ui-bg-sidebar: #0d1021;
+  --ui-accent: #3b82f6;
+  --ui-accent-hot: #2563eb;
+  --ui-accent-cool: #3b82f6;
+  --ui-text-primary: #e8eaf6;
+  --ui-text-secondary: #9ea8d0;
+  --ui-border: #2e3352;
+  --ui-sidebar-active: #21253a;
+  --ui-sidebar-hover: #2a2f47;
+  --ui-input-bg: #1a1d27;
+  --ui-input-border: #2e3352;
+  --ui-glow: rgba(59, 130, 246, 0.22);
+  --atom-accent: #3b82f6;
+  --atom-accent-light: #60a5fa;
+  --atom-teal: #3b82f6;
+  --atom-amber: #60a5fa;
+}
+
+/* Studio — ChatGPT inspired: pure white / near-white light, soft gray sidebar, dark send, professional. */
+[data-ui-theme="studio"] {
+  --ui-bg-main: #ffffff;
+  --ui-bg-sidebar: #f7f7f8;
+  --ui-accent: #10a37f;
+  --ui-accent-hot: #0d8f6e;
+  --ui-accent-cool: #10a37f;
+  --ui-text-primary: #0d0d0d;
+  --ui-text-secondary: #444654;
+  --ui-border: #e5e5e5;
+  --ui-sidebar-active: #ececec;
+  --ui-sidebar-hover: #e5e5e5;
+  --ui-input-bg: #ffffff;
+  --ui-input-border: #e5e5e5;
+  --ui-glow: rgba(16, 163, 127, 0.18);
+  --atom-accent: #10a37f;
+  --atom-accent-light: #14b8a6;
+  --atom-teal: #10a37f;
+  --atom-amber: #0d8f6e;
+}
+.dark[data-ui-theme="studio"] {
+  --ui-bg-main: #2a2a2a;
+  --ui-bg-sidebar: #1f1f1f;
+  --ui-accent: #10a37f;
+  --ui-accent-hot: #0d8f6e;
+  --ui-accent-cool: #10a37f;
+  --ui-text-primary: #ececec;
+  --ui-text-secondary: #8e8ea0;
+  --ui-border: #404040;
+  --ui-sidebar-active: #383838;
+  --ui-sidebar-hover: #404040;
+  --ui-input-bg: #2a2a2a;
+  --ui-input-border: #404040;
+  --ui-glow: rgba(16, 163, 127, 0.2);
+  --atom-accent: #10a37f;
+  --atom-accent-light: #14b8a6;
+  --atom-teal: #10a37f;
+  --atom-amber: #0d8f6e;
+}
+
 
 /* Splash: ATOM wordmark above headline */
 .ui-splash-branding {
