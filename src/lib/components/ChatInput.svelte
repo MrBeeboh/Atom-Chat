@@ -524,39 +524,8 @@
         {/if}
       </button>
     </div>
-  </div>
-  <div class="chat-input-main">
-    {#if attachments.length > 0}
-      <div class="attachments-row">
-        {#each attachments as att, i}
-          <div class="attachment-thumb">
-            {#if att.isVideo}
-              <div class="thumb-video-icon">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" opacity="0.7"><polygon points="10 8 16 12 10 16"/></svg>
-              </div>
-            {:else if att.dataUrl.startsWith('data:image')}
-              <img src={att.dataUrl} alt="" class="thumb-img" />
-            {:else}
-              <span class="thumb-placeholder">IMG</span>
-            {/if}
-            <span class="thumb-label" title={att.label}>{att.label.length > 12 ? att.label.slice(0, 10) + '…' : att.label}</span>
-            <button type="button" class="thumb-remove" onclick={() => removeAttachment(i)} aria-label="Remove">×</button>
-          </div>
-        {/each}
-      </div>
-    {/if}
-    <textarea
-      bind:this={textareaEl}
-      bind:value={text}
-      onkeydown={handleKeydown}
-      oninput={autoResize}
-      onpaste={onPaste}
-      disabled={$isStreaming ? true : null}
-      placeholder={placeholderText}
-      rows="1"
-    ></textarea>
     {#if onGenerateImageGrok || onGenerateImageDeepSeek || onGenerateVideoDeepSeek}
-      <div class="media-toolbar">
+      <div class="media-toolbar media-toolbar-dropdown">
         {#if onGenerateImageGrok || onGenerateImageDeepSeek}
           <button
             type="button"
@@ -602,6 +571,37 @@
         {/if}
       </div>
     {/if}
+  </div>
+  <div class="chat-input-main">
+    {#if attachments.length > 0}
+      <div class="attachments-row">
+        {#each attachments as att, i}
+          <div class="attachment-thumb">
+            {#if att.isVideo}
+              <div class="thumb-video-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" opacity="0.7"><polygon points="10 8 16 12 10 16"/></svg>
+              </div>
+            {:else if att.dataUrl.startsWith('data:image')}
+              <img src={att.dataUrl} alt="" class="thumb-img" />
+            {:else}
+              <span class="thumb-placeholder">IMG</span>
+            {/if}
+            <span class="thumb-label" title={att.label}>{att.label.length > 12 ? att.label.slice(0, 10) + '…' : att.label}</span>
+            <button type="button" class="thumb-remove" onclick={() => removeAttachment(i)} aria-label="Remove">×</button>
+          </div>
+        {/each}
+      </div>
+    {/if}
+    <textarea
+      bind:this={textareaEl}
+      bind:value={text}
+      onkeydown={handleKeydown}
+      oninput={autoResize}
+      onpaste={onPaste}
+      disabled={$isStreaming ? true : null}
+      placeholder={placeholderText}
+      rows="1"
+    ></textarea>
   </div>
   <button
     type="button"
@@ -709,8 +709,8 @@
     display: flex;
     flex-direction: row;
     align-items: center;
-    gap: 0;
-    min-height: 56px;
+    gap: 6px;
+    min-height: 48px;
     border-radius: 14px;
     background: var(--ui-input-bg, #fff);
     border: 1px solid color-mix(in srgb, var(--ui-border, #e5e7eb) 50%, transparent);
@@ -724,11 +724,29 @@
   }
 
   .chat-input-bar-attach {
+    position: relative;
     flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding-left: 10px;
+    padding-left: 8px;
+  }
+  .chat-input-bar-attach .media-toolbar-dropdown {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    margin-top: 4px;
+    padding: 6px 8px;
+    gap: 4px;
+    background: var(--ui-input-bg, #fff);
+    border: 1px solid color-mix(in srgb, var(--ui-border, #e5e7eb) 50%, transparent);
+    border-radius: 10px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    z-index: 20;
+  }
+  .chat-input-bar-attach:hover .media-toolbar-dropdown {
+    display: flex;
   }
   .chat-input-bar-attach .attach-button-wrap {
     width: 40px;
@@ -799,7 +817,7 @@
   .chat-input-bar .send-button {
     flex-shrink: 0;
     align-self: center;
-    margin: 8px 10px 8px 6px;
+    margin: 6px 8px 6px 0;
     min-height: 40px;
     padding: 0 20px;
     border-radius: 8px;
@@ -845,12 +863,12 @@
   textarea {
     flex: 0 0 auto;
     width: 100%;
-    padding: 12px;
+    padding: 10px 12px;
     border: none;
     font-family: inherit;
     font-size: 14px;
     resize: none;
-    min-height: 72px;
+    min-height: 44px;
     max-height: 200px;
     overflow-y: auto;
     background: transparent;
@@ -893,8 +911,10 @@
     display: flex;
     align-items: center;
     gap: 4px;
-    padding: 2px 8px 4px;
     flex-shrink: 0;
+  }
+  .media-toolbar:not(.media-toolbar-dropdown) {
+    padding: 2px 8px 4px;
     border-top: 1px solid color-mix(in srgb, var(--ui-border, #e5e7eb) 25%, transparent);
   }
 
