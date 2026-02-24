@@ -16,6 +16,8 @@ npm run dev
 
 Open http://localhost:5173. Choose a model from the dropdown, start a new chat, and send messages.
 
+**Voice input (mic):** Use **`npm run start`** (or the ATOM desktop icon). That runs `scripts/start-atom.sh`, which starts the voice server on port 8765 then the UI. Plain `npm run dev` does *not* start the voice server. If you use a desktop launcher, point it at `npm run start` from this repo, or copy `ATOM.desktop` to your Desktop (edit the path inside if your repo is not under `/home/mike/atom-chat`).
+
 ## Git workflow (repo ↔ local)
 
 - **New to this repo?** See **[docs/PATHS-REPO-AND-LOCAL.md](docs/PATHS-REPO-AND-LOCAL.md)** for the two directions: get latest from GitHub, and save your work to GitHub.

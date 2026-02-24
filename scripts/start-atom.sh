@@ -23,6 +23,14 @@ if [ -d "$VOICE_DIR" ] && [ -f "$VOICE_DIR/app.py" ]; then
   fi
 fi
 
+# Start web search proxy in background (serves /api/search on 5174; Vite proxies to it).
+SEARCH_PROXY="$ROOT/scripts/search-proxy.mjs"
+if [ -f "$SEARCH_PROXY" ]; then
+  nohup node "$SEARCH_PROXY" >> "$ROOT/search-proxy.log" 2>&1 &
+  disown 2>/dev/null || true
+  echo "[ATOM] Search proxy starting (http://localhost:5174). Log: $ROOT/search-proxy.log"
+fi
+
 PORT=5175
 # Open browser after the dev server is up
 (sleep 3 && xdg-open "http://localhost:${PORT}") &
