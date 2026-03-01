@@ -3,17 +3,28 @@
   import { fly } from "svelte/transition";
   import { quintOut } from "svelte/easing";
   import { get } from "svelte/store";
+  import PerfStats from "$lib/components/PerfStats.svelte";
   import AuthVideo from "$lib/components/AuthVideo.svelte";
   import { pinnedContent, deepinfraApiKey } from "$lib/stores.js";
 
   /** DeepInfra key: init from store + env so it's there on first paint; subscribe to stay in sync with Settings. */
   let deepinfraKey = $state(
-    (get(deepinfraApiKey)?.trim() || (typeof import.meta !== 'undefined' && import.meta.env?.VITE_DEEPINFRA_API_KEY) || '').trim(),
+    (
+      get(deepinfraApiKey)?.trim() ||
+      (typeof import.meta !== "undefined" &&
+        import.meta.env?.VITE_DEEPINFRA_API_KEY) ||
+      ""
+    ).trim(),
   );
   $effect(() => {
     const unsub = deepinfraApiKey.subscribe((v) => {
-      const k = (typeof v === 'string' ? v : '').trim()
-        || (typeof import.meta !== 'undefined' && import.meta.env?.VITE_DEEPINFRA_API_KEY || '').trim();
+      const k =
+        (typeof v === "string" ? v : "").trim() ||
+        (
+          (typeof import.meta !== "undefined" &&
+            import.meta.env?.VITE_DEEPINFRA_API_KEY) ||
+          ""
+        ).trim();
       deepinfraKey = k;
     });
     return () => unsub();
@@ -48,7 +59,9 @@
   );
   const imageThumbUrls = $derived(
     isAssistant && content && content.includes("[Image: http")
-      ? Array.from(content.matchAll(/\[Image: (https?:\/\/[^\]]+)\]/g)).map((m) => m[1])
+      ? Array.from(content.matchAll(/\[Image: (https?:\/\/[^\]]+)\]/g)).map(
+          (m) => m[1],
+        )
       : [],
   );
 
@@ -82,16 +95,16 @@
 </script>
 
 <div
-  class="flex {isUser ? 'justify-end' : 'justify-start'} w-full"
+  class="flex {isUser ? 'justify-end' : 'justify-start'} w-full max-w-[56rem]"
   in:fly={{ y: 20, duration: 380, easing: quintOut }}
 >
   <div
-    class="w-full max-w-[min(42rem,100%)] rounded-2xl px-4 py-3 shadow-sm relative overflow-hidden
+    class="message-bubble-inner w-full rounded-[10px] px-3 py-2 shadow-sm relative overflow-hidden
       {isUser
       ? 'ui-user-bubble'
       : 'bg-white dark:bg-zinc-800/90 text-zinc-900 dark:text-zinc-100 border border-zinc-200/80 dark:border-zinc-700/80'}"
   >
-      <!-- No background div here; handled by CSS below -->
+    <!-- No background div here; handled by CSS below -->
 
     {#if isUser}
       {#if contentArray.length}
@@ -186,34 +199,60 @@
       {:else}
         <div class="prose-chat prose dark:prose-invert max-w-none">
           {@html html}
-          {#if content && content.includes('[Image: http')}
+          {#if content && content.includes("[Image: http")}
             <div class="mt-2 flex flex-wrap gap-3">
               {#each imageThumbUrls as url}
-                <img src={url} alt="Result image" class="max-h-32 rounded border border-zinc-200 dark:border-zinc-600" loading="lazy" />
+                <img
+                  src={url}
+                  alt="Result image"
+                  class="max-h-32 rounded border border-zinc-200 dark:border-zinc-600"
+                  loading="lazy"
+                />
               {/each}
             </div>
           {/if}
         </div>
       {/if}
       {#if isAssistant && imageRefs.length}
-        <div class="mt-3 flex gap-2 overflow-x-auto pb-1 rounded-lg" role="list" aria-label="Searched images">
+        <div
+          class="mt-3 flex gap-2 overflow-x-auto pb-1 rounded-lg"
+          role="list"
+          aria-label="Searched images"
+        >
           {#each imageRefs as ref (ref.image_id)}
-            <div class="shrink-0 rounded border border-zinc-200 dark:border-zinc-600 overflow-hidden bg-zinc-100 dark:bg-zinc-800/80" role="listitem">
+            <div
+              class="shrink-0 rounded border border-zinc-200 dark:border-zinc-600 overflow-hidden bg-zinc-100 dark:bg-zinc-800/80"
+              role="listitem"
+            >
               <img
-                src={"https://cdn.x.ai/images?id=" + ref.image_id + "&size=" + (ref.size === "SMALL" ? "SMALL" : "LARGE")}
+                src={"https://cdn.x.ai/images?id=" +
+                  ref.image_id +
+                  "&size=" +
+                  (ref.size === "SMALL" ? "SMALL" : "LARGE")}
                 alt={"Searched image (ID: " + ref.image_id + ")"}
                 class="max-h-48 w-auto object-contain"
                 loading="lazy"
               />
-              <p class="p-1.5 text-[10px] text-zinc-500 dark:text-zinc-400 truncate max-w-[120px]">ID: {ref.image_id}</p>
+              <p
+                class="p-1.5 text-[10px] text-zinc-500 dark:text-zinc-400 truncate max-w-[120px]"
+              >
+                ID: {ref.image_id}
+              </p>
             </div>
           {/each}
         </div>
       {/if}
       {#if isAssistant && imageUrls.length}
-        <div class="mt-3 flex gap-2 overflow-x-auto pb-1 rounded-lg" role="list" aria-label="Generated images">
+        <div
+          class="mt-3 flex gap-2 overflow-x-auto pb-1 rounded-lg"
+          role="list"
+          aria-label="Generated images"
+        >
           {#each imageUrls as url (url)}
-            <div class="shrink-0 rounded border border-zinc-200 dark:border-zinc-600 overflow-hidden bg-zinc-100 dark:bg-zinc-800/80" role="listitem">
+            <div
+              class="shrink-0 rounded border border-zinc-200 dark:border-zinc-600 overflow-hidden bg-zinc-100 dark:bg-zinc-800/80"
+              role="listitem"
+            >
               <img
                 src={url}
                 alt=""
@@ -225,25 +264,33 @@
         </div>
       {/if}
       {#if isAssistant && videoUrls.length}
-        <div class="mt-3 flex flex-col gap-2" role="list" aria-label="Generated videos">
+        <div
+          class="mt-3 flex flex-col gap-2"
+          role="list"
+          aria-label="Generated videos"
+        >
           {#each videoUrls as url (url)}
-            <div class="rounded border border-zinc-200 dark:border-zinc-600 overflow-hidden bg-zinc-100 dark:bg-zinc-800/80 max-w-2xl" role="listitem">
-              <AuthVideo url={url} apiKey={deepinfraKey} />
+            <div
+              class="rounded border border-zinc-200 dark:border-zinc-600 overflow-hidden bg-zinc-100 dark:bg-zinc-800/80 max-w-2xl"
+              role="listitem"
+            >
+              <AuthVideo {url} apiKey={deepinfraKey} />
             </div>
           {/each}
         </div>
       {/if}
-      {#if isAssistant && (content.includes('Generated image') || content.includes('Generated video')) && !imageUrls.length && !videoUrls.length}
-        <p class="mt-2 text-sm text-amber-600 dark:text-amber-400">Media could not be loaded. Try generating again and ensure your DeepInfra API key is set in Settings.</p>
+      {#if isAssistant && (content.includes("Generated image") || content.includes("Generated video")) && !imageUrls.length && !videoUrls.length}
+        <p class="mt-2 text-sm text-amber-600 dark:text-amber-400">
+          Media could not be loaded. Try generating again and ensure your
+          DeepInfra API key is set in Settings.
+        </p>
       {/if}
     {/if}
 
     <!-- Copy/Pin buttons for ALL messages (User or Assistant) -->
     {#if (isUser && (content || contentArray.length)) || (isAssistant && (content || hasThinkingOrAnswer))}
       <div
-        class="flex items-center gap-1 mt-2 pt-2 border-t {isUser
-          ? 'border-primary-200/40 dark:border-primary-700/40 justify-end'
-          : 'border-zinc-200/60 dark:border-zinc-600/60'}"
+        class="flex items-center gap-1 mt-2 pt-2 {isUser ? 'justify-end' : ''}"
       >
         <!-- Copy button with clipboard icon -->
         <button
@@ -341,6 +388,22 @@
           {/if}
         </button>
       </div>
+      {#if isAssistant && (message.stats || content)}
+        <div class="perf-stats-wrap mt-2 flex justify-start">
+          <PerfStats
+            stats={message.stats}
+            contentLength={content.length}
+            elapsedMs={message.stats?.elapsed_ms}
+          />
+        </div>
+      {/if}
     {/if}
   </div>
 </div>
+
+<style>
+  .message-bubble-inner {
+    font-size: 14px;
+    line-height: 1.5;
+  }
+</style>

@@ -57,7 +57,7 @@ export async function checkLmStudioConnection() {
   };
   try {
     if (await tryFetch(`${base}/api/v1/models`)) return true;
-  } catch (_) {}
+  } catch (_) { }
   try {
     return await tryFetch(`${base}/v1/models`);
   } catch {
@@ -304,18 +304,26 @@ export async function getModels() {
  */
 export async function getLoadedModelKeys() {
   const base = getLmStudioBase();
-  const res = await fetch(`${base}/api/v1/models`);
-  if (!res.ok) return [];
-  const data = await res.json();
-  const raw = data.models ?? data.data?.models ?? (Array.isArray(data) ? data : []);
-  if (!Array.isArray(raw)) return [];
-  return raw
-    .filter((m) => {
-      const instances = m?.loaded_instances ?? m?.instances ?? m?.loaded;
-      return m && Array.isArray(instances) && instances.length > 0;
-    })
-    .map((m) => m.key ?? m.id ?? '')
-    .filter(Boolean);
+  const ctrl = new AbortController();
+  const to = setTimeout(() => ctrl.abort(), 15000);
+  try {
+    const res = await fetch(`${base}/api/v1/models`, { signal: ctrl.signal });
+    if (!res.ok) return [];
+    const data = await res.json();
+    const raw = data.models ?? data.data?.models ?? (Array.isArray(data) ? data : []);
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .filter((m) => {
+        const instances = m?.loaded_instances ?? m?.instances ?? m?.loaded;
+        return m && Array.isArray(instances) && instances.length > 0;
+      })
+      .map((m) => m.key ?? m.id ?? '')
+      .filter(Boolean);
+  } catch (_) {
+    return [];
+  } finally {
+    clearTimeout(to);
+  }
 }
 
 /**
@@ -326,16 +334,23 @@ export async function getLoadedModelKeys() {
 export async function unloadByInstanceId(instanceId) {
   if (!instanceId || typeof instanceId !== 'string') return {};
   const base = getLmStudioBase();
-  const res = await fetch(`${base}/api/v1/models/unload`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ instance_id: instanceId }),
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`LM Studio unload: ${res.status} ${text}`);
+  const ctrl = new AbortController();
+  const to = setTimeout(() => ctrl.abort(), 15000);
+  try {
+    const res = await fetch(`${base}/api/v1/models/unload`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ instance_id: instanceId }),
+      signal: ctrl.signal,
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`LM Studio unload: ${res.status} ${text}`);
+    }
+    return res.json();
+  } finally {
+    clearTimeout(to);
   }
-  return res.json();
 }
 
 /**
@@ -381,16 +396,24 @@ export async function loadModel(modelId, loadConfig = {}) {
   body.echo_load_config = true;
 
   const base = getLmStudioBase();
-  const res = await fetch(`${base}/api/v1/models/load`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`LM Studio load: ${res.status} ${text}`);
+  // 60s timeout: large models can take a while to load into VRAM
+  const ctrl = new AbortController();
+  const to = setTimeout(() => ctrl.abort(), 60000);
+  try {
+    const res = await fetch(`${base}/api/v1/models/load`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: ctrl.signal,
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`LM Studio load: ${res.status} ${text}`);
+    }
+    return res.json();
+  } finally {
+    clearTimeout(to);
   }
-  return res.json();
 }
 
 /**
@@ -401,20 +424,28 @@ export async function loadModel(modelId, loadConfig = {}) {
 export async function getLoadedInstanceIdsForModel(modelKey) {
   if (!modelKey || typeof modelKey !== 'string') return [];
   const base = getLmStudioBase();
-  const res = await fetch(`${base}/api/v1/models`);
-  if (!res.ok) return [];
-  const data = await res.json();
-  const raw = data.models ?? data.data?.models ?? (Array.isArray(data) ? data : []);
-  const key = String(modelKey).trim().toLowerCase();
-  const ids = [];
-  for (const m of raw) {
-    const modelKeyCur = (m?.key ?? m?.id ?? '').toString().trim().toLowerCase();
-    if (!modelKeyCur || modelKeyCur !== key && !modelKeyCur.endsWith('/' + key) && !key.endsWith('/' + modelKeyCur))
-      continue;
-    const instances = m?.loaded_instances ?? m?.instances;
-    if (Array.isArray(instances)) for (const inst of instances) if (inst?.id != null) ids.push(String(inst.id));
+  const ctrl = new AbortController();
+  const to = setTimeout(() => ctrl.abort(), 15000);
+  try {
+    const res = await fetch(`${base}/api/v1/models`, { signal: ctrl.signal });
+    if (!res.ok) return [];
+    const data = await res.json();
+    const raw = data.models ?? data.data?.models ?? (Array.isArray(data) ? data : []);
+    const key = String(modelKey).trim().toLowerCase();
+    const ids = [];
+    for (const m of raw) {
+      const modelKeyCur = (m?.key ?? m?.id ?? '').toString().trim().toLowerCase();
+      if (!modelKeyCur || modelKeyCur !== key && !modelKeyCur.endsWith('/' + key) && !key.endsWith('/' + modelKeyCur))
+        continue;
+      const instances = m?.loaded_instances ?? m?.instances;
+      if (Array.isArray(instances)) for (const inst of instances) if (inst?.id != null) ids.push(String(inst.id));
+    }
+    return ids;
+  } catch (_) {
+    return [];
+  } finally {
+    clearTimeout(to);
   }
-  return ids;
 }
 
 /**
@@ -425,7 +456,7 @@ export async function getLoadedInstanceIdsForModel(modelKey) {
 export async function unloadModel(modelId) {
   if (!modelId || typeof modelId !== 'string') return;
   const instanceIds = await getLoadedInstanceIdsForModel(modelId);
-  await Promise.allSettled(instanceIds.map((id) => unloadByInstanceId(id).catch(() => {})));
+  await Promise.allSettled(instanceIds.map((id) => unloadByInstanceId(id).catch(() => { })));
 }
 
 const DEFAULT_UNLOAD_HELPER_URL = 'http://localhost:8766';
@@ -463,7 +494,14 @@ export async function unloadAllLoadedModels(helperUrlOrOverride) {
 export async function unloadAllModelsNative() {
   try {
     const base = getLmStudioBase();
-    const res = await fetch(`${base}/api/v1/models`);
+    const ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), 15000);
+    let res;
+    try {
+      res = await fetch(`${base}/api/v1/models`, { signal: ctrl.signal });
+    } finally {
+      clearTimeout(to);
+    }
     if (!res.ok) return { ok: false, unloaded: 0 };
     const data = await res.json();
     const raw = data.models ?? data.data?.models ?? (Array.isArray(data) ? data : []);
@@ -478,7 +516,7 @@ export async function unloadAllModelsNative() {
       }
     }
     if (instanceIds.length === 0) return { ok: true, unloaded: 0 };
-    await Promise.allSettled(instanceIds.map((id) => unloadByInstanceId(id).catch(() => {})));
+    await Promise.allSettled(instanceIds.map((id) => unloadByInstanceId(id).catch(() => { })));
     return { ok: true, unloaded: instanceIds.length };
   } catch (_) {
     return { ok: false, unloaded: 0 };
@@ -1042,7 +1080,7 @@ async function streamGrokResponsesApi({ model, messages, options = {}, onChunk, 
               streamEnded = true;
             }
             if (streamEnded) break;
-          } catch (_) {}
+          } catch (_) { }
         }
         if (streamEnded) break;
       }
@@ -1181,7 +1219,7 @@ export async function streamChatCompletion({ model, messages, options = {}, onCh
                 streamEnded = true;
               }
               if (streamEnded) break;
-            } catch (_) {}
+            } catch (_) { }
           }
         }
         if (streamEnded) break;

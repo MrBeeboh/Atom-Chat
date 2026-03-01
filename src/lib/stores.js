@@ -23,6 +23,9 @@ export const pendingDroppedFiles = writable(null);
 /** Loaded LM Studio model list { id }[] */
 export const models = writable([]);
 
+export const contextUsage = writable({ promptTokens: 0, contextMax: 128000 });
+export const summarizeAndContinueTrigger = writable(0);
+
 /** Hardware detected on startup (CPU logical cores; GPU not available from browser). */
 export const hardware = writable(
   typeof navigator !== 'undefined' ? detectHardware() : { cpuLogicalCores: 4 }
@@ -276,7 +279,7 @@ function loadGlobalDefault() {
         return cockpit;
       }
     }
-  } catch (_) {}
+  } catch (_) { }
   return {};
 }
 export const globalDefault = writable(loadGlobalDefault());
@@ -518,6 +521,7 @@ if (typeof localStorage !== 'undefined') {
   floatingMetricsSize.subscribe(saveFloatingMetrics);
 }
 
+export const tokSeries = writable([]);
 export function pushTokSample(rate) {
   const r = Number(rate);
   if (!Number.isFinite(r)) return;

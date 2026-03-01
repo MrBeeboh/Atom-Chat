@@ -533,45 +533,7 @@
     saveArenaMessages();
   });
 
-  const _REMOVED_JUDGE_WEB_LINES = [
-    // eslint-disable-line no-unused-vars -- imported from arenaLogic.js now; kept to avoid git churn on smart-quoted strings
-    {
-      main: "Judge is checking the web…",
-      sub: "(Googling so the judge can fact-check. No, really.)",
-    },
-    {
-      main: "Judge is checking the internet.",
-      sub: "(Yes, the whole thing. We asked nicely.)",
-    },
-    {
-      main: "Judge is consulting the oracle.",
-      sub: "(It’s Google. But “oracle” sounds cooler.)",
-    },
-    {
-      main: "Judge is fact-checking in the cloud.",
-      sub: "(Someone had to. It’s not gonna check itself.)",
-    },
-    {
-      main: "Judge is asking the internet.",
-      sub: "(We’ll see if it answers. Usually it’s cats.)",
-    },
-    {
-      main: "Judge is doing the research.",
-      sub: "(So you don’t have to. You’re welcome.)",
-    },
-    {
-      main: "Judge is verifying things.",
-      sub: "(Rumors say the internet has facts. We’re testing that.)",
-    },
-    {
-      main: "Judge is hitting the books.",
-      sub: "(The books are web servers. Same energy.)",
-    },
-    {
-      main: "Judge is checking the web…",
-      sub: "(Making sure the models didn’t just make it up. Again.)",
-    },
-  ];
+  // _REMOVED_JUDGE_WEB_LINES: dead code removed (migrated to arenaLogic.js).
 
   // ---------- Draggable floating panels (question + Ask the Judge) ----------
   function loadPanelPos(key, defaultX, defaultY) {
@@ -1247,6 +1209,9 @@
   function stopAll() {
     runId += 1;
     arenaTransitionPhase = null;
+    // Cancel Run All if active (prevents zombie question loops)
+    runAllActive = false;
+    runAllProgress = { current: 0, total: 0 };
     for (const slot of ["A", "B", "C", "D"]) {
       try {
         aborters[slot]?.abort();
@@ -1257,6 +1222,8 @@
     isStreaming.set(false);
     liveTokens.set(null);
     liveTokPerSec.set(null);
+    // Clear any lingering slot errors so UI doesn't show stale errors
+    slotErrors = { A: "", B: "", C: "", D: "" };
   }
 
   /** Go to previous question index (display only; does not send). */
