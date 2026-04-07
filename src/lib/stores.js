@@ -148,6 +148,13 @@ if (typeof localStorage !== 'undefined') {
   deepinfraApiKey.subscribe((v) => localStorage.setItem('deepinfraApiKey', (typeof v === 'string' ? v : '').trim()));
 }
 
+/** Brave Search API key: web search (globe). Stored in browser, sent to search proxy. */
+const getStoredBraveApiKey = () => (typeof localStorage !== 'undefined' ? (localStorage.getItem('braveApiKey') ?? '').trim() : null) ?? '';
+export const braveApiKey = writable(getStoredBraveApiKey());
+if (typeof localStorage !== 'undefined') {
+  braveApiKey.subscribe((v) => localStorage.setItem('braveApiKey', (typeof v === 'string' ? v : '').trim()));
+}
+
 /** Together image endpoint name: required for FLUX.1-schnell-Free (create dedicated endpoint at api.together.ai, then paste the endpoint name here). */
 const getStoredTogetherImageEndpoint = () => (typeof localStorage !== 'undefined' ? (localStorage.getItem('togetherImageEndpoint') ?? '').trim() : null) ?? '';
 export const togetherImageEndpoint = writable(getStoredTogetherImageEndpoint());
@@ -361,6 +368,22 @@ export function updateSettings(patch) {
 
 /** Whether we're currently streaming a response */
 export const isStreaming = writable(false);
+
+/**
+ * AI Lab diagnostics overlay: runtime metrics. Single writer = stream reporter only.
+ * Throttled updates (max 100ms) during stream; start/end events outside throttle.
+ * liveChunks = count of onChunk calls (text deltas); lastTotalTokens = API usage.completion_tokens when available.
+ * @type {import('svelte/store').Writable<{ isStreaming: boolean, liveChunks: number, liveChunksPerSec: number, lastLatencyMs: number | null, lastTokenAt: number | null, lastTotalTokens: number | null, temperature: number | null }>}
+ */
+export const themeMetrics = writable({
+  isStreaming: false,
+  liveChunks: 0,
+  liveChunksPerSec: 0,
+  lastLatencyMs: null,
+  lastTokenAt: null,
+  lastTotalTokens: null,
+  temperature: null,
+});
 
 /** Error message to show near chat input (e.g. API or model error) */
 export const chatError = writable(null);

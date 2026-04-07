@@ -28,6 +28,7 @@ dist-ssr
 
 # Voice server Python venv and cache
 voice-server/.venv
+voice-server/venv/
 voice-server/__pycache__/
 
 # Local backups (keep repo clean; backups stay on your machine)
@@ -37,3 +38,10 @@ voice-server/__pycache__/
 *-backup.*
 *.pre-enhanced-backup
 *.windows-backup
+
+# AI handoff / generated cruft
+AGENT-*
+handoff*.json
+*-manifest.json
+ATOM-*-FIX.md
+config/brave_key.txt

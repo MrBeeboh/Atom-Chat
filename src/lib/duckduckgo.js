@@ -1,21 +1,14 @@
 /**
- * DuckDuckGo search for ATOM: real web results via Lite HTML (not just Instant Answer).
- * No API key. Uses CORS proxy in the browser.
+ * Web search via local Brave Search proxy. Key from Settings or BRAVE_API_KEY.
  */
 
-/**
- * CORS proxies for DuckDuckGo Lite. Browser can't fetch DDG directly (CORS).
- * We try each in order; if one is down the next is used automatically.
- * Tested 2026-02-09:
- *   corsproxy.org  → 200 OK (returns HTML body directly)
- *   allorigins /get → 200 OK (returns JSON { contents: "..." })
- *   corsproxy.io   → 403 DEAD
- *   allorigins /raw → 520 DEAD
- */
-
-// Fetch Brave JSON results from backend search proxy
+// Fetch from backend search proxy
 async function fetchViaProxy(query) {
   const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+  if (res.status === 503) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.message || 'Web search not configured. Add Brave API key in Settings.');
+  }
   if (!res.ok) throw new Error(`Search failed: ${res.status}`);
   return await res.json();
 }
@@ -62,7 +55,7 @@ export async function searchDuckDuckGo(query) {
     try {
       liteResults = await searchDuckDuckGoLite(q);
     } catch (secondErr) {
-      throw new Error('Web search failed after retry. Check your internet connection and click the globe to reconnect.');
+      throw new Error('Web search unavailable. Add Brave key in Settings or click globe to retry.');
     }
   }
 
@@ -80,15 +73,34 @@ export async function searchDuckDuckGo(query) {
   };
 }
 
-/**
- * Prime the backend search proxy connection when the user turns on web search (globe click).
- * Resolves with true if warm-up succeeded, false otherwise (non-throwing).
- */
+/** Check if search proxy is running (health check). */
+export async function checkSearchConnection() {
+  try {
+    const c = new AbortController();
+    const t = setTimeout(() => c.abort(), 3000);
+    const res = await fetch('/api/health', { signal: c.signal });
+    clearTimeout(t);
+    if (!res.ok) return { ok: false, error: 'Health check failed' };
+    const data = await res.json();
+    return { ok: true, available: data.search_available, timestamp: data.timestamp };
+  } catch (err) {
+    return { ok: false, error: err.name === 'AbortError' ? 'Connection timeout' : err.message };
+  }
+}
+
+/** Send Brave API key to search proxy (e.g. after pasting in Settings). */
+export async function syncBraveKeyToProxy(key) {
+  const k = (key || '').trim();
+  if (k.length < 10) return;
+  try {
+    const res = await fetch('/api/set-key', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: k, type: 'brave' }) });
+    if (!res.ok) throw new Error(await res.text());
+  } catch (err) { console.warn('[search]', err.message); }
+}
+
+/** Prime the backend; returns Promise<boolean> for UI. */
 export function warmUpSearchConnection() {
-  const WARMUP_TIMEOUT_MS = 12000;
-  return fetch('/api/search?q=a', { signal: (typeof AbortSignal?.timeout === 'function' ? AbortSignal.timeout(WARMUP_TIMEOUT_MS) : undefined) })
-    .then((res) => res.ok)
-    .catch(() => false);
+  return checkSearchConnection().then((data) => data.ok && data.available === true);
 }
 
 /**

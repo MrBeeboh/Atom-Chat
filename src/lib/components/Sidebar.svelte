@@ -63,7 +63,7 @@
 <div class="flex-1 overflow-y-auto overflow-x-hidden p-2 flex flex-col min-h-0 min-w-0">
   {#if isArena}
     <div class="mb-2 px-3 py-2 rounded-lg text-xs" style="background: color-mix(in srgb, var(--ui-accent) 10%, transparent); border: 1px solid var(--ui-border); color: var(--ui-text-secondary);">
-      <span class="font-semibold" style="color: var(--ui-accent);">Arena mode</span> — competition messages live in the Arena panels (not saved here). Conversations below are from Cockpit chat.
+      <span class="font-semibold" style="color: var(--ui-accent);">Arena</span> — panel messages aren’t saved. List below = Cockpit chats.
     </div>
   {/if}
   <button

@@ -39,6 +39,7 @@
     arenaBuilderInternetEnabled,
     arenaDebugMode,
     arenaSlotAIsJudge,
+    braveApiKey,
   } from "$lib/stores.js";
   import { playClick, playComplete } from "$lib/audio.js";
   import {
@@ -55,6 +56,7 @@
     searchDuckDuckGo,
     formatSearchResultForChat,
     warmUpSearchConnection,
+    syncBraveKeyToProxy,
   } from "$lib/duckduckgo.js";
   import ChatInput from "$lib/components/ChatInput.svelte";
   import ThinkingAtom from "$lib/components/ThinkingAtom.svelte";
@@ -323,6 +325,10 @@
     arenaWebWarmingUp = true;
     webSearchConnected.set(false);
     warmUpSearchConnection()
+      .then((ok) => {
+        if (!ok && get(braveApiKey)?.trim()) return syncBraveKeyToProxy(get(braveApiKey)).then(() => warmUpSearchConnection());
+        return ok;
+      })
       .then((ok) => {
         arenaWebWarmingUp = false;
         webSearchConnected.set(ok);

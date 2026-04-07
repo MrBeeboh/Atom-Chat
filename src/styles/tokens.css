@@ -1,0 +1,67 @@
+/**
+ * Structural design tokens. Shared by all themes.
+ * Themes override only semantic tokens (e.g. --ui-accent); they do not redefine these scales.
+ */
+
+:root {
+  /* Spacing scale (--spacing in @theme points at --space-1; one multiplier base) */
+  --space-0: 0;
+  --space-half: 0.125rem;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --space-20: 5rem;
+
+  /* Motion durations (locked scale: instant | fast | normal | slow | slower | long) */
+  --duration-instant: 0ms;
+  --duration-fast: 100ms;
+  --duration-normal: 200ms;
+  --duration-slow: 350ms;
+  --duration-slower: 500ms;
+  --duration-long: 2s;
+
+  /* Motion curves (canonical set only) */
+  --ease-default: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-mechanical: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --ease-fluid: cubic-bezier(0.33, 1, 0.68, 1);
+
+  /* Radius scale (including zero) */
+  --radius-none: 0;
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-full: 9999px;
+
+  /* Typography scale (font-size / line-height) */
+  --text-xs: 0.75rem;
+  --text-xs-line: 1rem;
+  --text-sm: 0.875rem;
+  --text-sm-line: 1.25rem;
+  --text-base: 1rem;
+  --text-base-line: 1.5rem;
+  --text-lg: 1.125rem;
+  --text-lg-line: 1.5rem;
+  --text-xl: 1.25rem;
+  --text-xl-line: 1.5rem;
+  --text-2xl: 1.5rem;
+  --text-2xl-line: 1.75rem;
+  --text-3xl: 1.875rem;
+  --text-3xl-line: 2rem;
+  --text-4xl: 2.25rem;
+  --text-4xl-line: 2.5rem;
+
+  /* Font families (theme may override semantic --ui-font) */
+  --font-sans: 'Inter', system-ui, ui-sans-serif, sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Code', 'Consolas', monospace;
+}

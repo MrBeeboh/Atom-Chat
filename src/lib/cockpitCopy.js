@@ -1,72 +1,23 @@
 /**
- * @file cockpitCopy.js
- * @description Witty, contextual status copy for the Cockpit (chat) UI:
- * LM Studio connection, loading models, sending/streaming. Keeps tone consistent with Arena.
+ * Status copy for Cockpit: one clear label per state (no rotation).
  */
 
-// ---------- LM Studio connection status (header) ----------
-/** Shown when we're checking the connection (polling). */
-export const COCKPIT_LM_CHECKING = [
-  'Checking LM Studio…',
-  'Pinging the local brain…',
-  'Seeing if the server is awake…',
-  'Knocking on localhost…',
-  'Checking the connection…',
-];
+// LM Studio connection (header)
+export const COCKPIT_LM_CHECKING = 'Checking…';
+export const COCKPIT_LM_CONNECTED = 'Connected';
+export const COCKPIT_LM_UNREACHABLE = 'Disconnected';
+export const COCKPIT_CLOUD_APIS_AVAILABLE = 'Cloud only';
 
-/** Shown when LM Studio is connected. */
-export const COCKPIT_LM_CONNECTED = [
-  'LM Studio connected',
-  'LM Studio is here',
-  'Ready to talk',
-  'Connected',
-];
+// Model dropdown
+export const COCKPIT_LOADING_MODELS = 'Loading models…';
 
-/** Shown when LM Studio is not reachable. */
-export const COCKPIT_LM_UNREACHABLE = [
-  'LM Studio not reachable',
-  'Can\'t reach LM Studio',
-  'Server not answering',
-  'LM Studio might be sleeping',
-];
+// Chat input (sending / search)
+export const COCKPIT_SENDING = 'Sending…';
+export const COCKPIT_SEARCHING = 'Searching…';
 
-/** Shown when LM Studio is down but Grok/DeepSeek API keys are set (cloud models still work). */
-export const COCKPIT_CLOUD_APIS_AVAILABLE = [
-  'Cloud APIs (Grok, DeepSeek) available',
-  'Grok / DeepSeek ready',
-  'Cloud models available',
-];
-
-// ---------- Loading models (model dropdown) ----------
-export const COCKPIT_LOADING_MODELS = [
-  'Asking LM Studio for the model list…',
-  'Loading models…',
-  'Fetching the roster…',
-  'Seeing who\'s available…',
-  'One sec, checking the garage…',
-  'Loading the model menu…',
-];
-
-// ---------- Sending / streaming (chat input area) ----------
-export const COCKPIT_SENDING = [
-  'Sending…',
-  'Thinking…',
-  'Off to the model…',
-  'Waiting on the reply…',
-  'In the pipeline…',
-  'Your message, their problem now…',
-];
-
-/** Shown when web search is in progress before send. */
-export const COCKPIT_SEARCHING = [
-  'Searching the web…',
-  'Asking the internet…',
-  'Looking it up…',
-  'Fact-checking in progress…',
-];
-
-/** Pick one at random. */
-export function pickWitty(lines) {
-  if (!lines?.length) return '';
-  return lines[Math.floor(Math.random() * lines.length)];
+/** For backward compatibility: return string or first element of array. */
+export function pickWitty(x) {
+  if (typeof x === 'string') return x;
+  if (Array.isArray(x) && x.length) return x[0];
+  return '';
 }
