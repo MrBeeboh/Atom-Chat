@@ -631,6 +631,16 @@ body {
   --arena-bar-bg: var(--ui-input-bg);
 }
 
+/* Q pill: force full question text — no ellipsis, no clamping */
+.arena-command-toolbar select,
+.arena-question-bar select,
+.arena-command-toolbar .q-pill-text,
+.arena-question-bar .q-pill-text {
+  white-space: normal;
+  text-overflow: clip;
+  -webkit-line-clamp: unset;
+}
+
 /* Q1, model names, and bar controls: clear sans-serif for readability */
 .arena-question-bar,
 .arena-question-bar *,
