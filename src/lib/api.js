@@ -241,8 +241,17 @@ function getCloudModels() {
 /** Timeout for LM Studio model list fetch so we don't hang when server is down; then cloud-only list can still load. */
 const LOCAL_MODELS_TIMEOUT_MS = 10000;
 
-/** Timeout for cloud (Grok, DeepSeek) API requests. 120s per DeepSeek guidance for reasoning models. */
+/** Timeout for cloud (Grok, DeepSeek) API requests when caller does not override. */
 const CLOUD_REQUEST_TIMEOUT_MS = 120000;
+
+/** Cloud stream fetch timeout from options (e.g. Arena execution setting); clamp 60s–15m. */
+function resolveCloudStreamTimeoutMs(options) {
+  const raw = options?.request_timeout_ms;
+  if (raw != null && Number.isFinite(Number(raw))) {
+    return Math.max(60_000, Math.min(900_000, Number(raw)));
+  }
+  return CLOUD_REQUEST_TIMEOUT_MS;
+}
 
 /**
  * Fetch list of models from LM Studio (local). Throws if unreachable or timeout.
@@ -995,7 +1004,7 @@ async function streamGrokResponsesApi({ model, messages, options = {}, onChunk, 
   }
 
   const timeoutCtrl = new AbortController();
-  const timeoutId = setTimeout(() => timeoutCtrl.abort(), CLOUD_REQUEST_TIMEOUT_MS);
+  const timeoutId = setTimeout(() => timeoutCtrl.abort(), resolveCloudStreamTimeoutMs(options));
   let effectiveSignal = timeoutCtrl.signal;
   if (signal) {
     if (signal.aborted) {
@@ -1107,7 +1116,7 @@ async function streamGrokResponsesApi({ model, messages, options = {}, onChunk, 
  * @param {Object} opts
  * @param {string} opts.model - Model id
  * @param {Array<{ role: string, content: string|Array }>} opts.messages
- * @param {Object} [opts.options] - temperature, max_tokens, ttl, etc.
+ * @param {Object} [opts.options] - temperature, max_tokens, ttl, request_timeout_ms (cloud/Grok only, ms, 60s–15m), etc.
  * @param {(chunk: string) => void} opts.onChunk
  * @param {(usage: { prompt_tokens?: number, completion_tokens?: number }) => void} [opts.onUsage]
  * @param {() => void} [opts.onDone] - Called when stream ends ([DONE] line or connection closed). Use to clear busy UI immediately.
@@ -1154,7 +1163,7 @@ export async function streamChatCompletion({ model, messages, options = {}, onCh
   let timeoutId = null;
   if (isCloud) {
     const timeoutCtrl = new AbortController();
-    timeoutId = setTimeout(() => timeoutCtrl.abort(), CLOUD_REQUEST_TIMEOUT_MS);
+    timeoutId = setTimeout(() => timeoutCtrl.abort(), resolveCloudStreamTimeoutMs(options));
     if (signal) {
       if (signal.aborted) {
         clearTimeout(timeoutId);

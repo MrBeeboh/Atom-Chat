@@ -7,7 +7,17 @@
   import ThinkingAtom from '$lib/components/ThinkingAtom.svelte';
   import { COCKPIT_LOADING_MODELS, pickWitty } from '$lib/cockpitCopy.js';
 
-  let { slot = 'A' } = $props();
+  let { slot = 'A', compact = false } = $props();
+
+  /** Rich tooltip; in compact mode capability badges move to the dropdown only. */
+  function modelTriggerTitle(id) {
+    if (!id) return undefined;
+    const q = getQuantization(id);
+    const name = modelDisplayName(id);
+    let t = q ? `${name} (${q})` : name;
+    if (compact) t += ' — capability icons in menu';
+    return t;
+  }
   let open = $state(false);
   let loading = $state(false);
   let loadError = $state(null);
@@ -88,12 +98,12 @@
   {@const val = $dashboardModelA}
   <div class="flex items-center gap-2">
     <div class="relative flex-1 min-w-0" role="combobox" aria-expanded={open} aria-controls="model-listbox-A" aria-haspopup="listbox" aria-label="Select model A" bind:this={triggerEl}>
-      <button type="button" class="flex items-center gap-2 rounded-lg border text-sm px-3 py-2 w-full min-h-[36px] transition-colors duration-150 ui-model-selector {open ? 'ui-model-selector-open' : ''}" style="background-color: var(--ui-input-bg); color: var(--ui-text-primary); border-color: var(--ui-border);" onclick={toggle} onkeydown={(e) => e.key === 'Escape' && (open = false)} aria-label="Select model A">
+      <button type="button" class="flex items-center gap-2 rounded-lg border text-sm px-3 py-2 w-full min-h-[36px] transition-colors duration-150 ui-model-selector {open ? 'ui-model-selector-open' : ''}" style="background-color: var(--ui-input-bg); color: var(--ui-text-primary); border-color: var(--ui-border);" title={val ? modelTriggerTitle(val) : undefined} onclick={toggle} onkeydown={(e) => e.key === 'Escape' && (open = false)} aria-label="Select model A">
         {#if val}
           {@const selIcon = getModelIcon(val, $modelIconOverrides)}
           {#if selIcon}<img src={selIcon} alt="" class="w-4 h-4 shrink-0 rounded object-contain" />{/if}
           <span class="truncate font-bold uppercase tracking-tight text-xs">{modelDisplayName(val)}</span>
-          <ModelCapabilityBadges modelId={val} class="ml-0.5" />
+          {#if !compact}<ModelCapabilityBadges modelId={val} class="ml-0.5" />{/if}
         {:else}<span class="text-zinc-500 dark:text-zinc-400">Select model</span>{/if}
         <svg class="w-4 h-4 shrink-0 ml-1 transition-transform duration-150 {open ? 'rotate-180' : ''}" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
       </button>
@@ -123,18 +133,18 @@
         <button type="button" class="fixed inset-0 z-40" aria-label="Close" onclick={() => (open = false)}></button>
       {/if}
     </div>
-    {#if val && getQuantization(val)}<span class="font-mono text-[10px] px-1.5 py-0.5 rounded bg-zinc-200 dark:bg-zinc-600 text-zinc-600 dark:text-zinc-400 shrink-0" title="Quantization">{getQuantization(val)}</span>{/if}
+    {#if !compact && val && getQuantization(val)}<span class="font-mono text-[10px] px-1.5 py-0.5 rounded bg-zinc-200 dark:bg-zinc-600 text-zinc-600 dark:text-zinc-400 shrink-0" title="Quantization">{getQuantization(val)}</span>{/if}
   </div>
 {:else if slot === 'B'}
   {@const val = $dashboardModelB}
   <div class="flex items-center gap-2">
     <div class="relative flex-1 min-w-0" role="combobox" aria-expanded={open} aria-controls="model-listbox-B" aria-haspopup="listbox" aria-label="Select model B" bind:this={triggerEl}>
-      <button type="button" class="flex items-center gap-2 rounded-lg border text-sm px-3 py-2 w-full min-h-[36px] transition-colors duration-150 ui-model-selector {open ? 'ui-model-selector-open' : ''}" style="background-color: var(--ui-input-bg); color: var(--ui-text-primary); border-color: var(--ui-border);" onclick={toggle} onkeydown={(e) => e.key === 'Escape' && (open = false)} aria-label="Select model B">
+      <button type="button" class="flex items-center gap-2 rounded-lg border text-sm px-3 py-2 w-full min-h-[36px] transition-colors duration-150 ui-model-selector {open ? 'ui-model-selector-open' : ''}" style="background-color: var(--ui-input-bg); color: var(--ui-text-primary); border-color: var(--ui-border);" title={val ? modelTriggerTitle(val) : undefined} onclick={toggle} onkeydown={(e) => e.key === 'Escape' && (open = false)} aria-label="Select model B">
         {#if val}
           {@const selIcon = getModelIcon(val, $modelIconOverrides)}
           {#if selIcon}<img src={selIcon} alt="" class="w-4 h-4 shrink-0 rounded object-contain" />{/if}
           <span class="truncate font-bold uppercase tracking-tight text-xs">{modelDisplayName(val)}</span>
-          <ModelCapabilityBadges modelId={val} class="ml-0.5" />
+          {#if !compact}<ModelCapabilityBadges modelId={val} class="ml-0.5" />{/if}
         {:else}<span class="text-zinc-500 dark:text-zinc-400">Select model</span>{/if}
         <svg class="w-4 h-4 shrink-0 ml-1 transition-transform duration-150 {open ? 'rotate-180' : ''}" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
       </button>
@@ -164,18 +174,18 @@
         <button type="button" class="fixed inset-0 z-40" aria-label="Close" onclick={() => (open = false)}></button>
       {/if}
     </div>
-    {#if val && getQuantization(val)}<span class="font-mono text-[10px] px-1.5 py-0.5 rounded bg-zinc-200 dark:bg-zinc-600 text-zinc-600 dark:text-zinc-400 shrink-0" title="Quantization">{getQuantization(val)}</span>{/if}
+    {#if !compact && val && getQuantization(val)}<span class="font-mono text-[10px] px-1.5 py-0.5 rounded bg-zinc-200 dark:bg-zinc-600 text-zinc-600 dark:text-zinc-400 shrink-0" title="Quantization">{getQuantization(val)}</span>{/if}
   </div>
 {:else if slot === 'C'}
   {@const val = $dashboardModelC}
   <div class="flex items-center gap-2">
     <div class="relative flex-1 min-w-0" role="combobox" aria-expanded={open} aria-controls="model-listbox-C" aria-haspopup="listbox" aria-label="Select model C" bind:this={triggerEl}>
-      <button type="button" class="flex items-center gap-2 rounded-lg border text-sm px-3 py-2 w-full min-h-[36px] transition-colors duration-150 ui-model-selector {open ? 'ui-model-selector-open' : ''}" style="background-color: var(--ui-input-bg); color: var(--ui-text-primary); border-color: var(--ui-border);" onclick={toggle} onkeydown={(e) => e.key === 'Escape' && (open = false)} aria-label="Select model C">
+      <button type="button" class="flex items-center gap-2 rounded-lg border text-sm px-3 py-2 w-full min-h-[36px] transition-colors duration-150 ui-model-selector {open ? 'ui-model-selector-open' : ''}" style="background-color: var(--ui-input-bg); color: var(--ui-text-primary); border-color: var(--ui-border);" title={val ? modelTriggerTitle(val) : undefined} onclick={toggle} onkeydown={(e) => e.key === 'Escape' && (open = false)} aria-label="Select model C">
         {#if val}
           {@const selIcon = getModelIcon(val, $modelIconOverrides)}
           {#if selIcon}<img src={selIcon} alt="" class="w-4 h-4 shrink-0 rounded object-contain" />{/if}
           <span class="truncate font-bold uppercase tracking-tight text-xs">{modelDisplayName(val)}</span>
-          <ModelCapabilityBadges modelId={val} class="ml-0.5" />
+          {#if !compact}<ModelCapabilityBadges modelId={val} class="ml-0.5" />{/if}
         {:else}<span class="text-zinc-500 dark:text-zinc-400">Select model</span>{/if}
         <svg class="w-4 h-4 shrink-0 ml-1 transition-transform duration-150 {open ? 'rotate-180' : ''}" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
       </button>
@@ -205,18 +215,18 @@
         <button type="button" class="fixed inset-0 z-40" aria-label="Close" onclick={() => (open = false)}></button>
       {/if}
     </div>
-    {#if val && getQuantization(val)}<span class="font-mono text-[10px] px-1.5 py-0.5 rounded bg-zinc-200 dark:bg-zinc-600 text-zinc-600 dark:text-zinc-400 shrink-0" title="Quantization">{getQuantization(val)}</span>{/if}
+    {#if !compact && val && getQuantization(val)}<span class="font-mono text-[10px] px-1.5 py-0.5 rounded bg-zinc-200 dark:bg-zinc-600 text-zinc-600 dark:text-zinc-400 shrink-0" title="Quantization">{getQuantization(val)}</span>{/if}
   </div>
 {:else}
   {@const val = $dashboardModelD}
   <div class="flex items-center gap-2">
     <div class="relative flex-1 min-w-0" role="combobox" aria-expanded={open} aria-controls="model-listbox-D" aria-haspopup="listbox" aria-label="Select model D" bind:this={triggerEl}>
-      <button type="button" class="flex items-center gap-2 rounded-lg border text-sm px-3 py-2 w-full min-h-[36px] transition-colors duration-150 ui-model-selector {open ? 'ui-model-selector-open' : ''}" style="background-color: var(--ui-input-bg); color: var(--ui-text-primary); border-color: var(--ui-border);" onclick={toggle} onkeydown={(e) => e.key === 'Escape' && (open = false)} aria-label="Select model D">
+      <button type="button" class="flex items-center gap-2 rounded-lg border text-sm px-3 py-2 w-full min-h-[36px] transition-colors duration-150 ui-model-selector {open ? 'ui-model-selector-open' : ''}" style="background-color: var(--ui-input-bg); color: var(--ui-text-primary); border-color: var(--ui-border);" title={val ? modelTriggerTitle(val) : undefined} onclick={toggle} onkeydown={(e) => e.key === 'Escape' && (open = false)} aria-label="Select model D">
         {#if val}
           {@const selIcon = getModelIcon(val, $modelIconOverrides)}
           {#if selIcon}<img src={selIcon} alt="" class="w-4 h-4 shrink-0 rounded object-contain" />{/if}
           <span class="truncate font-bold uppercase tracking-tight text-xs">{modelDisplayName(val)}</span>
-          <ModelCapabilityBadges modelId={val} class="ml-0.5" />
+          {#if !compact}<ModelCapabilityBadges modelId={val} class="ml-0.5" />{/if}
         {:else}<span class="text-zinc-500 dark:text-zinc-400">Select model</span>{/if}
         <svg class="w-4 h-4 shrink-0 ml-1 transition-transform duration-150 {open ? 'rotate-180' : ''}" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
       </button>
@@ -246,6 +256,6 @@
         <button type="button" class="fixed inset-0 z-40" aria-label="Close" onclick={() => (open = false)}></button>
       {/if}
     </div>
-    {#if val && getQuantization(val)}<span class="font-mono text-[10px] px-1.5 py-0.5 rounded bg-zinc-200 dark:bg-zinc-600 text-zinc-600 dark:text-zinc-400 shrink-0" title="Quantization">{getQuantization(val)}</span>{/if}
+    {#if !compact && val && getQuantization(val)}<span class="font-mono text-[10px] px-1.5 py-0.5 rounded bg-zinc-200 dark:bg-zinc-600 text-zinc-600 dark:text-zinc-400 shrink-0" title="Quantization">{getQuantization(val)}</span>{/if}
   </div>
 {/if}

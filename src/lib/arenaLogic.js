@@ -555,6 +555,92 @@ export function parseBlindJudgeScores(text, responseOrder) {
   return { scores, explanations };
 }
 
+/**
+ * Lenient Model A/B/C/D score lines (preamble, markdown, or alternate punctuation).
+ * Does not overwrite — use merged with strict results (strict wins on conflicts).
+ */
+export function parseJudgeScoresLenient(text) {
+  if (!text || typeof text !== 'string') return {};
+  const cleaned = stripThinkBlocks(text);
+  const out = {};
+  const patterns = [
+    /(?:Model|Slot)\s*([A-D])\s*[:#.\-–]\s*(\d{1,2})\s*(?:\/\s*10|\s+out\s+of\s+10)?/gi,
+    /\b([A-D])\s*[:#.\-–]\s*(\d{1,2})\s*\/\s*10/gi,
+    /(?:^|[\s,;])([A-D])\s*=\s*(\d{1,2})\b/gi,
+  ];
+  for (const re of patterns) {
+    let m;
+    while ((m = re.exec(cleaned)) !== null) {
+      const slot = m[1].toUpperCase();
+      const n = parseInt(m[2], 10);
+      if (slot >= 'A' && slot <= 'D' && n >= 0 && n <= 10 && out[slot] === undefined) out[slot] = n;
+    }
+  }
+  return out;
+}
+
+/**
+ * Lenient blind lines: "Response #2: 8", "Response 2 - 8/10", etc.
+ */
+export function parseBlindJudgeScoresLenient(text, responseOrder) {
+  if (!text || typeof text !== 'string' || !Array.isArray(responseOrder)) return { scores: {}, explanations: {} };
+  const cleaned = stripThinkBlocks(text);
+  const scores = {};
+  const explanations = {};
+  const re =
+    /Response\s*#?\s*(\d+)\s*[:#.\-–]\s*(\d{1,2})\s*(?:\/\s*10)?\s*(?:[-–—]\s*)?([^\n\r]*)/gi;
+  let m;
+  while ((m = re.exec(cleaned)) !== null) {
+    const oneBased = parseInt(m[1], 10);
+    const n = parseInt(m[2], 10);
+    const reason = (m[3] || '').trim();
+    const slot = responseOrder[oneBased - 1];
+    if (slot && n >= 0 && n <= 10 && scores[slot] === undefined) {
+      scores[slot] = n;
+      explanations[slot] = reason;
+    }
+  }
+  return { scores, explanations };
+}
+
+/**
+ * Strict judge lines plus lenient fill-in for missing slots (strict wins on overlap).
+ * @returns {{ scores: Record<string, number>, explanations: Record<string, string>, parseSource: 'strict' | 'lenient' | 'merged' | 'none' }}
+ */
+export function parseJudgeScoresMerged(text) {
+  const strict = parseJudgeScoresAndExplanations(text);
+  const lenient = parseJudgeScoresLenient(text);
+  const scores = { ...lenient, ...strict.scores };
+  const explanations = { ...strict.explanations };
+  for (const s of Object.keys(scores)) {
+    if (explanations[s] == null) explanations[s] = '';
+  }
+  const ns = Object.keys(strict.scores).length;
+  const nl = Object.keys(lenient).length;
+  let parseSource = 'none';
+  if (ns > 0 && nl > ns) parseSource = 'merged';
+  else if (ns > 0) parseSource = 'strict';
+  else if (nl > 0) parseSource = 'lenient';
+  return { scores, explanations, parseSource };
+}
+
+/**
+ * Blind: strict + lenient; strict scores override lenient per slot.
+ */
+export function parseBlindJudgeScoresMerged(text, responseOrder) {
+  const strict = parseBlindJudgeScores(text, responseOrder);
+  const lenient = parseBlindJudgeScoresLenient(text, responseOrder);
+  const scores = { ...lenient.scores, ...strict.scores };
+  const explanations = { ...lenient.explanations, ...strict.explanations };
+  const ns = Object.keys(strict.scores).length;
+  const nl = Object.keys(lenient.scores).length;
+  let parseSource = 'none';
+  if (ns > 0 && nl > ns) parseSource = 'merged';
+  else if (ns > 0) parseSource = 'strict';
+  else if (nl > 0) parseSource = 'lenient';
+  return { scores, explanations, parseSource };
+}
+
 // ---------- Judge prompt builder ----------
 
 /**
@@ -759,18 +845,47 @@ export function buildArenaQuestionGenerationPrompt({ categories = [], questionCo
 }
 
 /**
- * Parse judge-generated content into { questions, answers }.
- * Handles raw JSON array or JSON inside markdown code blocks.
- * @param {string} rawContent
+ * First balanced `[` … `]` substring (handles leading prose / trailing junk).
+ * Respects JSON string escapes so brackets inside strings do not break depth.
+ * @param {string} text
+ * @returns {string | null}
+ */
+export function extractJsonArraySubstring(text) {
+  if (!text || typeof text !== 'string') return null;
+  const i = text.indexOf('[');
+  if (i < 0) return null;
+  let depth = 0;
+  let inString = false;
+  let esc = false;
+  for (let j = i; j < text.length; j++) {
+    const c = text[j];
+    if (inString) {
+      if (esc) esc = false;
+      else if (c === '\\') esc = true;
+      else if (c === '"') inString = false;
+      continue;
+    }
+    if (c === '"') {
+      inString = true;
+      continue;
+    }
+    if (c === '[') depth++;
+    else if (c === ']') {
+      depth--;
+      if (depth === 0) return text.slice(i, j + 1);
+    }
+  }
+  return null;
+}
+
+/**
+ * @param {string} jsonStr
  * @returns {{ questions: string[], answers: string[] } | null}
  */
-export function parseGeneratedQuestionSet(rawContent) {
-  if (!rawContent || typeof rawContent !== 'string') return null;
-  let jsonStr = rawContent.trim();
-  const codeBlock = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (codeBlock) jsonStr = codeBlock[1].trim();
+function tryParseQuestionJsonArray(jsonStr) {
+  if (!jsonStr || typeof jsonStr !== 'string') return null;
   try {
-    const arr = JSON.parse(jsonStr);
+    const arr = JSON.parse(jsonStr.trim());
     if (!Array.isArray(arr) || arr.length === 0) return null;
     const questions = [];
     const answers = [];
@@ -786,6 +901,82 @@ export function parseGeneratedQuestionSet(rawContent) {
   } catch {
     return null;
   }
+}
+
+/**
+ * Parse judge-generated content into { questions, answers }.
+ * Tries: fenced code block, full trim, balanced array slice from raw text.
+ * @param {string} rawContent
+ * @returns {{ questions: string[], answers: string[] } | null}
+ */
+export function parseGeneratedQuestionSet(rawContent) {
+  if (!rawContent || typeof rawContent !== 'string') return null;
+  const trimmed = rawContent.trim();
+  const codeBlock = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (codeBlock) {
+    const r = tryParseQuestionJsonArray(codeBlock[1]);
+    if (r) return r;
+  }
+  let r = tryParseQuestionJsonArray(trimmed);
+  if (r) return r;
+  const slice = extractJsonArraySubstring(rawContent);
+  if (slice) {
+    r = tryParseQuestionJsonArray(slice);
+    if (r) return r;
+  }
+  return null;
+}
+
+const ARENA_REPAIR_USER_MAX = 60000;
+
+/**
+ * Messages for a second-pass repair when the judge returned non-JSON or invalid JSON.
+ * @param {string} badContent
+ * @returns {{ role: string, content: string }[]}
+ */
+export function buildArenaJsonRepairPrompt(badContent) {
+  const raw = typeof badContent === 'string' ? badContent : '';
+  const slice =
+    raw.length > ARENA_REPAIR_USER_MAX
+      ? `${raw.slice(0, ARENA_REPAIR_USER_MAX)}\n…[truncated]`
+      : raw;
+  const systemContent =
+    'You fix malformed JSON. Output ONLY a valid JSON array where each element is an object with exactly two string keys: "question" and "answer". No markdown code fences, no commentary, no text before or after the array.';
+  const userContent = `The text below was supposed to be ONLY that JSON array but may include markdown, prose, or syntax errors. Return ONLY the corrected JSON array:\n\n${slice}`;
+  return [
+    { role: 'system', content: systemContent },
+    { role: 'user', content: userContent },
+  ];
+}
+
+/**
+ * Ask a small model pass to normalize judge output into strict score lines (last resort).
+ * @param {string} rawOutput
+ * @param {boolean} useBlind
+ * @param {string[]|null} responseOrder
+ */
+export function buildJudgeScoreExtractionPrompt(rawOutput, useBlind, responseOrder) {
+  const body =
+    typeof rawOutput === 'string' && rawOutput.length > 32000
+      ? `${rawOutput.slice(0, 32000)}\n…[truncated]`
+      : rawOutput || '';
+  let mapping = '';
+  if (useBlind && Array.isArray(responseOrder) && responseOrder.length) {
+    mapping = responseOrder
+      .map((slot, i) => `Response ${i + 1} = Model ${slot}`)
+      .join('\n');
+  } else {
+    mapping =
+      'Use labels Model A, Model B, Model C, Model D only for slots that were scored.';
+  }
+  const systemContent = useBlind
+    ? 'You extract numeric scores from judge text. Output ONLY one line per response: "Response K: N/10" where K is 1,2,3… in order and N is an integer 0-10. No other text, no markdown.'
+    : 'You extract numeric scores from judge text. Output ONLY one line per model: "Model X: N/10" where X is A, B, C, or D and N is an integer 0-10. No other text, no markdown.';
+  const userContent = `${mapping}\n\n--- JUDGE OUTPUT ---\n${body}`;
+  return [
+    { role: 'system', content: systemContent },
+    { role: 'user', content: userContent },
+  ];
 }
 
 // ---------- Question objects (id-based, for filtering and audit) ----------

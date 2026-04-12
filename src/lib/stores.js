@@ -84,18 +84,18 @@ export const cockpitIntelOpen = writable(false);
 export const pinnedContent = writable(null);
 
 
-/** Color scheme: forge | sage | obsidian (see themeOptions.js) */
-const VALID_UI_THEMES = ['forge', 'sage', 'obsidian'];
+/** Color scheme: studio | sage | obsidian | nova (see themeOptions.js) */
+const VALID_UI_THEMES = ['sage', 'obsidian', 'nova', 'studio'];
 function getInitialUiTheme() {
-  if (typeof localStorage === 'undefined') return 'forge';
-  const raw = localStorage.getItem('uiTheme') || 'forge';
-  const migrated = raw === 'lavender' ? 'forge' : raw;
+  if (typeof localStorage === 'undefined') return 'studio';
+  const raw = localStorage.getItem('uiTheme') || 'studio';
+  const migrated = (raw === 'lavender' || raw === 'forge') ? 'studio' : raw;
   if (VALID_UI_THEMES.includes(migrated)) {
     if (migrated !== raw) localStorage.setItem('uiTheme', migrated);
     return migrated;
   }
-  localStorage.setItem('uiTheme', 'forge');
-  return 'forge';
+  localStorage.setItem('uiTheme', 'studio');
+  return 'studio';
 }
 export const uiTheme = writable(getInitialUiTheme());
 
@@ -457,6 +457,26 @@ export const arenaDeterministicJudge = writable(
 );
 if (typeof localStorage !== 'undefined') {
   arenaDeterministicJudge.subscribe((v) => localStorage.setItem('arenaDeterministicJudge', v ? '1' : '0'));
+}
+
+/** Clamp Arena stream timeout to 60–900 seconds (local LM Studio: no separate API cap). */
+function normalizeArenaRequestTimeoutSeconds(v) {
+  const n = parseInt(String(v), 10);
+  if (Number.isNaN(n)) return 180;
+  return Math.min(900, Math.max(60, n));
+}
+
+function readArenaRequestTimeoutSeconds() {
+  if (typeof localStorage === 'undefined') return 180;
+  return normalizeArenaRequestTimeoutSeconds(localStorage.getItem('arenaRequestTimeoutSeconds') ?? '180');
+}
+
+/** Arena: max wall-clock time per contestant stream and per automated judge stream (seconds). Persisted. Default 180s for slow “thinking” models. */
+export const arenaRequestTimeoutSeconds = writable(readArenaRequestTimeoutSeconds());
+if (typeof localStorage !== 'undefined') {
+  arenaRequestTimeoutSeconds.subscribe((v) => {
+    localStorage.setItem('arenaRequestTimeoutSeconds', String(normalizeArenaRequestTimeoutSeconds(v)));
+  });
 }
 
 /** Arena Builder (Phase 1): Internet Access for judge during question generation only. Default OFF. Persisted. */

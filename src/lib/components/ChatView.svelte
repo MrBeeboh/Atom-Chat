@@ -8,6 +8,7 @@
   import ChatInput from '$lib/components/ChatInput.svelte';
   import AtomLogo from '$lib/components/AtomLogo.svelte';
   import { generateId, resizeImageDataUrlsForVision, shouldSkipImageResizeForVision } from '$lib/utils.js';
+  import { isModelLoadBlockingError } from '$lib/chatErrorUtils.js';
 
   const convId = $derived($activeConversationId);
   let chatAbortController = $state(null);
@@ -677,9 +678,16 @@
             <p class="ui-greeting-welcome text-sm text-center animate-fade-in opacity-80" style="color: var(--ui-text-secondary);">{welcomeLine}</p>
           {/if}
           {#if $chatError}
-            <div class="w-full px-4 py-2.5 rounded-lg text-sm flex items-center justify-between gap-2" style="background: color-mix(in srgb, var(--ui-accent-hot, #dc2626) 10%, transparent); color: var(--ui-text-primary);">
-              <span>{$chatError}</span>
-              <button type="button" class="shrink-0 p-1 rounded transition-opacity hover:opacity-80" style="color: var(--ui-text-secondary);" onclick={() => chatError.set(null)} aria-label="Dismiss">×</button>
+            <div class="w-full px-4 py-2.5 rounded-lg text-sm flex flex-col gap-1.5" style="background: color-mix(in srgb, var(--ui-accent-hot, #dc2626) 10%, transparent); color: var(--ui-text-primary);">
+              <div class="flex items-start justify-between gap-2">
+                <span class="min-w-0">{$chatError}</span>
+                <button type="button" class="shrink-0 p-1 rounded transition-opacity hover:opacity-80" style="color: var(--ui-text-secondary);" onclick={() => chatError.set(null)} aria-label="Dismiss">×</button>
+              </div>
+              {#if isModelLoadBlockingError($chatError)}
+                <p class="text-xs leading-snug opacity-90 pr-6" style="color: var(--ui-text-secondary);">
+                  Load the model in LM Studio, then dismiss this message and send again.
+                </p>
+              {/if}
             </div>
           {/if}
           <div class="w-full min-w-0">
@@ -705,9 +713,16 @@
       <div class="shrink-0 p-4 chat-input-dock" style="background: color-mix(in srgb, var(--ui-border) 8%, var(--ui-bg-main));">
         <div class="max-w-[min(52rem,92%)] mx-auto w-full">
           {#if $chatError}
-            <div class="mb-3 px-4 py-3 rounded-xl text-sm flex items-center justify-between gap-2" style="background: color-mix(in srgb, var(--ui-accent-hot, #dc2626) 10%, transparent); color: var(--ui-text-primary);">
-              <span>{$chatError}</span>
-              <button type="button" class="shrink-0 p-1.5 rounded-lg transition-opacity hover:opacity-80" style="color: var(--ui-text-secondary);" onclick={() => chatError.set(null)} aria-label="Dismiss">×</button>
+            <div class="mb-3 px-4 py-3 rounded-xl text-sm flex flex-col gap-1.5" style="background: color-mix(in srgb, var(--ui-accent-hot, #dc2626) 10%, transparent); color: var(--ui-text-primary);">
+              <div class="flex items-start justify-between gap-2">
+                <span class="min-w-0">{$chatError}</span>
+                <button type="button" class="shrink-0 p-1.5 rounded-lg transition-opacity hover:opacity-80" style="color: var(--ui-text-secondary);" onclick={() => chatError.set(null)} aria-label="Dismiss">×</button>
+              </div>
+              {#if isModelLoadBlockingError($chatError)}
+                <p class="text-xs leading-snug opacity-90 pr-8" style="color: var(--ui-text-secondary);">
+                  Load the model in LM Studio, then dismiss this message and send again.
+                </p>
+              {/if}
             </div>
           {/if}
           <ChatInput

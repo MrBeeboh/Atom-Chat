@@ -4,6 +4,13 @@ import {
   parseJudgeScores,
   parseJudgeScoresAndExplanations,
   parseBlindJudgeScores,
+  parseJudgeScoresLenient,
+  parseJudgeScoresMerged,
+  parseBlindJudgeScoresMerged,
+  extractJsonArraySubstring,
+  parseGeneratedQuestionSet,
+  buildArenaJsonRepairPrompt,
+  buildJudgeScoreExtractionPrompt,
   shuffleArray,
   makeSeededRandom,
   buildJudgePromptBlind,
@@ -738,5 +745,85 @@ describe('isCloudModel', () => {
     expect(isCloudModel('qwen3-32b-instruct')).toBe(false);
     expect(isCloudModel('')).toBe(false);
     expect(isCloudModel(null)).toBe(false);
+  });
+});
+
+describe('extractJsonArraySubstring', () => {
+  it('returns null when no array', () => {
+    expect(extractJsonArraySubstring('no brackets')).toBeNull();
+  });
+  it('extracts array with leading prose', () => {
+    const s = 'Here you go:\n[{"question":"a","answer":"b"}]\ntrailing';
+    expect(extractJsonArraySubstring(s)).toBe('[{"question":"a","answer":"b"}]');
+  });
+  it('respects brackets inside JSON strings', () => {
+    const inner = '[{"question":"[x]","answer":"y"}]';
+    const s = `prefix ${inner} suffix`;
+    expect(extractJsonArraySubstring(s)).toBe(inner);
+  });
+});
+
+describe('parseGeneratedQuestionSet', () => {
+  it('parses fenced JSON', () => {
+    const raw = '```json\n[{"question":"Q1","answer":"A1"}]\n```';
+    const r = parseGeneratedQuestionSet(raw);
+    expect(r?.questions).toEqual(['Q1']);
+    expect(r?.answers).toEqual(['A1']);
+  });
+  it('parses array after preamble', () => {
+    const raw = 'Sure! [{"question":"Q","answer":"A"}] Hope this helps.';
+    const r = parseGeneratedQuestionSet(raw);
+    expect(r?.questions).toEqual(['Q']);
+    expect(r?.answers).toEqual(['A']);
+  });
+});
+
+describe('parseJudgeScoresLenient', () => {
+  it('parses alternate Model line format', () => {
+    expect(parseJudgeScoresLenient('Model B - 8/10 ok')).toEqual({ B: 8 });
+  });
+  it('parses Slot C format', () => {
+    expect(parseJudgeScoresLenient('Slot C: 7')).toEqual({ C: 7 });
+  });
+});
+
+describe('parseJudgeScoresMerged', () => {
+  it('prefers strict over lenient on conflict', () => {
+    const text = 'Model B: 9/10 - good\nAlso B=3';
+    const m = parseJudgeScoresMerged(text);
+    expect(m.scores.B).toBe(9);
+    expect(m.parseSource).toBe('strict');
+  });
+  it('fills from lenient when strict empty', () => {
+    const m = parseJudgeScoresMerged('Rough: Model A - 6/10');
+    expect(m.scores.A).toBe(6);
+    expect(m.parseSource).toBe('lenient');
+  });
+});
+
+describe('parseBlindJudgeScoresMerged', () => {
+  it('merges lenient Response lines', () => {
+    const order = ['B', 'A'];
+    const text = 'Response #1: 8/10 ok\nResponse 2: 7/10';
+    const m = parseBlindJudgeScoresMerged(text, order);
+    expect(m.scores.B).toBe(8);
+    expect(m.scores.A).toBe(7);
+  });
+});
+
+describe('buildArenaJsonRepairPrompt', () => {
+  it('returns two messages', () => {
+    const m = buildArenaJsonRepairPrompt('[broken');
+    expect(m).toHaveLength(2);
+    expect(m[0].role).toBe('system');
+    expect(m[1].content).toContain('[broken');
+  });
+});
+
+describe('buildJudgeScoreExtractionPrompt', () => {
+  it('includes blind mapping when provided', () => {
+    const m = buildJudgeScoreExtractionPrompt('foo', true, ['B', 'C']);
+    expect(m[1].content).toContain('Response 1 = Model B');
+    expect(m[1].content).toContain('foo');
   });
 });
