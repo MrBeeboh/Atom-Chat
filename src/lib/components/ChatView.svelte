@@ -9,6 +9,7 @@
   import AtomLogo from '$lib/components/AtomLogo.svelte';
   import { generateId, resizeImageDataUrlsForVision, shouldSkipImageResizeForVision } from '$lib/utils.js';
   import { isModelLoadBlockingError } from '$lib/chatErrorUtils.js';
+  import { getModelCapabilities } from '$lib/modelCapabilities.js';
 
   const convId = $derived($activeConversationId);
   let chatAbortController = $state(null);
@@ -186,6 +187,15 @@
     if (!$effectiveModelId) {
       chatError.set('Please select a model from the dropdown above.');
       return;
+    }
+
+    // Warn if user tries to send images to a non-vision model
+    if (hasImages || hasVideos) {
+      const caps = getModelCapabilities($effectiveModelId);
+      if (!caps.vision) {
+        chatError.set(`This model (${$effectiveModelId}) may not support images. The error "Cannot read" usually means the model doesn't support image input. Try a vision model (name contains "vl", "vision", "qwen2.5-vl", "llava", etc.) or remove the images.`);
+        return;
+      }
     }
 
     let effectiveText = (text || '').trim();

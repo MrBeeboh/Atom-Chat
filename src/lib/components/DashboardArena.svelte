@@ -62,17 +62,19 @@
   import ChatInput from "$lib/components/ChatInput.svelte";
   import ThinkingAtom from "$lib/components/ThinkingAtom.svelte";
   import ModelSelectorSlot from "$lib/components/ModelSelectorSlot.svelte";
-  import ArenaPanel from "$lib/components/ArenaPanel.svelte";
-  import ArenaScoreMatrix from "$lib/components/ArenaScoreMatrix.svelte";
-  import ArenaHeader from "$lib/components/ArenaHeader.svelte";
-  import ArenaControlBar from "$lib/components/ArenaControlBar.svelte";
-  import ArenaQuestionPanel from "$lib/components/ArenaQuestionPanel.svelte";
-  import ArenaLoadQuestionsModal from "$lib/components/ArenaLoadQuestionsModal.svelte";
-  import {
-    generateId,
+import ArenaPanel from "$lib/components/ArenaPanel.svelte";
+import ArenaScoreMatrix from "$lib/components/ArenaScoreMatrix.svelte";
+import ArenaHeader from "$lib/components/ArenaHeader.svelte";
+import ArenaControlBar from "$lib/components/ArenaControlBar.svelte";
+import ArenaQuestionPanel from "$lib/components/ArenaQuestionPanel.svelte";
+import ArenaLoadQuestionsModal from "$lib/components/ArenaLoadQuestionsModal.svelte";
+import ArenaJudgmentModal from "$lib/components/ArenaJudgmentModal.svelte";
+import {
+  generateId,
     resizeImageDataUrlsForVision,
     shouldSkipImageResizeForVision,
   } from "$lib/utils.js";
+  import { getModelCapabilities } from "$lib/modelCapabilities.js";
   import { arenaWarn } from "$lib/arenaDashboard/arenaDashboardLog.js";
   import {
     saveArenaSlotMessages,
@@ -81,10 +83,9 @@
     readArenaScoresFromLocalStorage,
     readArenaPanelWidths,
     writeArenaPanelWidths,
-  } from "$lib/arenaDashboard/arenaDashboardPersistence.js";
-  import ArenaJudgmentModal from "$lib/components/ArenaJudgmentModal.svelte";
-  import {
-    parseJudgeScoresAndExplanations,
+} from "$lib/arenaDashboard/arenaDashboardPersistence.js";
+import {
+  parseJudgeScoresAndExplanations,
     parseJudgeScoresMerged,
     parseBlindJudgeScoresMerged,
     buildJudgePrompt,
@@ -1124,6 +1125,18 @@
     if (!text || !String(text).trim() || $isStreaming) return;
     chatError.set(null);
 
+    // Warn if user tries to send images to a non-vision model
+    const hasImages = (imageDataUrls?.length ?? 0) > 0;
+    if (hasImages) {
+      // Check all selected models for vision support
+      const modelsToCheck = [$dashboardModelA, $dashboardModelB, $dashboardModelC, $dashboardModelD].filter(Boolean);
+      const nonVisionModels = modelsToCheck.filter((mid) => !getModelCapabilities(mid).vision);
+      if (nonVisionModels.length > 0) {
+        chatError.set(`These models may not support images: ${nonVisionModels.join(', ')}. The error "Cannot read" usually means the model doesn't support image input. Try vision models (name contains "vl", "vision", "qwen2.5-vl", "llava", etc.) or remove the images.`);
+        return;
+      }
+    }
+
     let effectiveText = String(text).trim();
     const webMode = get(arenaWebSearchMode);
     if (webMode === "all" && get(webSearchForNextMessage)) {
@@ -1247,29 +1260,54 @@
       messagesC = [];
       messagesD = [];
 
-      /* Eject every loaded model so the first contestant has full VRAM. Uses native API (no helper needed). */
-      arenaTransitionPhase = "ejecting";
-      await unloadAllModelsNative();
-      const loadedBefore = await getLoadedModelKeys();
-      if (loadedBefore.length > 0) {
-        await waitUntilUnloaded(loadedBefore, {
-          pollIntervalMs: 400,
-          timeoutMs: 25000,
-        });
+      /* Eject every loaded model so the first contestant has full VRAM. Uses native API (no helper needed).
+         Skip when all contestants are cloud models (no VRAM to free). */
+      if (typeof console !== "undefined" && console.log) {
+        console.log("[Arena debug] Initial eject check - selected:", selected.map(s => ({slot: s.slot, modelId: s.modelId, cloud: isCloudModel(s.modelId)})));
       }
-      await new Promise((r) => setTimeout(r, 1000));
+      arenaTransitionPhase = "ejecting";
+      if (selected.some((s) => s.modelId && !isCloudModel(s.modelId))) {
+        if (typeof console !== "undefined" && console.log) {
+          console.log("[Arena debug] Starting initial eject (unloading local models)");
+        }
+        await unloadAllModelsNative();
+        const loadedBefore = await getLoadedModelKeys();
+        if (loadedBefore.length > 0) {
+          if (typeof console !== "undefined" && console.log) {
+            console.log("[Arena debug] Waiting for initial eject - loadedBefore:", loadedBefore);
+          }
+          await waitUntilUnloaded(loadedBefore, {
+            pollIntervalMs: 400,
+            timeoutMs: 25000,
+          });
+          if (typeof console !== "undefined" && console.log) {
+            console.log("[Arena debug] Initial eject wait complete");
+          }
+        }
+        await new Promise((r) => setTimeout(r, 1000));
+        if (typeof console !== "undefined" && console.log) {
+          console.log("[Arena debug] Initial eject complete");
+        }
+      } else {
+        if (typeof console !== "undefined" && console.log) {
+          console.log("[Arena debug] Skipping initial eject - all contestants are cloud");
+        }
+      }
       arenaTransitionPhase = null;
       if (runId !== currentRun) return;
 
-      /* Arena runs one model at a time: load first contestant, then for each slot answer → eject → load next. */
-      loadingModelMessageIndex = getNextWittyLoadingModel();
-      arenaTransitionPhase = "loading";
-      try {
-        if (selected[0]?.modelId) await loadModel(selected[0].modelId);
-      } catch (e) {
-        arenaWarn("preloadFirstContestant", e);
+      /* Arena runs one model at a time: load first contestant, then for each slot answer → eject → load next.
+         Skip loadModel for cloud contestants (they don't use LM Studio VRAM). */
+      if (selected[0]?.modelId && !isCloudModel(selected[0].modelId)) {
+        loadingModelMessageIndex = getNextWittyLoadingModel();
+        arenaTransitionPhase = "loading";
+        try {
+          await loadModel(selected[0].modelId);
+        } catch (e) {
+          arenaWarn("preloadFirstContestant", e);
+        }
+        arenaTransitionPhase = null;
       }
-      arenaTransitionPhase = null;
       if (runId !== currentRun) return;
 
       let completedCount = 0;
@@ -1309,18 +1347,34 @@
         /* Always unload current contestant so only one model is ever loaded (including after the last slot). */
         if (runId !== currentRun) break;
         arenaTransitionPhase = "ejecting";
+        if (typeof console !== "undefined" && console.log) {
+          console.log("[Arena debug] Per-slot eject check for slot", s.slot, "modelId:", s.modelId, "isCloud:", !!s.modelId && isCloudModel(s.modelId));
+        }
         try {
-          if (s.modelId) {
+          if (s.modelId && !isCloudModel(s.modelId)) {
+            if (typeof console !== "undefined" && console.log) {
+              console.log("[Arena debug] Unloading contestant model:", s.modelId);
+            }
             await unloadModel(s.modelId);
             await waitUntilUnloaded([s.modelId], { pollIntervalMs: 400, timeoutMs: 15000 });
+            if (typeof console !== "undefined" && console.log) {
+              console.log("[Arena debug] Contestant model unloaded successfully");
+            }
+          } else {
+            if (typeof console !== "undefined" && console.log) {
+              console.log("[Arena debug] Skipping eject for cloud contestant or no modelId");
+            }
           }
         } catch (e) {
           arenaWarn("unloadContestantAfterSlot", e, { slot: s.slot, modelId: s.modelId });
+          if (typeof console !== "undefined" && console.error) {
+            console.error("[Arena debug] Error during per-slot eject:", e);
+          }
         }
         arenaTransitionPhase = null;
         if (runId !== currentRun) break;
         const next = selected[i + 1];
-        if (next?.modelId) {
+        if (next?.modelId && !isCloudModel(next.modelId)) {
           loadingModelMessageIndex = getNextWittyLoadingModel();
           arenaTransitionPhase = "loading";
           try {
@@ -1758,32 +1812,71 @@
       chatError.set("Run a question so all contestants respond first.");
       return;
     }
-    try {
-      arenaTransitionPhase = "ejecting";
-      await unloadAllModelsNative();
-      const loadedBefore = await getLoadedModelKeys();
-      if (loadedBefore.length > 0) {
-        await waitUntilUnloaded(loadedBefore, {
-          pollIntervalMs: 400,
-          timeoutMs: 25000,
-        });
-      }
-      await new Promise((r) => setTimeout(r, 1000));
-      judgeLoadingMessageIndex = getNextWittyJudgeLoading();
-      arenaTransitionPhase = "loading_judge";
-      if (!isCloudModel(judgeId)) {
-        try {
-          await loadModel(judgeId);
-        } catch (e) {
-          arenaWarn("loadJudgeModel", e, { judgeId });
-        }
-      } else {
-        await new Promise((r) => setTimeout(r, 200));
-      }
-      arenaTransitionPhase = null;
-    } finally {
-      arenaTransitionPhase = null;
-    }
+     try {
+       if (typeof console !== "undefined" && console.log) {
+         console.log("[Arena debug] Starting pre-judge eject, judgeId:", judgeId, "isCloud:", !!judgeId && isCloudModel(judgeId));
+       }
+       arenaTransitionPhase = "ejecting";
+       if (!isCloudModel(judgeId)) {
+         if (typeof console !== "undefined" && console.log) {
+           console.log("[Arena debug] Starting unloadAllModelsNative for judge eject");
+         }
+         await unloadAllModelsNative();
+         const loadedBefore = await getLoadedModelKeys();
+         if (loadedBefore.length > 0) {
+           if (typeof console !== "undefined" && console.log) {
+             console.log("[Arena debug] Waiting for models to unload:", loadedBefore);
+           }
+           await waitUntilUnloaded(loadedBefore, {
+             pollIntervalMs: 400,
+             timeoutMs: 25000,
+           });
+           if (typeof console !== "undefined" && console.log) {
+             console.log("[Arena debug] Models unloaded successfully");
+           }
+         }
+         await new Promise((r) => setTimeout(r, 1000));
+         if (typeof console !== "undefined" && console.log) {
+           console.log("[Arena debug] Pre-judge eject complete");
+         }
+       } else {
+         if (typeof console !== "undefined" && console.log) {
+           console.log("[Arena debug] Skipping eject for cloud judge");
+         }
+       }
+       judgeLoadingMessageIndex = getNextWittyJudgeLoading();
+       arenaTransitionPhase = "loading_judge";
+       if (!isCloudModel(judgeId)) {
+         if (typeof console !== "undefined" && console.log) {
+           console.log("[Arena debug] Loading judge model:", judgeId);
+         }
+         try {
+           await loadModel(judgeId);
+           if (typeof console !== "undefined" && console.log) {
+             console.log("[Arena debug] Judge model loaded successfully");
+           }
+         } catch (e) {
+           arenaWarn("loadJudgeModel", e, { judgeId });
+           if (typeof console !== "undefined" && console.error) {
+             console.error("[Arena debug] Failed to load judge model:", e);
+           }
+         }
+       } else {
+         if (typeof console !== "undefined" && console.log) {
+           console.log("[Arena debug] Skipping load for cloud judge");
+         }
+         await new Promise((r) => setTimeout(r, 200));
+       }
+       if (typeof console !== "undefined" && console.log) {
+         console.log("[Arena debug] Pre-judge phase complete, setting to null");
+       }
+       arenaTransitionPhase = null;
+     } finally {
+       if (typeof console !== "undefined" && console.log) {
+         console.log("[Arena debug] Finally block for runJudgment eject");
+       }
+       arenaTransitionPhase = null;
+     }
 
     const lastUserMsg = slotsWithResponses[0].msgs
       .filter((m) => m.role === "user")
@@ -1848,28 +1941,34 @@
     const judgeTimeoutId = setTimeout(() => controller.abort(), judgeTimeoutMs);
     let fullContent = "";
     const judgeOpts = getSettingsForSlot("A");
-    try {
-      arenaTransitionPhase = "scoring";
-      await streamChatCompletion({
-        model: judgeId,
-        messages,
-        options: {
-          temperature: useDeterministicJudge ? 0 : judgeOpts.temperature,
-          max_tokens: judgeOpts.max_tokens,
-          top_p: judgeOpts.top_p,
-          top_k: judgeOpts.top_k,
-          repeat_penalty: judgeOpts.repeat_penalty,
-          presence_penalty: judgeOpts.presence_penalty,
-          frequency_penalty: judgeOpts.frequency_penalty,
-          stop: judgeOpts.stop?.length ? judgeOpts.stop : undefined,
-          ttl: judgeOpts.model_ttl_seconds,
-          request_timeout_ms: judgeTimeoutMs,
-        },
-        signal: controller.signal,
-        onChunk(chunk) {
-          fullContent += chunk;
-        },
-      });
+     try {
+       if (typeof console !== "undefined" && console.log) {
+         console.log("[Arena debug] About to start scoring request with judgeId:", judgeId);
+       }
+       arenaTransitionPhase = "scoring";
+       await streamChatCompletion({
+         model: judgeId,
+         messages,
+         options: {
+           temperature: useDeterministicJudge ? 0 : judgeOpts.temperature,
+           max_tokens: judgeOpts.max_tokens,
+           top_p: judgeOpts.top_p,
+           top_k: judgeOpts.top_k,
+           repeat_penalty: judgeOpts.repeat_penalty,
+           presence_penalty: judgeOpts.presence_penalty,
+           frequency_penalty: judgeOpts.frequency_penalty,
+           stop: judgeOpts.stop?.length ? judgeOpts.stop : undefined,
+           ttl: judgeOpts.model_ttl_seconds,
+           request_timeout_ms: judgeTimeoutMs,
+         },
+         signal: controller.signal,
+         onChunk(chunk) {
+           fullContent += chunk;
+         },
+       });
+       if (typeof console !== "undefined" && console.log) {
+         console.log("[Arena debug] Scoring request completed, fullContent length:", fullContent.length);
+       }
       fullContent = fullContent.replace(
         /([.!?;])\s*(Model\s+[A-D]:)/gi,
         "$1\n\n$2",
@@ -1965,20 +2064,32 @@
           explanations: popupExplanations,
         };
       }
-      if (typeof console !== "undefined" && console.log && arenaCurrentRunMeta) {
-        console.log("[Arena run metadata]", {
-          run_id: arenaCurrentRunMeta.run_id,
-          seed: arenaCurrentRunMeta.seed,
-          question_index: arenaCurrentRunMeta.question_index,
-          deterministic_judge: arenaCurrentRunMeta.deterministic_judge,
-          blind_review: arenaCurrentRunMeta.blind_review,
-          model_list: arenaCurrentRunMeta.model_list,
-          judge_model: arenaCurrentRunMeta.judge_model,
-          responses: arenaCurrentRunMeta.responses,
-          scores: roundScores,
-        });
-      }
-    } catch (err) {
+       if (typeof console !== "undefined" && console.log && arenaCurrentRunMeta) {
+         console.log("[Arena run metadata]", {
+           run_id: arenaCurrentRunMeta.run_id,
+           seed: arenaCurrentRunMeta.seed,
+           question_index: arenaCurrentRunMeta.question_index,
+           deterministic_judge: arenaCurrentRunMeta.deterministic_judge,
+           blind_review: arenaCurrentRunMeta.blind_review,
+           model_list: arenaCurrentRunMeta.model_list,
+           judge_model: arenaCurrentRunMeta.judge_model,
+           responses: arenaCurrentRunMeta.responses,
+           scores: roundScores,
+         });
+       }
+       
+       // Debug judgment popup
+       if (typeof console !== "undefined" && console.log) {
+         console.log("[Arena debug] Setting judgmentPopup:", {
+           hasScores: !!judgmentPopup && !!judgmentPopup.scores && Object.keys(judgmentPopup.scores).length > 0,
+           scoreKeys: judgmentPopup ? Object.keys(judgmentPopup.scores || {}) : [],
+           hasExplanation: !!judgmentPopup && !!judgmentPopup.explanation,
+           explanationLength: judgmentPopup?.explanation?.length || 0,
+           hasRawOutput: !!judgmentPopup && !!judgmentPopup.rawJudgeOutput,
+           rawLength: judgmentPopup?.rawJudgeOutput?.length || 0
+         });
+       }
+     } catch (err) {
       if (err?.name !== "AbortError") {
         const msg = err?.message || "Scoring request failed.";
         chatError.set(msg);
@@ -1993,21 +2104,40 @@
           console.error("[Arena judge_failure] abort_and_log_error", { error: msg, raw_output: fullContent, run_id: arenaCurrentRunMeta?.run_id });
         }
       }
-    } finally {
-      clearTimeout(judgeTimeoutId);
-      aborters["A"] = null;
-      // Unload judge model after scoring (skip for cloud judge — uses no VRAM)
-      arenaTransitionPhase = "ejecting";
-      try {
-        if (judgeId && !isCloudModel(judgeId)) {
-          await unloadModel(judgeId);
-          await waitUntilUnloaded([judgeId], { pollIntervalMs: 400, timeoutMs: 15000 });
-        }
-      } catch (e) {
-        arenaWarn("unloadJudgeAfterScoring", e, { judgeId });
-      }
-      arenaTransitionPhase = null;
-    }
+     } finally {
+       clearTimeout(judgeTimeoutId);
+       aborters["A"] = null;
+       // Unload judge model after scoring (skip for cloud judge — uses no VRAM)
+       if (typeof console !== "undefined" && console.log) {
+         console.log("[Arena debug] Starting post-judge eject, judgeId:", judgeId, "isCloud:", !!judgeId && isCloudModel(judgeId));
+       }
+       arenaTransitionPhase = "ejecting";
+       try {
+         if (judgeId && !isCloudModel(judgeId)) {
+           if (typeof console !== "undefined" && console.log) {
+             console.log("[Arena debug] Unloading judge model:", judgeId);
+           }
+           await unloadModel(judgeId);
+           await waitUntilUnloaded([judgeId], { pollIntervalMs: 400, timeoutMs: 15000 });
+           if (typeof console !== "undefined" && console.log) {
+             console.log("[Arena debug] Judge model unloaded successfully");
+           }
+         } else {
+           if (typeof console !== "undefined" && console.log) {
+             console.log("[Arena debug] Skipping eject for cloud judge or no judgeId");
+           }
+         }
+       } catch (e) {
+         arenaWarn("unloadJudgeAfterScoring", e, { judgeId });
+         if (typeof console !== "undefined" && console.error) {
+           console.error("[Arena debug] Error in post-judge eject:", e);
+         }
+       }
+       if (typeof console !== "undefined" && console.log) {
+         console.log("[Arena debug] Post-judge eject complete, setting phase to null");
+       }
+       arenaTransitionPhase = null;
+     }
   }
 
   async function ejectAllModels() {
