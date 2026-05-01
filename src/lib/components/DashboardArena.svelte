@@ -7,6 +7,8 @@
    */
   import { get } from "svelte/store";
   import { onMount } from "svelte";
+  import { fly } from "svelte/transition";
+  import { quintOut } from "svelte/easing";
   import {
     chatError,
     dashboardModelA,
@@ -366,10 +368,6 @@
   let judgmentPopup = $state(
     /** @type {null | { scores: Record<string, number>, explanation: string, rawJudgeOutput?: string, questionIndex?: number, explanations?: Record<string, string> }} */ (null),
   );
-  /** Draggable position of the Scores panel (null = centered). Reset when popup closes. */
-  let judgmentPopupPos = $state(/** @type {null | { x: number, y: number }} */ (null));
-  /** Ref for the Scores panel card (used to read position when starting drag). */
-  let scoresPanelEl = $state(/** @type {null | HTMLDivElement} */ (null));
 
   /** Fisher–Yates shuffle of indices [0..n-1]. */
   function shuffleIndices(n) {
@@ -413,29 +411,6 @@
     return i;
   }
 
-  function startScoresPanelDrag(e) {
-    if (!scoresPanelEl || !judgmentPopup) return;
-    if (/** @type {HTMLElement} */ (e.target).closest("button")) return;
-    e.preventDefault();
-    const rect = scoresPanelEl.getBoundingClientRect();
-    const panelLeft = judgmentPopupPos?.x ?? rect.left;
-    const panelTop = judgmentPopupPos?.y ?? rect.top;
-    judgmentPopupPos = { x: panelLeft, y: panelTop };
-    const startX = e.clientX;
-    const startY = e.clientY;
-    function onMove(ev) {
-      judgmentPopupPos = {
-        x: panelLeft + (ev.clientX - startX),
-        y: panelTop + (ev.clientY - startY),
-      };
-    }
-    function onUp() {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-    }
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-  }
 
   /** Transition: 'ejecting' | 'loading' | 'loading_judge' | 'judge_web' | 'scoring' (atom animation). */
   let arenaTransitionPhase = $state(
@@ -2475,134 +2450,107 @@
   {/if}
   </div><!-- end flex row -->
 
-  <!-- Judgment result popup (scores + explanation after automated judging) -->
+  <!-- Judgment result drawer (slides in from right, no backdrop, arena stays interactive) -->
   {#if judgmentPopup}
     <div
-      class="fixed inset-0 z-[250] flex items-center justify-center p-4"
-      role="dialog"
-      aria-modal="true"
+      class="fixed top-0 right-0 bottom-0 z-[200] flex flex-col pointer-events-none"
+      style="width: 320px;"
+      role="complementary"
       aria-label="Judgment results"
     >
       <div
-        class="absolute inset-0 bg-black/40"
-        role="button"
-        tabindex="-1"
-        aria-label="Close"
-        onclick={() => { judgmentPopup = null; judgmentPopupPos = null; }}
-        onkeydown={(e) => { if (e.key === "Escape") { judgmentPopup = null; judgmentPopupPos = null; } }}
-      ></div>
-      <div
-        bind:this={scoresPanelEl}
-        class="relative rounded-xl border shadow-xl max-w-lg w-full max-h-[85vh] flex flex-col overflow-hidden select-none"
-        style="position: {judgmentPopupPos ? 'absolute' : 'relative'}; left: {judgmentPopupPos ? `${judgmentPopupPos.x}px` : 'auto'}; top: {judgmentPopupPos ? `${judgmentPopupPos.y}px` : 'auto'}; background-color: var(--ui-bg-main); border-color: var(--ui-border);"
+        class="flex-1 flex flex-col pointer-events-auto shadow-2xl"
+        style="background-color: var(--ui-bg-sidebar); border-left: 1px solid var(--ui-border); border-top: 3px solid var(--ui-accent);"
+        transition:fly={{ x: 320, duration: 350, easing: quintOut }}
       >
-        <div
-          class="shrink-0 flex items-center justify-between px-4 py-3 border-b cursor-grab active:cursor-grabbing"
-          style="border-color: var(--ui-border);"
-          role="button"
-          tabindex="0"
-          aria-label="Drag to move panel"
-          onmousedown={startScoresPanelDrag}
-          onkeydown={(e) => e.key === "Enter" && scoresPanelEl?.focus()}
-        >
-          <h2 class="text-base font-semibold" style="color: var(--ui-text-primary);">Scores</h2>
-            <div class="flex items-center gap-2">
+        <!-- Drawer header -->
+        <div class="shrink-0 flex items-center justify-between px-4 py-3" style="border-bottom: 1px solid var(--ui-border);">
+          <div class="flex items-center gap-2">
+            <span class="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded" style="background: color-mix(in srgb, var(--ui-accent) 12%, transparent); color: var(--ui-accent);">Judge</span>
+            <span class="text-sm font-semibold" style="color: var(--ui-text-primary);">Round Results</span>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <!-- Copy JSON -->
             <button
               type="button"
-              class="px-2 py-1 rounded text-xs font-medium border transition-colors"
-              style="color: var(--ui-text-secondary); border-color: var(--ui-border);"
+              class="px-2 py-1 rounded text-[10px] font-medium transition-opacity hover:opacity-80"
+              style="color: var(--ui-text-secondary); border: 1px solid var(--ui-border);"
               onclick={() => {
                 const raw = judgmentPopup.rawJudgeOutput ?? judgmentPopup.explanation;
-                const explanations =
-                  judgmentPopup.explanations && Object.keys(judgmentPopup.explanations).length > 0
-                    ? judgmentPopup.explanations
-                    : parseJudgeScoresAndExplanations(judgmentPopup.explanation).explanations;
-                const payload = {
-                  questionIndex: judgmentPopup.questionIndex ?? -1,
-                  scores: judgmentPopup.scores,
-                  explanations: Object.keys(explanations || {}).length ? explanations : undefined,
-                  rawExplanation: raw,
-                };
-                navigator.clipboard?.writeText(JSON.stringify(payload, null, 2));
+                const explanations = judgmentPopup.explanations && Object.keys(judgmentPopup.explanations).length > 0
+                  ? judgmentPopup.explanations
+                  : parseJudgeScoresAndExplanations(judgmentPopup.explanation).explanations;
+                navigator.clipboard?.writeText(JSON.stringify({ questionIndex: judgmentPopup.questionIndex ?? -1, scores: judgmentPopup.scores, explanations: Object.keys(explanations || {}).length ? explanations : undefined, rawExplanation: raw }, null, 2));
               }}
-              aria-label="Copy results as JSON">Copy JSON</button>
+              aria-label="Copy results as JSON">JSON</button>
+            <!-- Copy CSV -->
             <button
               type="button"
-              class="px-2 py-1 rounded text-xs font-medium border transition-colors"
-              style="color: var(--ui-text-secondary); border-color: var(--ui-border);"
+              class="px-2 py-1 rounded text-[10px] font-medium transition-opacity hover:opacity-80"
+              style="color: var(--ui-text-secondary); border: 1px solid var(--ui-border);"
               onclick={() => {
                 const q = judgmentPopup.questionIndex ?? -1;
                 const expl = judgmentPopup.explanations || {};
-                const header = "questionIndex,slot,score,explanation";
-                const rows = ["A", "B", "C", "D"]
-                  .filter((slot) => judgmentPopup.scores[slot] !== undefined)
-                  .map((slot) => {
-                    const score = judgmentPopup.scores[slot];
-                    const ex = (expl[slot] ?? "").replace(/"/g, '""');
-                    return `${q},${slot},${score},"${ex}"`;
-                  });
-                const csv = [header, ...rows].join("\n");
-                navigator.clipboard?.writeText(csv);
+                const rows = ["A", "B", "C", "D"].filter((s) => judgmentPopup.scores[s] !== undefined).map((s) => `${q},${s},${judgmentPopup.scores[s]},"${(expl[s] ?? "").replace(/"/g, '""')}"`);
+                navigator.clipboard?.writeText(["questionIndex,slot,score,explanation", ...rows].join("\n"));
               }}
-              aria-label="Copy results as CSV">Copy CSV</button>
-            {#if arenaCurrentRunMeta}
-              <button
-                type="button"
-                class="px-2 py-1 rounded text-xs font-medium border transition-colors"
-                style="color: var(--ui-text-secondary); border-color: var(--ui-border);"
-                onclick={() => {
-                  const meta = {
-                    run_id: arenaCurrentRunMeta.run_id,
-                    seed: arenaCurrentRunMeta.seed,
-                    timestamp: arenaCurrentRunMeta.start_timestamp,
-                    question_index: arenaCurrentRunMeta.question_index,
-                    deterministic_judge: arenaCurrentRunMeta.deterministic_judge,
-                    blind_review: arenaCurrentRunMeta.blind_review,
-                    model_list: arenaCurrentRunMeta.model_list,
-                    judge_model: arenaCurrentRunMeta.judge_model,
-                    responses: arenaCurrentRunMeta.responses,
-                    scores: judgmentPopup.scores,
-                  };
-                  navigator.clipboard?.writeText(JSON.stringify(meta, null, 2));
-                }}
-                aria-label="Copy run metadata as JSON">Copy run metadata</button>
-            {/if}
+              aria-label="Copy results as CSV">CSV</button>
+            <!-- Close -->
             <button
               type="button"
-              class="p-2 rounded-lg hover:opacity-80"
+              class="w-7 h-7 flex items-center justify-center rounded-lg text-lg leading-none transition-opacity hover:opacity-70"
               style="color: var(--ui-text-secondary);"
-              onclick={() => { judgmentPopup = null; judgmentPopupPos = null; }}
+              onclick={() => { judgmentPopup = null; }}
               aria-label="Close">×</button>
           </div>
         </div>
-        <div class="flex-1 min-h-0 overflow-y-auto px-4 pb-4" style="border-top: 1px solid var(--ui-border);">
-          <div class="flex flex-col gap-3 pt-3">
-            {#each ["A", "B", "C", "D"] as slot}
-              {#if judgmentPopup.scores[slot] !== undefined}
-                {@const color = SLOT_COLORS[slot]}
-                {@const score = judgmentPopup.scores[slot]}
-                {@const expl = judgmentPopup.explanations?.[slot] || ""}
-                {@const fallbackExpl = !expl && judgmentPopup.explanation ? judgmentPopup.explanation : ""}
-                <div class="rounded-lg border p-3" style="border-color: {color}40; background: {color}08;">
-                  <div class="flex items-center justify-between mb-1.5">
-                    <span class="text-sm font-semibold flex items-center gap-2">
-                      <span class="inline-block w-2.5 h-2.5 rounded-full" style="background: {color};"></span>
-                      Model {slot}
-                    </span>
-                    <span class="text-lg font-bold" style="color: {color};">{score}/10</span>
-                  </div>
-                  {#if expl}
-                    <p class="text-sm leading-relaxed" style="color: var(--ui-text-secondary);">{expl}</p>
-                  {/if}
-                </div>
-              {/if}
-            {/each}
-            {#if !judgmentPopup.explanations || Object.keys(judgmentPopup.explanations).length === 0}
-              <div class="text-sm whitespace-pre-wrap mt-1" style="color: var(--ui-text-secondary);">
-                {judgmentPopup.explanation}
+
+        <!-- Score summary bar -->
+        <div class="shrink-0 flex gap-2 px-4 py-3" style="border-bottom: 1px solid var(--ui-border); background: color-mix(in srgb, var(--ui-accent) 4%, var(--ui-bg-main));">
+          {#each ["A", "B", "C", "D"] as s}
+            {#if judgmentPopup.scores[s] !== undefined}
+              {@const c = SLOT_COLORS[s]}
+              {@const sc = judgmentPopup.scores[s]}
+              <div class="flex-1 rounded-lg px-2 py-1.5 text-center" style="background: color-mix(in srgb, {c} 10%, transparent); border: 1px solid color-mix(in srgb, {c} 25%, transparent);">
+                <div class="text-[10px] font-bold uppercase tracking-wide mb-0.5" style="color: {c};">{s}</div>
+                <div class="text-lg font-black tabular-nums leading-none" style="color: {c};">{sc}</div>
+                <div class="text-[9px] opacity-60 mt-0.5" style="color: {c};">/10</div>
               </div>
             {/if}
-          </div>
+          {/each}
+        </div>
+
+        <!-- Per-model explanations -->
+        <div class="flex-1 min-h-0 overflow-y-auto px-4 py-3 flex flex-col gap-3">
+          {#each ["A", "B", "C", "D"] as s}
+            {#if judgmentPopup.scores[s] !== undefined}
+              {@const color = SLOT_COLORS[s]}
+              {@const score = judgmentPopup.scores[s]}
+              {@const expl = judgmentPopup.explanations?.[s] || ""}
+              <div class="rounded-lg p-3" style="background: color-mix(in srgb, {color} 6%, var(--ui-bg-main)); border-left: 3px solid {color};">
+                <div class="flex items-center justify-between mb-1">
+                  <span class="text-xs font-bold uppercase tracking-wide" style="color: {color};">Model {s}</span>
+                  <span class="text-sm font-bold tabular-nums" style="color: {color};">{score}<span class="text-[10px] font-normal opacity-60">/10</span></span>
+                </div>
+                {#if expl}
+                  <p class="text-xs leading-relaxed" style="color: var(--ui-text-secondary);">{expl}</p>
+                {/if}
+              </div>
+            {/if}
+          {/each}
+          {#if !judgmentPopup.explanations || Object.keys(judgmentPopup.explanations).length === 0}
+            <p class="text-xs leading-relaxed whitespace-pre-wrap" style="color: var(--ui-text-secondary);">{judgmentPopup.explanation}</p>
+          {/if}
+          {#if arenaCurrentRunMeta}
+            <button
+              type="button"
+              class="mt-1 text-[10px] underline text-left transition-opacity hover:opacity-70"
+              style="color: var(--ui-text-secondary);"
+              onclick={() => {
+                const meta = { run_id: arenaCurrentRunMeta.run_id, seed: arenaCurrentRunMeta.seed, timestamp: arenaCurrentRunMeta.start_timestamp, question_index: arenaCurrentRunMeta.question_index, deterministic_judge: arenaCurrentRunMeta.deterministic_judge, blind_review: arenaCurrentRunMeta.blind_review, model_list: arenaCurrentRunMeta.model_list, judge_model: arenaCurrentRunMeta.judge_model, responses: arenaCurrentRunMeta.responses, scores: judgmentPopup.scores };
+                navigator.clipboard?.writeText(JSON.stringify(meta, null, 2));
+              }}>Copy run metadata</button>
+          {/if}
         </div>
       </div>
     </div>
