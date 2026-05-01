@@ -168,9 +168,9 @@
 
     </div>
     <div class="shrink-0 px-6 py-4 flex justify-between gap-2" style="border-top: 1px solid var(--ui-border);">
-      <button type="button" class="px-3 py-1.5 text-sm rounded-lg transition-colors" style="border: 1px solid var(--ui-border); color: var(--ui-text-secondary);" onmouseenter={(e) => e.currentTarget.style.background = 'color-mix(in srgb, var(--ui-border) 40%, transparent)'" onmouseleave={(e) => e.currentTarget.style.background = 'transparent'" onclick={resetToDefaults}>Reset to defaults</button>
+      <button type="button" class="px-3 py-1.5 text-sm rounded-lg transition-colors" style="border: 1px solid var(--ui-border); color: var(--ui-text-secondary);" onmouseenter={(e) => e.currentTarget.style.background = 'color-mix(in srgb, var(--ui-border) 40%, transparent)'} onmouseleave={(e) => e.currentTarget.style.background = 'transparent'} onclick={resetToDefaults}>Reset to defaults</button>
       <div class="flex gap-2">
-        <button type="button" class="px-4 py-2 rounded-lg text-sm transition-colors" style="border: 1px solid var(--ui-border); color: var(--ui-text-secondary);" onmouseenter={(e) => e.currentTarget.style.background = 'color-mix(in srgb, var(--ui-border) 40%, transparent)'" onmouseleave={(e) => e.currentTarget.style.background = 'transparent'" onclick={() => onclose?.()}>Cancel</button>
+        <button type="button" class="px-4 py-2 rounded-lg text-sm transition-colors" style="border: 1px solid var(--ui-border); color: var(--ui-text-secondary);" onmouseenter={(e) => e.currentTarget.style.background = 'color-mix(in srgb, var(--ui-border) 40%, transparent)'} onmouseleave={(e) => e.currentTarget.style.background = 'transparent'} onclick={() => onclose?.()}>Cancel</button>
         <button type="button" class="px-4 py-2 rounded-lg text-sm font-medium transition-opacity hover:opacity-90" style="background-color: var(--ui-accent); color: var(--ui-bg-main);" onclick={save}>Save</button>
       </div>
     </div>
