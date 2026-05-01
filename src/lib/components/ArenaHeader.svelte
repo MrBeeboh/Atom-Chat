@@ -33,7 +33,7 @@
     >
       <span class="text-[10px] font-bold w-4 shrink-0" style="color: var(--ui-text-secondary);">B</span>
       <div class="flex-1 min-w-0"><ModelSelectorSlot slot="B" /></div>
-      <span class="arena-header-score min-w-[2rem] text-center text-sm font-bold tabular-nums" style="color: #10b981;">{arenaScores.B}</span>
+      <span class="arena-header-score min-w-[2rem] text-center text-sm font-bold tabular-nums" style="color: #10b981;">{arenaScores.B ?? 0}</span>
     </div>
   {/if}
   {#if arenaPanelCount >= 3}
@@ -44,7 +44,7 @@
     >
       <span class="text-[10px] font-bold w-4 shrink-0" style="color: var(--ui-text-secondary);">C</span>
       <div class="flex-1 min-w-0"><ModelSelectorSlot slot="C" /></div>
-      <span class="arena-header-score min-w-[2rem] text-center text-sm font-bold tabular-nums" style="color: #f59e0b;">{arenaScores.C}</span>
+      <span class="arena-header-score min-w-[2rem] text-center text-sm font-bold tabular-nums" style="color: #f59e0b;">{arenaScores.C ?? 0}</span>
     </div>
   {/if}
   {#if arenaPanelCount >= 4}
@@ -55,7 +55,7 @@
     >
       <span class="text-[10px] font-bold w-4 shrink-0" style="color: var(--ui-text-secondary);">D</span>
       <div class="flex-1 min-w-0"><ModelSelectorSlot slot="D" /></div>
-      <span class="arena-header-score min-w-[2rem] text-center text-sm font-bold tabular-nums" style="color: #8b5cf6;">{arenaScores.D}</span>
+      <span class="arena-header-score min-w-[2rem] text-center text-sm font-bold tabular-nums" style="color: #8b5cf6;">{arenaScores.D ?? 0}</span>
     </div>
   {/if}
 </header>
