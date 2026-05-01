@@ -61,7 +61,7 @@
   const canGenerateImage = $derived(imageModalPrompt.trim().length > 0);
 
   /** DeepInfra model IDs (official docs). Our ENGINE_OPTIONS use dot (FLUX.1); DeepInfra uses hyphen (FLUX-1). */
-  const DEEPINFRA_MODEL_IDS = ['black-forest-labs/FLUX-1-schnell', 'black-forest-labs/FLUX-1-dev', 'black-forest-labs/FLUX-1-dev'];
+  const DEEPINFRA_MODEL_IDS = ['black-forest-labs/FLUX-1-schnell', 'black-forest-labs/FLUX-1-dev', 'black-forest-labs/FLUX-1-pro'];
   /** Subscribed to store so image/video buttons activate when key is saved in Settings. */
   let hasDeepinfraKey = $state(false);
   $effect(() => {
