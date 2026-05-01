@@ -63,7 +63,6 @@
   import ModelSelectorSlot from "$lib/components/ModelSelectorSlot.svelte";
   import ArenaPanel from "$lib/components/ArenaPanel.svelte";
   import ArenaScoreMatrix from "$lib/components/ArenaScoreMatrix.svelte";
-  import ArenaHeader from "$lib/components/ArenaHeader.svelte";
   import ArenaControlBar from "$lib/components/ArenaControlBar.svelte";
   import {
     generateId,
