@@ -8,54 +8,25 @@
       ? "repeat(2, minmax(0, 1fr))"
       : `repeat(${arenaPanelCount}, minmax(0, 1fr))`
   );
+
+  const SLOT_COLORS = { A: '#3b82f6', B: '#10b981', C: '#f59e0b', D: '#8b5cf6' };
 </script>
 
 <header
   class="shrink-0 grid gap-2 px-3 py-2 items-stretch"
-  style="background-color: var(--ui-bg-sidebar); z-index: 100; grid-template-columns: {gridCols};"
+  style="background-color: var(--ui-bg-sidebar); border-bottom: 1px solid var(--ui-border); z-index: 100; grid-template-columns: {gridCols};"
 >
-  {#if arenaPanelCount >= 1}
+  {#each ['A', 'B', 'C', 'D'].slice(0, arenaPanelCount) as slot}
+    {@const color = SLOT_COLORS[slot]}
+    {@const isRunning = running[slot]}
     <div
       class="flex items-center gap-2 rounded-xl px-3 py-2 min-h-0 transition-all"
-      class:model-card-active={running.A}
-      style="background: {running.A ? 'color-mix(in srgb, #3b82f6 10%, var(--ui-bg-main))' : 'color-mix(in srgb, var(--ui-border) 12%, var(--ui-bg-main))'};"
+      class:model-card-active={isRunning}
+      style="background: {isRunning ? `color-mix(in srgb, ${color} 12%, var(--ui-bg-main))` : 'color-mix(in srgb, var(--ui-border) 12%, var(--ui-bg-main))'}; border: 1px solid {isRunning ? `color-mix(in srgb, ${color} 30%, transparent)` : 'var(--ui-border)'};"
     >
-      <span class="text-[10px] font-bold w-4 shrink-0" style="color: var(--ui-text-secondary);">A</span>
-      <div class="flex-1 min-w-0"><ModelSelectorSlot slot="A" /></div>
-      <span class="arena-header-score min-w-[2rem] text-center text-sm font-bold tabular-nums" style="color: #3b82f6;">{arenaScores.A ?? 0}</span>
+      <span class="text-[10px] font-bold w-5 h-5 rounded flex items-center justify-center shrink-0" style="background: color-mix(in srgb, {color} 15%, transparent); color: {color};">{slot}</span>
+      <div class="flex-1 min-w-0"><ModelSelectorSlot {slot} /></div>
+      <span class="arena-header-score min-w-[2rem] text-center text-sm font-bold tabular-nums" style="color: {color};">{arenaScores[slot] ?? 0}</span>
     </div>
-  {/if}
-  {#if arenaPanelCount >= 2}
-    <div
-      class="flex items-center gap-2 rounded-xl px-3 py-2 min-h-0 transition-all"
-      class:model-card-active={running.B}
-      style="background: {running.B ? 'color-mix(in srgb, #10b981 10%, var(--ui-bg-main))' : 'color-mix(in srgb, var(--ui-border) 12%, var(--ui-bg-main))'};"
-    >
-      <span class="text-[10px] font-bold w-4 shrink-0" style="color: var(--ui-text-secondary);">B</span>
-      <div class="flex-1 min-w-0"><ModelSelectorSlot slot="B" /></div>
-      <span class="arena-header-score min-w-[2rem] text-center text-sm font-bold tabular-nums" style="color: #10b981;">{arenaScores.B ?? 0}</span>
-    </div>
-  {/if}
-  {#if arenaPanelCount >= 3}
-    <div
-      class="flex items-center gap-2 rounded-xl px-3 py-2 min-h-0 transition-all"
-      class:model-card-active={running.C}
-      style="background: {running.C ? 'color-mix(in srgb, #f59e0b 10%, var(--ui-bg-main))' : 'color-mix(in srgb, var(--ui-border) 12%, var(--ui-bg-main))'};"
-    >
-      <span class="text-[10px] font-bold w-4 shrink-0" style="color: var(--ui-text-secondary);">C</span>
-      <div class="flex-1 min-w-0"><ModelSelectorSlot slot="C" /></div>
-      <span class="arena-header-score min-w-[2rem] text-center text-sm font-bold tabular-nums" style="color: #f59e0b;">{arenaScores.C ?? 0}</span>
-    </div>
-  {/if}
-  {#if arenaPanelCount >= 4}
-    <div
-      class="flex items-center gap-2 rounded-xl px-3 py-2 min-h-0 transition-all"
-      class:model-card-active={running.D}
-      style="background: {running.D ? 'color-mix(in srgb, #8b5cf6 10%, var(--ui-bg-main))' : 'color-mix(in srgb, var(--ui-border) 12%, var(--ui-bg-main))'};"
-    >
-      <span class="text-[10px] font-bold w-4 shrink-0" style="color: var(--ui-text-secondary);">D</span>
-      <div class="flex-1 min-w-0"><ModelSelectorSlot slot="D" /></div>
-      <span class="arena-header-score min-w-[2rem] text-center text-sm font-bold tabular-nums" style="color: #8b5cf6;">{arenaScores.D ?? 0}</span>
-    </div>
-  {/if}
+  {/each}
 </header>
