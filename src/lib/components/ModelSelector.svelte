@@ -119,7 +119,7 @@
       title={modelDisplayName($selectedModelId) || 'Select model'}>
       {#if $selectedModelId}
         {@const selIcon = getModelIcon($selectedModelId, $modelIconOverrides)}
-        <img src={selIcon} alt="" class="w-4 h-4 shrink-0 rounded object-contain" />
+        <img src={selIcon} alt="" class="w-4 h-4 shrink-0 rounded object-contain" onerror={(e) => (e.currentTarget.style.display = 'none')} />
         <span class="truncate font-bold uppercase tracking-tight text-xs">{modelDisplayName($selectedModelId)}</span>
         {#if getModelTypeTag($selectedModelId)}
           <span class="shrink-0 text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded" style="background: color-mix(in srgb, var(--ui-accent) 12%, transparent); color: var(--ui-accent);">{getModelTypeTag($selectedModelId)}</span>
@@ -152,7 +152,7 @@
           role="option"
           aria-selected={m.id === $selectedModelId}
           onclick={() => select(m.id)}>
-          <img src={icon} alt="" class="w-5 h-5 shrink-0 rounded object-contain" />
+          <img src={icon} alt="" class="w-5 h-5 shrink-0 rounded object-contain" onerror={(e) => (e.currentTarget.style.display = 'none')} />
           <span class="min-w-0 flex-1 flex items-center gap-1.5">
             <span class="truncate">{modelDisplayName(m.id)}</span>
             <span class="model-row-actions shrink-0 flex items-center gap-1.5">
