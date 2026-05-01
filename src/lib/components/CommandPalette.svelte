@@ -255,7 +255,8 @@
           placeholder="Search commands, models, chats..."
           aria-label="Search" />
       </div>
-      <div class="max-h-[60vh] overflow-y-auto py-2">
+      <div class="cp-results-wrap" style="max-height: 60vh; overflow-y: auto; position: relative;">
+        <div class="py-2">
         {#if items.length === 0}
           <div class="px-4 py-6 text-center text-sm" style="color: var(--ui-text-secondary);">No matches</div>
         {:else}
@@ -277,7 +278,23 @@
             </button>
           {/each}
         {/if}
+        </div>
+        <div class="cp-scroll-fade" aria-hidden="true"></div>
       </div>
     </div>
   </div>
 {/if}
+
+<style>
+  .cp-results-wrap {
+    scrollbar-width: thin;
+  }
+  .cp-scroll-fade {
+    position: sticky;
+    bottom: 0;
+    height: 28px;
+    margin-top: -28px;
+    pointer-events: none;
+    background: linear-gradient(to bottom, transparent, var(--ui-bg-sidebar, #fff));
+  }
+</style>
