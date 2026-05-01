@@ -265,9 +265,9 @@
       </header>
       <div class="flex flex-1 min-h-0 relative">
         <aside
-          class="shrink-0 overflow-hidden hidden md:flex flex-col transition-[width] duration-200 relative min-w-0 {$layout === 'arena' ? 'arena-sidebar-secondary' : ''}"
-          style="width: {$sidebarCollapsed ? '52px' : '13rem'}; background-color: var(--ui-bg-sidebar);">
-          {#if $sidebarCollapsed}
+          class="shrink-0 hidden md:flex flex-col transition-[width] duration-200 relative min-w-0 {$layout === 'arena' ? 'arena-sidebar-secondary' : 'overflow-hidden'}"
+          style="width: {$sidebarCollapsed ? ($layout === 'arena' ? '0px' : '52px') : '13rem'}; background-color: {$sidebarCollapsed && $layout === 'arena' ? 'transparent' : 'var(--ui-bg-sidebar)'}; overflow: {$layout === 'arena' ? 'visible' : 'hidden'};">
+          {#if $sidebarCollapsed && $layout !== 'arena'}
             <div class="panel-tab-strip-icon-wrap pr-1" aria-hidden="true">
               <span class="panel-tab-strip-icon" title="Conversations">
                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
@@ -277,7 +277,9 @@
           <button
             type="button"
             class="panel-tab {sidebarTabBounce ? 'panel-tab-bounce' : ''}"
-            style="--panel-tab-transform: translate(100%, -50%); top: 50%; right: 0;"
+            style="{$layout === 'arena' && $sidebarCollapsed
+              ? 'position: fixed; left: 0; top: 50%; --panel-tab-transform: translate(0, -50%); transform: translate(0, -50%); border-radius: 0 8px 8px 0; border-left: none; z-index: 150;'
+              : '--panel-tab-transform: translate(100%, -50%); top: 50%; right: 0;'}"
             title={$sidebarCollapsed ? 'Expand sidebar (conversations)' : 'Collapse sidebar'}
             aria-label={$sidebarCollapsed ? 'Expand sidebar (conversations)' : 'Collapse sidebar'}
             onclick={toggleSidebarCollapsed}>

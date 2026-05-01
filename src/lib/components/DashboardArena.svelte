@@ -2200,21 +2200,14 @@
 
   </div><!-- end main content column -->
 
-  <!-- === Docked right settings panel (like left sidebar). When collapsed, show a visible strip so the tab is never clipped. === -->
+  <!-- === Docked right settings panel. Collapsed = zero flex width + fixed edge tab. === -->
   {#if arenaSettingsCollapsed}
-    <div
-      class="arena-settings-tab-strip shrink-0 hidden md:flex items-center justify-center relative min-h-0 border-l"
-      style="width: 52px; background-color: var(--ui-bg-sidebar); border-color: var(--ui-border);"
-    >
-      <div class="panel-tab-strip-icon-wrap pl-1" aria-hidden="true">
-        <span class="panel-tab-strip-icon" title="Arena settings">
-          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 0 0-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 0 0-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 0 0-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 0 0-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 0 0 1.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z" /></svg>
-        </span>
-      </div>
+    <!-- Zero-width placeholder; button fixed at screen right so it never eats panel space -->
+    <div class="shrink-0 hidden md:block" style="width: 0; overflow: visible;">
       <button
         type="button"
         class="panel-tab"
-        style="--panel-tab-transform: translate(-100%, -50%); left: 0; top: 50%; border-right: none; border-radius: 6px 0 0 6px;"
+        style="position: fixed; right: 0; top: 50%; --panel-tab-transform: translate(0, -50%); transform: translate(0, -50%); border-radius: 8px 0 0 8px; border-right: none; z-index: 150;"
         title="Show Arena settings"
         aria-label="Show Arena settings"
         onclick={() => (arenaSettingsCollapsed = false)}
@@ -2227,22 +2220,22 @@
       class="shrink-0 border-l hidden md:flex flex-col transition-[width] duration-200 relative overflow-visible"
       style="width: 320px; background-color: var(--ui-bg-main); border-color: var(--ui-border);"
     >
-      <button
-        type="button"
-        class="panel-tab"
-        style="--panel-tab-transform: translate(-100%, -50%); top: 50%; left: 0; border-right: none; border-radius: 6px 0 0 6px;"
-        title="Hide Arena settings"
-        aria-label="Hide Arena settings"
-        onclick={() => (arenaSettingsCollapsed = true)}
-      >
-        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7" /></svg>
-      </button>
       <div class="w-full flex flex-col min-h-0 h-full min-w-0 overflow-hidden">
       <div
         class="shrink-0 flex items-center justify-between px-4 py-3 border-b"
         style="border-color: var(--ui-border);"
       >
         <h2 class="text-sm font-semibold" style="color: var(--ui-text-primary);">Arena Settings</h2>
+        <button
+          type="button"
+          class="w-7 h-7 flex items-center justify-center rounded-lg transition-opacity hover:opacity-70 shrink-0"
+          style="color: var(--ui-text-secondary);"
+          title="Hide Arena settings"
+          aria-label="Hide Arena settings"
+          onclick={() => (arenaSettingsCollapsed = true)}
+        >
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;"><path d="M9 5l7 7-7 7" /></svg>
+        </button>
       </div>
       <div class="flex-1 overflow-y-auto px-4 py-4 space-y-6">
         <!-- 1. Arena Builder (Phase 1: question generation) -->
