@@ -91,7 +91,7 @@
       <button type="button" class="flex items-center gap-2 rounded-lg border text-sm px-3 py-2 w-full min-h-[36px] transition-colors duration-150 ui-model-selector {open ? 'ui-model-selector-open' : ''}" style="background-color: var(--ui-input-bg); color: var(--ui-text-primary); border-color: var(--ui-border);" onclick={toggle} onkeydown={(e) => e.key === 'Escape' && (open = false)} aria-label="Select model A">
         {#if val}
           {@const selIcon = getModelIcon(val, $modelIconOverrides)}
-          {#if selIcon}<img src={selIcon} alt="" class="w-4 h-4 shrink-0 rounded object-contain" />{/if}
+          {#if selIcon}<img src={selIcon} alt="" class="w-4 h-4 shrink-0 rounded object-contain" onerror={(e) => (e.currentTarget.style.display = 'none')} />{/if}
           <span class="truncate font-bold uppercase tracking-tight text-xs">{modelDisplayName(val)}</span>
           <ModelCapabilityBadges modelId={val} class="ml-0.5" />
         {:else}<span class="text-zinc-500 dark:text-zinc-400">Select model</span>{/if}
@@ -111,7 +111,7 @@
             {#each $models as m}
               {@const icon = getModelIcon(m.id, $modelIconOverrides)}
               <button type="button" class="flex items-center gap-2 w-full px-4 py-2.5 text-left text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700/80 transition-colors {val === m.id ? 'bg-zinc-50 dark:bg-zinc-700/50 font-medium' : ''}" role="option" aria-selected={val === m.id} onclick={() => select(m.id)}>
-                <img src={icon} alt="" class="w-5 h-5 shrink-0 rounded object-contain" />
+                <img src={icon} alt="" class="w-5 h-5 shrink-0 rounded object-contain" onerror={(e) => (e.currentTarget.style.display = 'none')} />
                 <span class="min-w-0 flex-1 flex items-center gap-1.5">
                   <span class="truncate">{modelDisplayName(m.id)}</span>
                   <ModelCapabilityBadges modelId={m.id} />
@@ -132,7 +132,7 @@
       <button type="button" class="flex items-center gap-2 rounded-lg border text-sm px-3 py-2 w-full min-h-[36px] transition-colors duration-150 ui-model-selector {open ? 'ui-model-selector-open' : ''}" style="background-color: var(--ui-input-bg); color: var(--ui-text-primary); border-color: var(--ui-border);" onclick={toggle} onkeydown={(e) => e.key === 'Escape' && (open = false)} aria-label="Select model B">
         {#if val}
           {@const selIcon = getModelIcon(val, $modelIconOverrides)}
-          {#if selIcon}<img src={selIcon} alt="" class="w-4 h-4 shrink-0 rounded object-contain" />{/if}
+          {#if selIcon}<img src={selIcon} alt="" class="w-4 h-4 shrink-0 rounded object-contain" onerror={(e) => (e.currentTarget.style.display = 'none')} />{/if}
           <span class="truncate font-bold uppercase tracking-tight text-xs">{modelDisplayName(val)}</span>
           <ModelCapabilityBadges modelId={val} class="ml-0.5" />
         {:else}<span class="text-zinc-500 dark:text-zinc-400">Select model</span>{/if}
@@ -152,7 +152,7 @@
             {#each $models as m}
               {@const icon = getModelIcon(m.id, $modelIconOverrides)}
               <button type="button" class="flex items-center gap-2 w-full px-4 py-2.5 text-left text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700/80 transition-colors {val === m.id ? 'bg-zinc-50 dark:bg-zinc-700/50 font-medium' : ''}" role="option" aria-selected={val === m.id} onclick={() => select(m.id)}>
-                <img src={icon} alt="" class="w-5 h-5 shrink-0 rounded object-contain" />
+                <img src={icon} alt="" class="w-5 h-5 shrink-0 rounded object-contain" onerror={(e) => (e.currentTarget.style.display = 'none')} />
                 <span class="min-w-0 flex-1 flex items-center gap-1.5">
                   <span class="truncate">{modelDisplayName(m.id)}</span>
                   <ModelCapabilityBadges modelId={m.id} />
@@ -173,7 +173,7 @@
       <button type="button" class="flex items-center gap-2 rounded-lg border text-sm px-3 py-2 w-full min-h-[36px] transition-colors duration-150 ui-model-selector {open ? 'ui-model-selector-open' : ''}" style="background-color: var(--ui-input-bg); color: var(--ui-text-primary); border-color: var(--ui-border);" onclick={toggle} onkeydown={(e) => e.key === 'Escape' && (open = false)} aria-label="Select model C">
         {#if val}
           {@const selIcon = getModelIcon(val, $modelIconOverrides)}
-          {#if selIcon}<img src={selIcon} alt="" class="w-4 h-4 shrink-0 rounded object-contain" />{/if}
+          {#if selIcon}<img src={selIcon} alt="" class="w-4 h-4 shrink-0 rounded object-contain" onerror={(e) => (e.currentTarget.style.display = 'none')} />{/if}
           <span class="truncate font-bold uppercase tracking-tight text-xs">{modelDisplayName(val)}</span>
           <ModelCapabilityBadges modelId={val} class="ml-0.5" />
         {:else}<span class="text-zinc-500 dark:text-zinc-400">Select model</span>{/if}
@@ -193,7 +193,7 @@
             {#each $models as m}
               {@const icon = getModelIcon(m.id, $modelIconOverrides)}
               <button type="button" class="flex items-center gap-2 w-full px-4 py-2.5 text-left text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700/80 transition-colors {val === m.id ? 'bg-zinc-50 dark:bg-zinc-700/50 font-medium' : ''}" role="option" aria-selected={val === m.id} onclick={() => select(m.id)}>
-                <img src={icon} alt="" class="w-5 h-5 shrink-0 rounded object-contain" />
+                <img src={icon} alt="" class="w-5 h-5 shrink-0 rounded object-contain" onerror={(e) => (e.currentTarget.style.display = 'none')} />
                 <span class="min-w-0 flex-1 flex items-center gap-1.5">
                   <span class="truncate">{modelDisplayName(m.id)}</span>
                   <ModelCapabilityBadges modelId={m.id} />
@@ -214,7 +214,7 @@
       <button type="button" class="flex items-center gap-2 rounded-lg border text-sm px-3 py-2 w-full min-h-[36px] transition-colors duration-150 ui-model-selector {open ? 'ui-model-selector-open' : ''}" style="background-color: var(--ui-input-bg); color: var(--ui-text-primary); border-color: var(--ui-border);" onclick={toggle} onkeydown={(e) => e.key === 'Escape' && (open = false)} aria-label="Select model D">
         {#if val}
           {@const selIcon = getModelIcon(val, $modelIconOverrides)}
-          {#if selIcon}<img src={selIcon} alt="" class="w-4 h-4 shrink-0 rounded object-contain" />{/if}
+          {#if selIcon}<img src={selIcon} alt="" class="w-4 h-4 shrink-0 rounded object-contain" onerror={(e) => (e.currentTarget.style.display = 'none')} />{/if}
           <span class="truncate font-bold uppercase tracking-tight text-xs">{modelDisplayName(val)}</span>
           <ModelCapabilityBadges modelId={val} class="ml-0.5" />
         {:else}<span class="text-zinc-500 dark:text-zinc-400">Select model</span>{/if}
@@ -234,7 +234,7 @@
             {#each $models as m}
               {@const icon = getModelIcon(m.id, $modelIconOverrides)}
               <button type="button" class="flex items-center gap-2 w-full px-4 py-2.5 text-left text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700/80 transition-colors {val === m.id ? 'bg-zinc-50 dark:bg-zinc-700/50 font-medium' : ''}" role="option" aria-selected={val === m.id} onclick={() => select(m.id)}>
-                <img src={icon} alt="" class="w-5 h-5 shrink-0 rounded object-contain" />
+                <img src={icon} alt="" class="w-5 h-5 shrink-0 rounded object-contain" onerror={(e) => (e.currentTarget.style.display = 'none')} />
                 <span class="min-w-0 flex-1 flex items-center gap-1.5">
                   <span class="truncate">{modelDisplayName(m.id)}</span>
                   <ModelCapabilityBadges modelId={m.id} />
