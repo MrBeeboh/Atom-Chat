@@ -134,8 +134,7 @@
     <div
       id="model-listbox"
       class="fixed z-[100] rounded-xl shadow-lg py-1 overflow-y-auto overflow-x-visible min-w-[280px]"
-      style="border: 1px solid var(--ui-border); background-color: var(--ui-bg-main);"
-      style="left: {dropdownPlace.left}px; width: {dropdownPlace.width}px; max-height: {dropdownPlace.maxHeight}px; {dropdownPlace.openUp ? 'bottom: ' + dropdownPlace.bottom + 'px; top: auto;' : 'top: ' + dropdownPlace.top + 'px;'}"
+      style="border: 1px solid var(--ui-border); background-color: var(--ui-bg-main); left: {dropdownPlace.left}px; width: {dropdownPlace.width}px; max-height: {dropdownPlace.maxHeight}px; {dropdownPlace.openUp ? 'bottom: ' + dropdownPlace.bottom + 'px; top: auto;' : 'top: ' + dropdownPlace.top + 'px;'}"
       role="listbox">
       {#if loading}
         <div class="px-4 py-3 text-sm flex items-center gap-2" style="color: var(--ui-text-secondary);">
