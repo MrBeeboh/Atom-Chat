@@ -126,14 +126,15 @@
         {/if}
         <ModelCapabilityBadges modelId={$selectedModelId} class="ml-0.5" />
       {:else}
-        <span class="text-zinc-500 dark:text-zinc-400">Select model</span>
+        <span style="color: var(--ui-text-secondary);">Select model</span>
       {/if}
       <svg class="w-4 h-4 shrink-0 ml-1 transition-transform duration-150 {open ? 'rotate-180' : ''}" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
     </button>
   {#if open}
     <div
       id="model-listbox"
-      class="fixed z-[100] rounded-xl border border-zinc-200 dark:border-zinc-600 bg-white dark:bg-zinc-800 shadow-lg py-1 overflow-y-auto overflow-x-visible min-w-[280px]"
+      class="fixed z-[100] rounded-xl shadow-lg py-1 overflow-y-auto overflow-x-visible min-w-[280px]"
+      style="border: 1px solid var(--ui-border); background-color: var(--ui-bg-main);"
       style="left: {dropdownPlace.left}px; width: {dropdownPlace.width}px; max-height: {dropdownPlace.maxHeight}px; {dropdownPlace.openUp ? 'bottom: ' + dropdownPlace.bottom + 'px; top: auto;' : 'top: ' + dropdownPlace.top + 'px;'}"
       role="listbox">
       {#if loading}
@@ -148,7 +149,7 @@
         {@const icon = getModelIcon(m.id, $modelIconOverrides)}
         <button
           type="button"
-          class="model-row flex items-center gap-2 w-full px-4 py-2.5 text-left text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700/80 transition-colors {m.id === $selectedModelId ? 'bg-zinc-50 dark:bg-zinc-700/50 font-medium' : ''}"
+          class="model-row flex items-center gap-2 w-full px-4 py-2.5 text-left text-sm transition-colors {m.id === $selectedModelId ? 'model-row-selected' : ''}"
           role="option"
           aria-selected={m.id === $selectedModelId}
           onclick={() => select(m.id)}>
@@ -174,7 +175,7 @@
   {/if}
   </div>
   {#if $selectedModelId && getQuantization($selectedModelId)}
-    <span class="font-mono text-[10px] px-1.5 py-0.5 rounded bg-zinc-200 dark:bg-zinc-600 text-zinc-600 dark:text-zinc-400 shrink-0" title="Quantization">{getQuantization($selectedModelId)}</span>
+    <span class="font-mono text-[10px] px-1.5 py-0.5 rounded shrink-0" style="background: color-mix(in srgb, var(--ui-border) 50%, transparent); color: var(--ui-text-secondary);" title="Quantization">{getQuantization($selectedModelId)}</span>
   {/if}
   </div>
   {#if $modelSelectionNotification}
@@ -191,5 +192,12 @@
   }
   .model-row:hover .model-row-actions {
     opacity: 1;
+  }
+  .model-row:hover {
+    background-color: color-mix(in srgb, var(--ui-border) 35%, transparent);
+  }
+  .model-row.model-row-selected {
+    background-color: color-mix(in srgb, var(--ui-border) 22%, transparent);
+    font-weight: 500;
   }
 </style>

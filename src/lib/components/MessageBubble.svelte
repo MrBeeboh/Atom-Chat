@@ -206,7 +206,7 @@
                 <img
                   src={url}
                   alt="Result image"
-                  class="max-h-32 rounded border border-zinc-200 dark:border-zinc-600"
+                  class="max-h-32 rounded" style="border: 1px solid var(--ui-border);"
                   loading="lazy"
                 />
               {/each}
@@ -222,7 +222,7 @@
         >
           {#each imageRefs as ref (ref.image_id)}
             <div
-              class="shrink-0 rounded border border-zinc-200 dark:border-zinc-600 overflow-hidden bg-zinc-100 dark:bg-zinc-800/80"
+              class="shrink-0 rounded overflow-hidden" style="border: 1px solid var(--ui-border); background-color: var(--ui-bg-sidebar);"
               role="listitem"
             >
               <img
@@ -235,7 +235,7 @@
                 loading="lazy"
               />
               <p
-                class="p-1.5 text-[10px] text-zinc-500 dark:text-zinc-400 truncate max-w-[120px]"
+                class="p-1.5 text-[10px] truncate max-w-[120px]" style="color: var(--ui-text-secondary);"
               >
                 ID: {ref.image_id}
               </p>
@@ -251,7 +251,7 @@
         >
           {#each imageUrls as url (url)}
             <div
-              class="shrink-0 rounded border border-zinc-200 dark:border-zinc-600 overflow-hidden bg-zinc-100 dark:bg-zinc-800/80"
+              class="shrink-0 rounded overflow-hidden" style="border: 1px solid var(--ui-border); background-color: var(--ui-bg-sidebar);"
               role="listitem"
             >
               <img
@@ -272,7 +272,7 @@
         >
           {#each videoUrls as url (url)}
             <div
-              class="rounded border border-zinc-200 dark:border-zinc-600 overflow-hidden bg-zinc-100 dark:bg-zinc-800/80 max-w-2xl"
+              class="rounded overflow-hidden max-w-2xl" style="border: 1px solid var(--ui-border); background-color: var(--ui-bg-sidebar);"
               role="listitem"
             >
               <AuthVideo {url} apiKey={deepinfraKey} />

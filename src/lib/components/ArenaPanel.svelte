@@ -144,26 +144,26 @@
     <div class="shrink-0 p-3 text-xs" style="background: color-mix(in srgb, var(--ui-border) 10%, var(--ui-bg-main));">
       <p class="font-medium mb-1.5" style="color: var(--ui-text-secondary);">Model {slot} settings</p>
       <div class="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1.5 items-center">
-        <label class="text-zinc-500 dark:text-zinc-400">Temperature</label>
+        <label style="color: var(--ui-text-secondary);">Temperature</label>
         <input type="number" step="0.1" min="0" max="2" class="w-20 px-1.5 py-0.5 rounded border text-right font-mono" style="border-color: var(--ui-border); background-color: var(--ui-bg-main); color: var(--ui-text-primary);" value={$arenaSlotOverrides[slot]?.temperature ?? effectiveSettings.temperature} oninput={slotOverrideInput('temperature')} />
-        <label class="text-zinc-500 dark:text-zinc-400">Max tokens</label>
+        <label style="color: var(--ui-text-secondary);">Max tokens</label>
         <input type="number" min="1" max="100000" step="1" class="w-20 px-1.5 py-0.5 rounded border text-right font-mono" style="border-color: var(--ui-border); background-color: var(--ui-bg-main); color: var(--ui-text-primary);" value={$arenaSlotOverrides[slot]?.max_tokens ?? effectiveSettings.max_tokens} oninput={slotOverrideInput('max_tokens')} />
-        <label class="text-zinc-500 dark:text-zinc-400">Top-P</label>
+        <label style="color: var(--ui-text-secondary);">Top-P</label>
         <input type="number" step="0.05" min="0" max="1" class="w-20 px-1.5 py-0.5 rounded border text-right font-mono" style="border-color: var(--ui-border); background-color: var(--ui-bg-main); color: var(--ui-text-primary);" value={$arenaSlotOverrides[slot]?.top_p ?? effectiveSettings.top_p} oninput={slotOverrideInput('top_p')} />
-        <label class="text-zinc-500 dark:text-zinc-400">Top-K</label>
+        <label style="color: var(--ui-text-secondary);">Top-K</label>
         <input type="number" min="1" max="200" step="1" class="w-20 px-1.5 py-0.5 rounded border text-right font-mono" style="border-color: var(--ui-border); background-color: var(--ui-bg-main); color: var(--ui-text-primary);" value={$arenaSlotOverrides[slot]?.top_k ?? effectiveSettings.top_k} oninput={slotOverrideInput('top_k')} />
-        <label class="text-zinc-500 dark:text-zinc-400">Repeat penalty</label>
+        <label style="color: var(--ui-text-secondary);">Repeat penalty</label>
         <input type="number" step="0.05" min="1" max="2" class="w-20 px-1.5 py-0.5 rounded border text-right font-mono" style="border-color: var(--ui-border); background-color: var(--ui-bg-main); color: var(--ui-text-primary);" value={$arenaSlotOverrides[slot]?.repeat_penalty ?? effectiveSettings.repeat_penalty} oninput={slotOverrideInput('repeat_penalty')} />
-        <label class="text-zinc-500 dark:text-zinc-400">Presence penalty</label>
+        <label style="color: var(--ui-text-secondary);">Presence penalty</label>
         <input type="number" step="0.1" min="-2" max="2" class="w-20 px-1.5 py-0.5 rounded border text-right font-mono" style="border-color: var(--ui-border); background-color: var(--ui-bg-main); color: var(--ui-text-primary);" value={$arenaSlotOverrides[slot]?.presence_penalty ?? effectiveSettings.presence_penalty} oninput={slotOverrideInput('presence_penalty')} />
-        <label class="text-zinc-500 dark:text-zinc-400">Frequency penalty</label>
+        <label style="color: var(--ui-text-secondary);">Frequency penalty</label>
         <input type="number" step="0.1" min="-2" max="2" class="w-20 px-1.5 py-0.5 rounded border text-right font-mono" style="border-color: var(--ui-border); background-color: var(--ui-bg-main); color: var(--ui-text-primary);" value={$arenaSlotOverrides[slot]?.frequency_penalty ?? effectiveSettings.frequency_penalty} oninput={slotOverrideInput('frequency_penalty')} />
       </div>
-      <label class="block mt-1.5 text-zinc-500 dark:text-zinc-400">System prompt template</label>
+      <label class="block mt-1.5" style="color: var(--ui-text-secondary);">System prompt template</label>
       <select class="w-full mb-0.5 px-1.5 py-0.5 rounded border text-xs" style="border-color: var(--ui-border); background-color: var(--ui-bg-main); color: var(--ui-text-primary);" onchange={(e) => { const opt = ARENA_SYSTEM_PROMPT_TEMPLATES.find((t) => t.name === e.currentTarget?.value); if (opt?.prompt) applyTemplate(opt.prompt); }} aria-label="System prompt template">
         {#each ARENA_SYSTEM_PROMPT_TEMPLATES as t}<option value={t.name}>{t.name}</option>{/each}
       </select>
-      <label class="block mt-1 text-zinc-500 dark:text-zinc-400">System prompt (optional)</label>
+      <label class="block mt-1" style="color: var(--ui-text-secondary);">System prompt (optional)</label>
       <textarea rows="2" class="w-full mt-0.5 px-1.5 py-1 rounded border text-xs resize-y" style="border-color: var(--ui-border); background-color: var(--ui-bg-main); color: var(--ui-text-primary);" placeholder="Leave blank to use Arena default" value={$arenaSlotOverrides[slot]?.system_prompt ?? ''} oninput={slotOverrideInput('system_prompt')}></textarea>
       <button type="button" class="mt-1.5 text-[10px] underline opacity-80 hover:opacity-100" style="color: var(--ui-text-secondary);" onclick={() => setArenaSlotOverride(slot, null)}>Reset to Arena default</button>
     </div>

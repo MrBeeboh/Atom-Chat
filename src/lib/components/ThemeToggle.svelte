@@ -14,7 +14,10 @@
 
 <button
   type="button"
-  class="p-2 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-700/80 text-zinc-600 dark:text-zinc-400 text-sm font-medium transition-colors"
+  class="p-2 rounded-xl text-sm font-medium transition-colors"
+  style="color: var(--ui-text-secondary);"
+  onmouseenter={(e) => (e.currentTarget.style.background = 'color-mix(in srgb, var(--ui-border) 40%, transparent)')}
+  onmouseleave={(e) => (e.currentTarget.style.background = 'transparent')}
   onclick={cycle}
   title="Theme: {label}">
   {label}

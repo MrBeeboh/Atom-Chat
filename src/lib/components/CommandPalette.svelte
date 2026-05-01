@@ -245,7 +245,7 @@
       onkeydown={(e) => e.stopPropagation()}
       transition:scale={{ start: 0.72, duration: 500, easing: quintOut }}>
       <div class="flex items-center gap-2 px-4 py-3 border-b" style="border-color: var(--ui-border);">
-        <span class="text-zinc-400 dark:text-zinc-500 shrink-0" aria-hidden="true">&#8250;</span>
+        <span class="shrink-0" style="color: var(--ui-text-secondary); opacity: 0.6;" aria-hidden="true">&#8250;</span>
         <input
           bind:this={inputEl}
           bind:value={query}
