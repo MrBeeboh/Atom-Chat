@@ -98,7 +98,7 @@
         <svg class="w-4 h-4 shrink-0 ml-1 transition-transform duration-150 {open ? 'rotate-180' : ''}" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
       </button>
       {#if open}
-        <div id="model-listbox-A" class="fixed z-[100] rounded-xl shadow-lg py-1 overflow-y-auto overflow-x-visible min-w-[280px]" style="border: 1px solid var(--ui-border); background-color: var(--ui-bg-main);" style="left: {dropdownPlace.left}px; width: {dropdownPlace.width}px; max-height: {dropdownPlace.maxHeight}px; {dropdownPlace.openUp ? 'bottom: ' + dropdownPlace.bottom + 'px; top: auto;' : 'top: ' + dropdownPlace.top + 'px;'}" role="listbox">
+        <div id="model-listbox-A" class="fixed z-[100] rounded-xl shadow-lg py-1 overflow-y-auto overflow-x-visible min-w-[280px]" style="border: 1px solid var(--ui-border); background-color: var(--ui-bg-main); left: {dropdownPlace.left}px; width: {dropdownPlace.width}px; max-height: {dropdownPlace.maxHeight}px; {dropdownPlace.openUp ? 'bottom: ' + dropdownPlace.bottom + 'px; top: auto;' : 'top: ' + dropdownPlace.top + 'px;'}" role="listbox">
           {#if loading}
             <div class="px-4 py-3 text-sm flex items-center gap-2" style="color: var(--ui-text-secondary);"><ThinkingAtom size={16} />{loadingMessage || 'Loading models…'}</div>
           {:else if $models.length === 0}
@@ -139,7 +139,7 @@
         <svg class="w-4 h-4 shrink-0 ml-1 transition-transform duration-150 {open ? 'rotate-180' : ''}" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
       </button>
       {#if open}
-        <div id="model-listbox-B" class="fixed z-[100] rounded-xl shadow-lg py-1 overflow-y-auto overflow-x-visible min-w-[280px]" style="border: 1px solid var(--ui-border); background-color: var(--ui-bg-main);" style="left: {dropdownPlace.left}px; width: {dropdownPlace.width}px; max-height: {dropdownPlace.maxHeight}px; {dropdownPlace.openUp ? 'bottom: ' + dropdownPlace.bottom + 'px; top: auto;' : 'top: ' + dropdownPlace.top + 'px;'}" role="listbox">
+        <div id="model-listbox-B" class="fixed z-[100] rounded-xl shadow-lg py-1 overflow-y-auto overflow-x-visible min-w-[280px]" style="border: 1px solid var(--ui-border); background-color: var(--ui-bg-main); left: {dropdownPlace.left}px; width: {dropdownPlace.width}px; max-height: {dropdownPlace.maxHeight}px; {dropdownPlace.openUp ? 'bottom: ' + dropdownPlace.bottom + 'px; top: auto;' : 'top: ' + dropdownPlace.top + 'px;'}" role="listbox">
           {#if loading}
             <div class="px-4 py-3 text-sm flex items-center gap-2" style="color: var(--ui-text-secondary);"><ThinkingAtom size={16} />{loadingMessage || 'Loading models…'}</div>
           {:else if $models.length === 0}
@@ -180,7 +180,7 @@
         <svg class="w-4 h-4 shrink-0 ml-1 transition-transform duration-150 {open ? 'rotate-180' : ''}" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
       </button>
       {#if open}
-        <div id="model-listbox-C" class="fixed z-[100] rounded-xl shadow-lg py-1 overflow-y-auto overflow-x-visible min-w-[280px]" style="border: 1px solid var(--ui-border); background-color: var(--ui-bg-main);" style="left: {dropdownPlace.left}px; width: {dropdownPlace.width}px; max-height: {dropdownPlace.maxHeight}px; {dropdownPlace.openUp ? 'bottom: ' + dropdownPlace.bottom + 'px; top: auto;' : 'top: ' + dropdownPlace.top + 'px;'}" role="listbox">
+        <div id="model-listbox-C" class="fixed z-[100] rounded-xl shadow-lg py-1 overflow-y-auto overflow-x-visible min-w-[280px]" style="border: 1px solid var(--ui-border); background-color: var(--ui-bg-main); left: {dropdownPlace.left}px; width: {dropdownPlace.width}px; max-height: {dropdownPlace.maxHeight}px; {dropdownPlace.openUp ? 'bottom: ' + dropdownPlace.bottom + 'px; top: auto;' : 'top: ' + dropdownPlace.top + 'px;'}" role="listbox">
           {#if loading}
             <div class="px-4 py-3 text-sm flex items-center gap-2" style="color: var(--ui-text-secondary);"><ThinkingAtom size={16} />{loadingMessage || 'Loading models…'}</div>
           {:else if $models.length === 0}
@@ -221,7 +221,7 @@
         <svg class="w-4 h-4 shrink-0 ml-1 transition-transform duration-150 {open ? 'rotate-180' : ''}" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
       </button>
       {#if open}
-        <div id="model-listbox-D" class="fixed z-[100] rounded-xl shadow-lg py-1 overflow-y-auto overflow-x-visible min-w-[280px]" style="border: 1px solid var(--ui-border); background-color: var(--ui-bg-main);" style="left: {dropdownPlace.left}px; width: {dropdownPlace.width}px; max-height: {dropdownPlace.maxHeight}px; {dropdownPlace.openUp ? 'bottom: ' + dropdownPlace.bottom + 'px; top: auto;' : 'top: ' + dropdownPlace.top + 'px;'}" role="listbox">
+        <div id="model-listbox-D" class="fixed z-[100] rounded-xl shadow-lg py-1 overflow-y-auto overflow-x-visible min-w-[280px]" style="border: 1px solid var(--ui-border); background-color: var(--ui-bg-main); left: {dropdownPlace.left}px; width: {dropdownPlace.width}px; max-height: {dropdownPlace.maxHeight}px; {dropdownPlace.openUp ? 'bottom: ' + dropdownPlace.bottom + 'px; top: auto;' : 'top: ' + dropdownPlace.top + 'px;'}" role="listbox">
           {#if loading}
             <div class="px-4 py-3 text-sm flex items-center gap-2" style="color: var(--ui-text-secondary);"><ThinkingAtom size={16} />{loadingMessage || 'Loading models…'}</div>
           {:else if $models.length === 0}
