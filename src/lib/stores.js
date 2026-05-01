@@ -37,7 +37,7 @@ const getStoredSelectedModel = () =>
 export const selectedModelId = writable(getStoredSelectedModel());
 if (typeof localStorage !== 'undefined') {
   selectedModelId.subscribe((v) => {
-    if (v) localStorage.setItem('selectedModel', v);
+    try { if (v) localStorage.setItem('selectedModel', v); } catch (_) {}
   });
 }
 
@@ -103,63 +103,63 @@ export const uiTheme = writable(getInitialUiTheme());
 const getStoredLmStudioUrl = () => (typeof localStorage !== 'undefined' ? localStorage.getItem('lmStudioBaseUrl') : null) || '';
 export const lmStudioBaseUrl = writable(getStoredLmStudioUrl());
 if (typeof localStorage !== 'undefined') {
-  lmStudioBaseUrl.subscribe((v) => localStorage.setItem('lmStudioBaseUrl', v ?? ''));
+  lmStudioBaseUrl.subscribe((v) => { try { localStorage.setItem('lmStudioBaseUrl', v ?? ''); } catch (_) {} });
 }
 
 /** Voice-to-text server URL (e.g. http://localhost:8765). Empty = voice mic disabled. */
 const getStoredVoiceServerUrl = () => (typeof localStorage !== 'undefined' ? localStorage.getItem('voiceServerUrl') : null) ?? 'http://localhost:8765';
 export const voiceServerUrl = writable(getStoredVoiceServerUrl());
 if (typeof localStorage !== 'undefined') {
-  voiceServerUrl.subscribe((v) => localStorage.setItem('voiceServerUrl', v ?? ''));
+  voiceServerUrl.subscribe((v) => { try { localStorage.setItem('voiceServerUrl', v ?? ''); } catch (_) {} });
 }
 
 /** Unload helper URL (Python SDK server at e.g. http://localhost:8766). When set, eject uses POST /unload-all. */
 const getStoredUnloadHelperUrl = () => (typeof localStorage !== 'undefined' ? localStorage.getItem('lmStudioUnloadHelperUrl') : null) || '';
 export const lmStudioUnloadHelperUrl = writable(getStoredUnloadHelperUrl());
 if (typeof localStorage !== 'undefined') {
-  lmStudioUnloadHelperUrl.subscribe((v) => localStorage.setItem('lmStudioUnloadHelperUrl', v ?? ''));
+  lmStudioUnloadHelperUrl.subscribe((v) => { try { localStorage.setItem('lmStudioUnloadHelperUrl', v ?? ''); } catch (_) {} });
 }
 
 /** DeepSeek API key (optional). When set, DeepSeek models appear in the model list and can be used for chat. Stored trimmed to avoid copy-paste spaces. */
 const getStoredDeepSeekApiKey = () => (typeof localStorage !== 'undefined' ? (localStorage.getItem('deepSeekApiKey') ?? '').trim() : null) ?? '';
 export const deepSeekApiKey = writable(getStoredDeepSeekApiKey());
 if (typeof localStorage !== 'undefined') {
-  deepSeekApiKey.subscribe((v) => localStorage.setItem('deepSeekApiKey', (typeof v === 'string' ? v : '').trim()));
+  deepSeekApiKey.subscribe((v) => { try { localStorage.setItem('deepSeekApiKey', (typeof v === 'string' ? v : '').trim()); } catch (_) {} });
 }
 
 /** Grok (xAI) API key (optional). When set, Grok models appear in the model list and can be used for chat. Stored trimmed to avoid copy-paste spaces. */
 const getStoredGrokApiKey = () => (typeof localStorage !== 'undefined' ? (localStorage.getItem('grokApiKey') ?? '').trim() : null) ?? '';
 export const grokApiKey = writable(getStoredGrokApiKey());
 if (typeof localStorage !== 'undefined') {
-  grokApiKey.subscribe((v) => localStorage.setItem('grokApiKey', (typeof v === 'string' ? v : '').trim()));
+  grokApiKey.subscribe((v) => { try { localStorage.setItem('grokApiKey', (typeof v === 'string' ? v : '').trim()); } catch (_) {} });
 }
 
 /** Together AI API key: used only for image generation when DeepSeek is selected (DeepSeek has no native image API). Separate endpoint from Grok. */
 const getStoredTogetherApiKey = () => (typeof localStorage !== 'undefined' ? (localStorage.getItem('togetherApiKey') ?? '').trim() : null) ?? '';
 export const togetherApiKey = writable(getStoredTogetherApiKey());
 if (typeof localStorage !== 'undefined') {
-  togetherApiKey.subscribe((v) => localStorage.setItem('togetherApiKey', (typeof v === 'string' ? v : '').trim()));
+  togetherApiKey.subscribe((v) => { try { localStorage.setItem('togetherApiKey', (typeof v === 'string' ? v : '').trim()); } catch (_) {} });
 }
 
 /** DeepInfra API key: image + video generation when DeepSeek is selected. Single key for both. */
 const getStoredDeepinfraApiKey = () => (typeof localStorage !== 'undefined' ? (localStorage.getItem('deepinfraApiKey') ?? '').trim() : null) ?? '';
 export const deepinfraApiKey = writable(getStoredDeepinfraApiKey());
 if (typeof localStorage !== 'undefined') {
-  deepinfraApiKey.subscribe((v) => localStorage.setItem('deepinfraApiKey', (typeof v === 'string' ? v : '').trim()));
+  deepinfraApiKey.subscribe((v) => { try { localStorage.setItem('deepinfraApiKey', (typeof v === 'string' ? v : '').trim()); } catch (_) {} });
 }
 
 /** Brave Search API key: web search (globe). Stored in browser, sent to search proxy. */
 const getStoredBraveApiKey = () => (typeof localStorage !== 'undefined' ? (localStorage.getItem('braveApiKey') ?? '').trim() : null) ?? '';
 export const braveApiKey = writable(getStoredBraveApiKey());
 if (typeof localStorage !== 'undefined') {
-  braveApiKey.subscribe((v) => localStorage.setItem('braveApiKey', (typeof v === 'string' ? v : '').trim()));
+  braveApiKey.subscribe((v) => { try { localStorage.setItem('braveApiKey', (typeof v === 'string' ? v : '').trim()); } catch (_) {} });
 }
 
 /** Together image endpoint name: required for FLUX.1-schnell-Free (create dedicated endpoint at api.together.ai, then paste the endpoint name here). */
 const getStoredTogetherImageEndpoint = () => (typeof localStorage !== 'undefined' ? (localStorage.getItem('togetherImageEndpoint') ?? '').trim() : null) ?? '';
 export const togetherImageEndpoint = writable(getStoredTogetherImageEndpoint());
 if (typeof localStorage !== 'undefined') {
-  togetherImageEndpoint.subscribe((v) => localStorage.setItem('togetherImageEndpoint', (typeof v === 'string' ? v : '').trim()));
+  togetherImageEndpoint.subscribe((v) => { try { localStorage.setItem('togetherImageEndpoint', (typeof v === 'string' ? v : '').trim()); } catch (_) {} });
 }
 
 /** True when at least one cloud API key (DeepSeek or Grok) is set. Used for status line when LM Studio is down. */
