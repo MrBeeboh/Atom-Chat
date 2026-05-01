@@ -723,6 +723,11 @@ body {
 }
 
 /* Arena question panel: resize handles (edge/corner) */
+.arena-resize-handle {
+  cursor: col-resize;
+  background-color: color-mix(in srgb, var(--ui-border) 40%, transparent);
+  transition: background-color 0.15s;
+}
 .arena-resize-handle:hover { background-color: color-mix(in srgb, var(--ui-accent) 30%, transparent) !important; }
 
 /* Streaming: pulsing border glow */
