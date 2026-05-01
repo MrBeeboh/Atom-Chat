@@ -109,7 +109,7 @@
           onclick={() => select(conv.id)}
           onkeydown={(e) => e.key === 'Enter' && select(conv.id)}>
           {#if icon}
-            <img src={icon} alt="" class="w-4 h-4 shrink-0 rounded object-contain opacity-80" />
+            <img src={icon} alt="" class="w-4 h-4 shrink-0 rounded object-contain opacity-80" onerror={(e) => (e.currentTarget.style.display = 'none')} />
           {/if}
           <span class="truncate flex-1 text-xs min-w-0">{conv.title}</span>
           <span class="text-[10px] shrink-0 font-mono opacity-80">{conv.messageCount ?? 0}</span>
