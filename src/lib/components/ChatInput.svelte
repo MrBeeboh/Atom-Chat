@@ -1228,9 +1228,16 @@
   }
   .attachments-row {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 8px;
     align-items: flex-start;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    padding-bottom: 2px;
+  }
+  .attachments-row::-webkit-scrollbar {
+    display: none;
   }
   .attachment-thumb {
     position: relative;
