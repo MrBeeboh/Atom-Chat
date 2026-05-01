@@ -155,7 +155,7 @@
   {#if $layout === 'cockpit'}
     <div class="flex h-full flex-col">
       <!-- Cockpit header: 3-zone layout — left (brand+layout), center (model+preset), right (theme+status) -->
-      <header class="cockpit-header shrink-0 flex items-center px-4 py-2.5" style="background-color: var(--ui-bg-sidebar);">
+      <header class="cockpit-header shrink-0 flex items-center px-4 py-2.5" style="background-color: var(--ui-bg-sidebar); border-bottom: 1px solid var(--ui-border);">
         <!-- Left: brand + layout pill -->
         <div class="flex items-center gap-3 shrink-0" role="group" aria-label="Brand and layout">
           <span class="cockpit-brand flex items-center gap-1.5 shrink-0 text-lg font-bold" style="color: var(--ui-accent);"><AtomLogo size={22} />ATOM</span>
@@ -229,7 +229,7 @@
 
   {:else if $layout === 'arena'}
     <div class="flex h-full flex-col">
-      <header class="shrink-0 flex items-center flex-wrap px-3 py-2 text-sm" style="background: var(--ui-bg-sidebar); color: var(--ui-text-secondary); gap: {HEADER_BETWEEN_GROUPS};">
+      <header class="shrink-0 flex items-center flex-wrap px-3 py-2 text-sm" style="background: var(--ui-bg-sidebar); color: var(--ui-text-secondary); gap: {HEADER_BETWEEN_GROUPS}; border-bottom: 1px solid var(--ui-border);">
         <div class="flex items-center shrink-0" style="{HEADER_GROUP_GAP}" role="group" aria-label="Brand and layout">
           <button type="button" class="md:hidden p-2 rounded-md min-h-[44px] min-w-[44px] flex items-center justify-center transition-opacity hover:opacity-80" style="color: var(--ui-text-secondary);" onclick={() => sidebarOpen.set(true)} aria-label="Open menu">☰</button>
           <span class="flex items-center gap-1.5 text-lg font-bold shrink-0" style="color: var(--ui-accent);"><AtomLogo size={22} />ATOM Arena</span>

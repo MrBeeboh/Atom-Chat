@@ -250,7 +250,7 @@
       const { content } = await requestChatCompletion({
         model: judgeId,
         messages,
-        options: { temperature: 0.6, max_tokens: 8192 },
+        options: { temperature: 0.1, max_tokens: 8192 },
       });
       timestamps.generation_end = Date.now();
       const parsed = parseGeneratedQuestionSet(content);
@@ -259,7 +259,8 @@
         return;
       }
       const normalized = normalizeGeneratedQuestionSet(parsed);
-      builtQuestionSet = { questions: normalized.questions };
+      const trimmed = normalized.questions.slice(0, questionCount);
+      builtQuestionSet = { questions: trimmed };
       builtQuestionSetMeta = {
         run_id: runId,
         tool_calls: [],

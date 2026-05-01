@@ -738,14 +738,14 @@ export function buildArenaQuestionGenerationPrompt({ categories = [], questionCo
     5: 'Difficulty level 5 (frontier only): Highest difficulty. Questions that would typically only be solvable by frontier-level models: subtle, expert-level, or cutting-edge knowledge; complex reasoning; ambiguous or multi-valid-answer cases where only the best models distinguish correctly.',
   };
   const userParts = [
-    `Generate exactly ${questionCount} questions.`,
+    `Generate EXACTLY ${questionCount} questions — no more, no fewer. The JSON array must contain exactly ${questionCount} elements.`,
     `Topics or categories: ${categoriesText}.`,
     '',
     `DIFFICULTY LEVEL: ${level} (of 5). ${difficultyInstructions[level]}`,
     'Generate all questions at this difficulty. Do not mix easier and harder; keep the set consistent.',
     '',
     'Each question should be clear and answerable in a short phrase or sentence. Provide a concise correct answer for each.',
-    'Output format: [{"question":"...","answer":"..."}, ...]',
+    `Output format: exactly ${questionCount} objects, like [{"question":"...","answer":"..."}, ...]`,
   ];
   if (webContext && webContext.trim()) {
     userParts.push('');

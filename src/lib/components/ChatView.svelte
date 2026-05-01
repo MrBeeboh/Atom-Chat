@@ -671,11 +671,14 @@
       <div class="ui-splash-wrap flex-1 flex flex-col items-center justify-center px-4 py-6 min-h-0">
         <div class="w-full max-w-[min(40rem,92%)] mx-auto flex flex-col items-center gap-5">
 
-          <h1 class="ui-greeting-title text-2xl md:text-3xl font-bold text-center" style="color: var(--ui-text-primary);">ATOM Chat</h1>
-          <p class="ui-greeting-welcome text-sm text-center" style="color: var(--ui-text-secondary);">Local AI. No cloud. No compromise.</p>
-          {#if welcomeLine}
-            <p class="ui-greeting-welcome text-sm text-center animate-fade-in opacity-80" style="color: var(--ui-text-secondary);">{welcomeLine}</p>
-          {/if}
+          <div class="flex flex-col items-center gap-2">
+            <h1 class="ui-greeting-title text-3xl md:text-4xl font-extrabold tracking-tight text-center" style="color: var(--ui-text-primary);">ATOM <span style="color: var(--ui-accent);">Chat</span></h1>
+            <div class="ui-splash-divider w-16 mt-1"></div>
+            <p class="ui-greeting-welcome text-sm text-center font-medium" style="color: var(--ui-text-secondary);">Local AI. No cloud. No compromise.</p>
+            {#if welcomeLine}
+              <p class="ui-greeting-welcome text-sm text-center animate-fade-in" style="color: var(--ui-text-secondary); opacity: 0.7;">{welcomeLine}</p>
+            {/if}
+          </div>
           {#if $chatError}
             <div class="w-full px-4 py-2.5 rounded-lg text-sm flex items-center justify-between gap-2" style="background: color-mix(in srgb, var(--ui-accent-hot, #dc2626) 10%, transparent); color: var(--ui-text-primary);">
               <span>{$chatError}</span>
@@ -702,7 +705,7 @@
       <div class="flex-1 overflow-y-auto min-h-0">
         <MessageList />
       </div>
-      <div class="shrink-0 p-4 chat-input-dock" style="background: color-mix(in srgb, var(--ui-border) 8%, var(--ui-bg-main));">
+      <div class="shrink-0 p-4 chat-input-dock" style="background-color: var(--ui-bg-main); border-top: 1px solid var(--ui-border);">
         <div class="max-w-[min(52rem,92%)] mx-auto w-full">
           {#if $chatError}
             <div class="mb-3 px-4 py-3 rounded-xl text-sm flex items-center justify-between gap-2" style="background: color-mix(in srgb, var(--ui-accent-hot, #dc2626) 10%, transparent); color: var(--ui-text-primary);">
@@ -726,8 +729,8 @@
   {:else}
     <div class="flex-1 flex items-center justify-center p-8">
       <div class="text-center max-w-sm">
-        <p class="text-xl font-semibold text-zinc-800 dark:text-zinc-200">Start a conversation</p>
-        <p class="text-sm text-zinc-500 dark:text-zinc-400 mt-2">Create a new chat from the sidebar or select an existing one.</p>
+        <p class="text-xl font-semibold" style="color: var(--ui-text-primary);">Start a conversation</p>
+        <p class="text-sm mt-2" style="color: var(--ui-text-secondary);">Create a new chat from the sidebar or select an existing one.</p>
       </div>
     </div>
   {/if}
