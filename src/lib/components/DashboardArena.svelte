@@ -368,6 +368,25 @@
   let judgmentPopup = $state(
     /** @type {null | { scores: Record<string, number>, explanation: string, rawJudgeOutput?: string, questionIndex?: number, explanations?: Record<string, string> }} */ (null),
   );
+  /** 1.0 = full width, 0 = closed. Driven by auto-close countdown. */
+  let judgmentAutoCloseProgress = $state(1.0);
+  /** When the drawer is hovered/focused, the countdown pauses. */
+  let judgmentDrawerHovered = $state(false);
+
+  $effect(() => {
+    if (!judgmentPopup) { judgmentAutoCloseProgress = 1.0; return; }
+    const DURATION = 7000;
+    let elapsed = 0;
+    let lastTick = Date.now();
+    const id = setInterval(() => {
+      const now = Date.now();
+      if (!judgmentDrawerHovered) elapsed += now - lastTick;
+      lastTick = now;
+      judgmentAutoCloseProgress = Math.max(0, 1 - elapsed / DURATION);
+      if (judgmentAutoCloseProgress <= 0) { clearInterval(id); judgmentPopup = null; }
+    }, 50);
+    return () => clearInterval(id);
+  });
 
   /** Fisher–Yates shuffle of indices [0..n-1]. */
   function shuffleIndices(n) {
@@ -2001,8 +2020,8 @@
   <!-- === Response panels A–D (resizable) === -->
   <div
     bind:this={gridEl}
-    class="flex-1 min-h-0 grid gap-3 p-4 atom-layout-transition relative grid-rows-[minmax(0,1fr)]"
-    style="grid-template-columns: {responsiveGridCols};"
+    class="flex-1 min-h-0 grid gap-3 atom-layout-transition relative grid-rows-[minmax(0,1fr)]"
+    style="grid-template-columns: {responsiveGridCols}; padding: 1rem; padding-right: {arenaSettingsCollapsed ? '2.5rem' : '1rem'};"
   >
     {#each slotData as data, i (data.slot)}
       {#if data.slot === "A"}
@@ -2455,9 +2474,17 @@
         class="flex-1 flex flex-col pointer-events-auto shadow-2xl"
         style="background-color: var(--ui-bg-sidebar); border-left: 1px solid var(--ui-border); border-top: 3px solid var(--ui-accent);"
         transition:fly={{ x: 320, duration: 350, easing: quintOut }}
+        onmouseenter={() => (judgmentDrawerHovered = true)}
+        onmouseleave={() => (judgmentDrawerHovered = false)}
+        onfocusin={() => (judgmentDrawerHovered = true)}
+        onfocusout={() => (judgmentDrawerHovered = false)}
       >
+        <!-- Auto-close progress bar -->
+        <div class="shrink-0 h-0.5 w-full" style="background: color-mix(in srgb, var(--ui-border) 40%, transparent);">
+          <div class="h-full transition-none" style="width: {judgmentAutoCloseProgress * 100}%; background: var(--ui-accent); opacity: {judgmentDrawerHovered ? 0.3 : 0.7};"></div>
+        </div>
         <!-- Drawer header -->
-        <div class="shrink-0 flex items-center justify-between px-4 py-3" style="border-bottom: 1px solid var(--ui-border);">
+        <div class="shrink-0 flex items-center justify-between px-3 py-2.5" style="border-bottom: 1px solid var(--ui-border);">
           <div class="flex items-center gap-2">
             <span class="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded" style="background: color-mix(in srgb, var(--ui-accent) 12%, transparent); color: var(--ui-accent);">Judge</span>
             <span class="text-sm font-semibold" style="color: var(--ui-text-primary);">Round Results</span>
@@ -2499,17 +2526,16 @@
         </div>
 
         <!-- Score summary bar -->
-        <div class="shrink-0 flex gap-2 px-4 py-3" style="border-bottom: 1px solid var(--ui-border); background: color-mix(in srgb, var(--ui-accent) 4%, var(--ui-bg-main));">
+        <div class="shrink-0 grid px-3 py-2.5" style="grid-template-columns: repeat(4, 1fr); gap: 6px; border-bottom: 1px solid var(--ui-border); background: color-mix(in srgb, var(--ui-accent) 4%, var(--ui-bg-main));">
           {#each ["A", "B", "C", "D"] as s}
-            {#if judgmentPopup.scores[s] !== undefined}
-              {@const c = SLOT_COLORS[s]}
-              {@const sc = judgmentPopup.scores[s]}
-              <div class="flex-1 rounded-lg px-2 py-1.5 text-center" style="background: color-mix(in srgb, {c} 10%, transparent); border: 1px solid color-mix(in srgb, {c} 25%, transparent);">
-                <div class="text-[10px] font-bold uppercase tracking-wide mb-0.5" style="color: {c};">{s}</div>
-                <div class="text-lg font-black tabular-nums leading-none" style="color: {c};">{sc}</div>
-                <div class="text-[9px] opacity-60 mt-0.5" style="color: {c};">/10</div>
-              </div>
-            {/if}
+            {@const hasScore = judgmentPopup.scores[s] !== undefined}
+            {@const c = SLOT_COLORS[s]}
+            {@const sc = hasScore ? judgmentPopup.scores[s] : null}
+            <div class="rounded-lg px-1.5 py-1.5 text-center" style="background: {hasScore ? `color-mix(in srgb, ${c} 10%, transparent)` : 'color-mix(in srgb, var(--ui-border) 20%, transparent)'}; border: 1px solid {hasScore ? `color-mix(in srgb, ${c} 25%, transparent)` : 'transparent'}; opacity: {hasScore ? 1 : 0.3};">
+              <div class="text-[10px] font-bold uppercase tracking-wide mb-0.5" style="color: {c};">{s}</div>
+              <div class="text-base font-black tabular-nums leading-none" style="color: {c};">{hasScore ? sc : '—'}</div>
+              <div class="text-[9px] opacity-60 mt-0.5" style="color: {c};">/10</div>
+            </div>
           {/each}
         </div>
 
