@@ -1,13 +1,14 @@
 <script>
   /**
    * ArenaPanel: Reusable response panel for Arena slots A–D.
-   * Shows: header (label), options accordion, scrollable message area, footer (score + standing + t/s + clear).
+   * Shows: header (slot badge + model selector + score + t/s), options accordion, scrollable message area, footer (clear).
    */
   import { fly } from 'svelte/transition';
   import { quintOut } from 'svelte/easing';
   import { arenaSlotOverrides, setArenaSlotOverride } from '$lib/stores.js';
   import { ARENA_SYSTEM_PROMPT_TEMPLATES } from '$lib/arenaLogic.js';
   import MessageBubble from '$lib/components/MessageBubble.svelte';
+  import ModelSelectorSlot from '$lib/components/ModelSelectorSlot.svelte';
 
   let {
     slot = 'A',
@@ -104,16 +105,31 @@
   aria-label="Model {slot} panel"
   in:fly={{ x: 200, duration: 800, easing: quintOut }}
 >
-  <!-- Header -->
-  <div class="shrink-0 flex items-center justify-between gap-2 px-3 py-2 text-[11px]" style="color: var(--ui-text-secondary);">
-    <div class="flex items-center gap-2">
-      <span class="font-medium">{slot}</span>
-      {#if loadStatus === 'loading'}
-        <span class="text-[10px] animate-pulse" style="color: var(--ui-accent);">loading…</span>
-      {:else if loadStatus === 'loaded'}
-        <span class="w-1.5 h-1.5 rounded-full shrink-0" style="background-color: #22c55e;" title="Model loaded"></span>
-      {:else if loadStatus === 'error'}
-        <span class="w-1.5 h-1.5 rounded-full shrink-0" style="background-color: #ef4444;" title="Load error"></span>
+  <!-- Header: slot badge + model selector + score + t/s -->
+  <div class="shrink-0 flex items-center gap-2 px-3 py-2" style="border-bottom: 1px solid var(--ui-border); background: color-mix(in srgb, {accentColor} 6%, var(--ui-bg-sidebar));">
+    <!-- Slot badge -->
+    <span class="text-[11px] font-bold w-5 h-5 rounded flex items-center justify-center shrink-0" style="background: color-mix(in srgb, {accentColor} 18%, transparent); color: {accentColor};">{slot}</span>
+    {#if loadStatus === 'loading'}
+      <span class="text-[10px] animate-pulse shrink-0" style="color: var(--ui-accent);">loading…</span>
+    {:else if loadStatus === 'loaded'}
+      <span class="w-1.5 h-1.5 rounded-full shrink-0" style="background-color: #22c55e;" title="Model loaded"></span>
+    {:else if loadStatus === 'error'}
+      <span class="w-1.5 h-1.5 rounded-full shrink-0" style="background-color: #ef4444;" title="Load error"></span>
+    {/if}
+    <!-- Model selector fills remaining space -->
+    <div class="flex-1 min-w-0">
+      <ModelSelectorSlot slot={slot} />
+    </div>
+    <!-- Score + t/s -->
+    <div class="flex items-center gap-3 shrink-0">
+      {#if running}
+        <span class="text-xs font-medium animate-pulse" style="color: {accentColor};">Running…</span>
+      {:else if tps}
+        {@const c = Number(tps) >= 40 ? 'var(--atom-teal)' : Number(tps) >= 20 ? 'var(--atom-amber)' : 'var(--atom-accent)'}
+        <span class="font-mono text-sm font-bold" style="color: {c};" title="Tokens per second">{tps} <span class="text-xs font-normal opacity-70">t/s</span></span>
+      {/if}
+      {#if showScore}
+        <span class="text-sm font-bold tabular-nums" style="color: {accentColor};">{score}</span>
       {/if}
     </div>
   </div>
@@ -169,19 +185,15 @@
   </div>
 
   <!-- Footer -->
-  <div class="shrink-0 flex justify-between items-center gap-2 px-3 py-2 text-[11px]" style="background: color-mix(in srgb, var(--ui-border) 8%, var(--ui-bg-main));">
-    {#if showScore}
-      <div class="flex items-center gap-2 min-w-0">
-        <span class="arena-panel-score font-bold tabular-nums shrink-0" style="color: {accentColor};">{score} pts</span>
-        <span class="text-[10px] font-medium uppercase tracking-wide opacity-85" style="color: var(--ui-text-secondary);">{standingLabel}</span>
-      </div>
-    {:else}
-      <div></div>
-    {/if}
+  <div class="shrink-0 flex justify-between items-center gap-2 px-3 py-1.5" style="border-top: 1px solid var(--ui-border); background: color-mix(in srgb, var(--ui-border) 6%, var(--ui-bg-main));">
+    <div class="flex items-center gap-1.5">
+      {#if showScore && standingLabel !== '—'}
+        <span class="text-[10px] font-medium uppercase tracking-wide" style="color: var(--ui-text-secondary);">{standingLabel}</span>
+      {/if}
+    </div>
     <div class="flex items-center gap-2">
-      <button type="button" class="arena-panel-options-btn flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-medium transition-opacity hover:opacity-90" style="background: var(--ui-input-bg); color: var(--ui-text-primary);" onclick={onToggleOptions} aria-label="Model {slot} options" aria-expanded={optionsOpen} title="Model {slot} options">⚙ Options</button>
-      {#if running}<span class="text-xs" style="color: var(--ui-accent);">Running…</span>{:else if tps}{@const c = Number(tps) >= 40 ? 'var(--atom-teal)' : Number(tps) >= 20 ? 'var(--atom-amber)' : 'var(--atom-accent)'}<span class="font-mono text-[10px]" style="color: {c};">{tps} t/s</span>{/if}
-      {#if messages.length > 0}<button type="button" class="p-1 rounded-lg opacity-50 hover:opacity-100 transition-opacity" style="color: var(--ui-text-secondary);" onclick={onClear} aria-label="Clear slot {slot}">✕</button>{/if}
+      <button type="button" class="arena-panel-options-btn flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-opacity hover:opacity-90" style="background: var(--ui-input-bg); color: var(--ui-text-secondary);" onclick={onToggleOptions} aria-label="Model {slot} options" aria-expanded={optionsOpen} title="Model {slot} options">⚙ Options</button>
+      {#if messages.length > 0}<button type="button" class="p-1 rounded-lg opacity-50 hover:opacity-100 transition-opacity text-xs" style="color: var(--ui-text-secondary);" onclick={onClear} aria-label="Clear slot {slot}">✕ Clear</button>{/if}
     </div>
   </div>
 </div>

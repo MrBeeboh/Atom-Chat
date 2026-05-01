@@ -1978,14 +1978,6 @@
     if (files?.length) pendingDroppedFiles.set(files);
   }}
 >
-  <!-- === Header: model cards A–D (selector + score) === -->
-  <ArenaHeader
-    arenaPanelCount={$arenaPanelCount}
-    running={running}
-    arenaScores={arenaScores}
-    windowWidth={windowWidth}
-  />
-
   <!-- === Arena control bar: Question | Run | Web | Judge | Tools === -->
   <ArenaControlBar
     currentQuestionNum={currentQuestionNum}
