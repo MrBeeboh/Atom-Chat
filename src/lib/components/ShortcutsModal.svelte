@@ -11,6 +11,7 @@
     { label: 'Send message', keys: 'Ctrl+Enter' },
     { label: 'Convo rail expand/collapse', keys: '[' },
     { label: 'Intel panel toggle', keys: ']' },
+    { label: 'Open Settings', keys: 'Ctrl+,' },
   ];
 
   function close() {
@@ -27,15 +28,17 @@
     transition:fade={{ duration: 150 }}
   >
     <div
-      class="absolute inset-0 bg-black/50"
+      class="absolute inset-0 bg-black/50 backdrop-blur-sm"
       role="button"
       tabindex="0"
-      aria-label="Close"
+      aria-label="Close shortcuts modal"
       onclick={close}
       onkeydown={(e) => e.key === 'Enter' || e.key === ' ' ? (e.preventDefault(), close()) : null}
+      onkeyup={(e) => e.key === 'Escape' && close()}
     ></div>
     <div
       class="relative rounded-xl border shadow-xl max-w-sm w-full p-4"
+      role="presentation"
       style="background-color: var(--ui-bg-sidebar); border-color: var(--ui-border);"
       onclick={(e) => e.stopPropagation()}
     >

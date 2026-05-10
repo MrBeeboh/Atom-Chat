@@ -8,7 +8,6 @@
   import ChatInput from '$lib/components/ChatInput.svelte';
   import AtomLogo from '$lib/components/AtomLogo.svelte';
   import { generateId, resizeImageDataUrlsForVision, shouldSkipImageResizeForVision } from '$lib/utils.js';
-  import { isModelLoadBlockingError } from '$lib/chatErrorUtils.js';
   import { getModelCapabilities } from '$lib/modelCapabilities.js';
 
   const convId = $derived($activeConversationId);
@@ -37,19 +36,55 @@
 
   /** Image options modal. Verified config from docs/image-models-and-settings-for-verification.json (Together AI, 2026-02-15). Grok unchanged. */
   const ENGINE_OPTIONS = [
-    { label: 'FLUX.1 Schnell', model: 'black-forest-labs/FLUX.1-schnell' },
-    { label: 'FLUX.1 Dev', model: 'black-forest-labs/FLUX.1-dev' },
-    { label: 'FLUX.1 Pro', model: 'black-forest-labs/FLUX.1-pro' },
+    { label: 'FLUX.1 Schnell', model: 'black-forest-labs/FLUX.1-schnell', type: 'deepinfra' },
+    { label: 'FLUX.1 Dev', model: 'black-forest-labs/FLUX.1-dev', type: 'deepinfra' },
+    { label: 'FLUX.1 Pro', model: 'black-forest-labs/FLUX.1-pro', type: 'deepinfra' },
+    { label: 'FLUX 1.1 Pro', model: 'black-forest-labs/FLUX-1.1-pro', type: 'deepinfra' },
+    { label: 'FLUX 2 Klein 4B', model: 'black-forest-labs/FLUX-2-klein-4b', type: 'deepinfra' },
+    { label: 'FLUX 2 Klein 9B', model: 'black-forest-labs/FLUX-2-klein-9b', type: 'deepinfra' },
+    { label: 'FLUX 2 Pro', model: 'black-forest-labs/FLUX-2-pro', type: 'deepinfra' },
+    { label: 'Seedream 4', model: 'ByteDance/Seedream-4', type: 'deepinfra' },
+    { label: 'Seedream 4.5', model: 'ByteDance/Seedream-4.5', type: 'deepinfra' },
+    { label: 'Wan 2.6 T2I', model: 'Wan-AI/Wan2.6-T2IW', type: 'deepinfra' },
+    { label: 'Pruna P-Image', model: 'PrunaAI/p-image', type: 'deepinfra' },
+    { label: 'SDXL Turbo', model: 'stabilityai/sdxl-turbo', type: 'deepinfra' },
+    { label: 'Grok Imagine (fast)', model: 'grok-imagine-image', type: 'grok' },
+    { label: 'Grok Imagine Pro (HQ)', model: 'grok-imagine-image-pro', type: 'grok' },
+    { label: 'Grok Imagine Quality', model: 'grok-imagine-image-quality', type: 'grok' },
   ];
   const STEP_OPTIONS_PER_ENGINE = [
     [{ label: 'Minimal', steps: 1 }, { label: 'Quick', steps: 2 }, { label: 'Standard', steps: 4 }],
     [{ label: 'Quick', steps: 20 }, { label: 'Standard', steps: 25 }, { label: 'Detailed', steps: 30 }, { label: 'High Detail', steps: 50 }],
     [{ label: 'Standard', steps: 25 }, { label: 'Detailed', steps: 30 }, { label: 'High Detail', steps: 50 }],
+    [{ label: 'Quick', steps: 20 }, { label: 'Standard', steps: 25 }, { label: 'Detailed', steps: 30 }],
+    [{ label: 'Minimal', steps: 1 }, { label: 'Quick', steps: 2 }, { label: 'Standard', steps: 4 }],
+    [{ label: 'Quick', steps: 4 }, { label: 'Standard', steps: 6 }, { label: 'Detailed', steps: 8 }],
+    [{ label: 'Standard', steps: 25 }, { label: 'Detailed', steps: 30 }, { label: 'High Detail', steps: 50 }],
+    [{ label: 'Standard', steps: 25 }, { label: 'Detailed', steps: 30 }, { label: 'High Detail', steps: 50 }],
+    [{ label: 'Standard', steps: 25 }, { label: 'Detailed', steps: 30 }, { label: 'High Detail', steps: 50 }],
+    [{ label: 'Quick', steps: 20 }, { label: 'Standard', steps: 25 }, { label: 'Detailed', steps: 30 }],
+    [{ label: 'Standard', steps: 1 }],
+    [{ label: 'Quick', steps: 1 }, { label: 'Standard', steps: 2 }, { label: 'Detailed', steps: 4 }],
+    [{ label: '1K (Fast)', resolution: '1k' }, { label: '2K (HQ)', resolution: '2k' }],
+    [{ label: '1K (Fast)', resolution: '1k' }, { label: '2K (HQ)', resolution: '2k' }],
+    [{ label: '1K (Fast)', resolution: '1k' }, { label: '2K (HQ)', resolution: '2k' }],
   ];
   const SIZE_OPTIONS_PER_ENGINE = [
     [{ label: '1:1 Square', width: 1024, height: 1024 }, { label: 'Portrait', width: 1152, height: 896 }, { label: 'Landscape', width: 896, height: 1152 }, { label: 'Wide', width: 1280, height: 768 }],
     [{ label: '1:1 Square', width: 1024, height: 1024 }, { label: 'Portrait', width: 1152, height: 896 }, { label: 'Wide', width: 1344, height: 768 }, { label: 'Panoramic', width: 1728, height: 1152 }],
     [{ label: '1:1 Square', width: 1024, height: 1024 }, { label: 'Large Square', width: 2000, height: 2000 }, { label: '16:9 Widescreen', width: 1820, height: 1024 }],
+    [{ label: '1:1 Square', width: 1024, height: 1024 }, { label: 'Wide', width: 1344, height: 768 }, { label: 'Panoramic', width: 1820, height: 1024 }],
+    [{ label: '1:1 Square', width: 1024, height: 1024 }, { label: 'Portrait', width: 768, height: 1024 }, { label: 'Landscape', width: 1024, height: 768 }],
+    [{ label: '1:1 Square', width: 1024, height: 1024 }, { label: 'Portrait', width: 768, height: 1024 }, { label: 'Wide', width: 1344, height: 768 }],
+    [{ label: '1:1 Square', width: 1024, height: 1024 }, { label: 'Wide', width: 1344, height: 768 }, { label: 'Panoramic', width: 1820, height: 1024 }],
+    [{ label: '1:1 Square', width: 1024, height: 1024 }, { label: 'Portrait', width: 768, height: 1024 }, { label: 'Landscape', width: 1024, height: 768 }],
+    [{ label: '1:1 Square', width: 1024, height: 1024 }, { label: 'Portrait', width: 768, height: 1024 }, { label: 'Landscape', width: 1024, height: 768 }],
+    [{ label: '1:1 Square', width: 1024, height: 1024 }, { label: 'Portrait', width: 1152, height: 896 }, { label: 'Wide', width: 1344, height: 768 }],
+    [{ label: '1:1 Square', width: 1024, height: 1024 }, { label: 'Portrait', width: 1152, height: 896 }, { label: 'Wide', width: 1344, height: 768 }],
+    [{ label: '1:1 Square', width: 1024, height: 1024 }, { label: 'Portrait', width: 1152, height: 896 }, { label: 'Landscape', width: 896, height: 1152 }],
+    [{ label: '1:1 Square', aspect_ratio: '1:1' }, { label: 'Portrait', aspect_ratio: '3:4' }, { label: 'Landscape', aspect_ratio: '4:3' }, { label: 'Wide', aspect_ratio: '16:9' }],
+    [{ label: '1:1 Square', aspect_ratio: '1:1' }, { label: 'Portrait', aspect_ratio: '3:4' }, { label: 'Landscape', aspect_ratio: '4:3' }, { label: 'Wide', aspect_ratio: '16:9' }],
+    [{ label: '1:1 Square', aspect_ratio: '1:1' }, { label: 'Portrait', aspect_ratio: '3:4' }, { label: 'Landscape', aspect_ratio: '4:3' }, { label: 'Wide', aspect_ratio: '16:9' }],
   ];
   const N_OPTIONS = [1, 2, 4];
   let imageModalOpen = $state(false);
@@ -63,7 +98,7 @@
   const canGenerateImage = $derived(imageModalPrompt.trim().length > 0);
 
   /** DeepInfra model IDs (official docs). Our ENGINE_OPTIONS use dot (FLUX.1); DeepInfra uses hyphen (FLUX-1). */
-  const DEEPINFRA_MODEL_IDS = ['black-forest-labs/FLUX-1-schnell', 'black-forest-labs/FLUX-1-dev', 'black-forest-labs/FLUX-1-dev'];
+  const DEEPINFRA_MODEL_IDS = ['black-forest-labs/FLUX-1-schnell', 'black-forest-labs/FLUX-1-dev', 'black-forest-labs/FLUX-1-pro', 'black-forest-labs/FLUX-1.1-pro', 'black-forest-labs/FLUX-2-klein-4b', 'black-forest-labs/FLUX-2-klein-9b', 'black-forest-labs/FLUX-2-pro', 'ByteDance/Seedream-4', 'ByteDance/Seedream-4.5', 'Wan-AI/Wan2.6-T2IW', 'PrunaAI/p-image', 'stabilityai/sdxl-turbo', null, null, null];
   /** Subscribed to store so image/video buttons activate when key is saved in Settings. */
   let hasDeepinfraKey = $state(false);
   $effect(() => {
@@ -188,14 +223,9 @@
       chatError.set('Please select a model from the dropdown above.');
       return;
     }
-
-    // Warn if user tries to send images to a non-vision model
-    if (hasImages || hasVideos) {
-      const caps = getModelCapabilities($effectiveModelId);
-      if (!caps.vision) {
-        chatError.set(`This model (${$effectiveModelId}) may not support images. The error "Cannot read" usually means the model doesn't support image input. Try a vision model (name contains "vl", "vision", "qwen2.5-vl", "llava", etc.) or remove the images.`);
-        return;
-      }
+    if ((hasImages || hasVideos) && !getModelCapabilities($effectiveModelId).vision) {
+      chatError.set(`"${$effectiveModelId}" does not support image input. Switch to a vision-capable model to send images or video.`);
+      return;
     }
 
     let effectiveText = (text || '').trim();
@@ -403,20 +433,39 @@
     imageModalOpen = false;
   }
 
-  /** Generate image via DeepInfra (synchronous; response.images[0] base64 → data URL). */
+  /** Generate image via DeepInfra or Grok API. */
   async function handleImageModalGenerate() {
     if (!convId || !imageModalPrompt.trim()) return;
-    const key = getDeepinfraImageKey();
-    if (!key) {
-      chatError.set('DeepInfra API key required.');
-      return;
-    }
-    const modelId = DEEPINFRA_MODEL_IDS[imageModalEngine] ?? DEEPINFRA_MODEL_IDS[0];
+    const engine = ENGINE_OPTIONS[imageModalEngine] ?? ENGINE_OPTIONS[0];
     const qualityOpts = STEP_OPTIONS_PER_ENGINE[imageModalEngine] ?? STEP_OPTIONS_PER_ENGINE[0];
     const quality = qualityOpts[Math.min(imageModalQuality, qualityOpts.length - 1)] ?? qualityOpts[0];
     const sizeOpts = SIZE_OPTIONS_PER_ENGINE[imageModalEngine] ?? SIZE_OPTIONS_PER_ENGINE[0];
     const size = sizeOpts[Math.min(imageModalSize, sizeOpts.length - 1)] ?? sizeOpts[0];
     const n = N_OPTIONS[imageModalN] ?? 1;
+    const isGrok = engine.type === 'grok';
+
+    if (isGrok) {
+      const grokKey = get(grokApiKey)?.trim();
+      if (!grokKey) { chatError.set('Grok API key required. Add it in Settings → Cloud APIs.'); return; }
+      closeImageModal();
+      imageGenerating = true;
+      chatError.set(null);
+      try {
+        await grokImageGenerate({ modelId: engine.model, prompt: imageModalPrompt, n, resolution: quality?.resolution ?? '1k', aspect_ratio: size?.aspect_ratio ?? '1:1', apiKey: grokKey });
+      } catch (err) {
+        chatError.set(err?.message ?? 'Grok image generation failed.');
+      } finally {
+        imageGenerating = false;
+      }
+      return;
+    }
+
+    const key = getDeepinfraImageKey();
+    if (!key) {
+      chatError.set('DeepInfra API key required. Add it in Settings → Cloud APIs.');
+      return;
+    }
+    const modelId = DEEPINFRA_MODEL_IDS[imageModalEngine] ?? DEEPINFRA_MODEL_IDS[0];
     closeImageModal();
     imageGenerating = true;
     chatError.set(null);
@@ -450,6 +499,24 @@
     } finally {
       imageGenerating = false;
     }
+  }
+
+  /** Grok image generation (called from modal for Grok engines, or direct from image button). */
+  async function grokImageGenerate({ modelId, prompt, n, resolution, aspect_ratio, apiKey }) {
+    const data = await requestGrokImageGeneration({ prompt, n, resolution, aspect_ratio, response_format: 'url', apiKey, modelId });
+    const urls = data?.data?.map((d) => d?.url).filter(Boolean) ?? [];
+    if (urls.length === 0) {
+      chatError.set('Image generation failed—no URLs returned.');
+      return;
+    }
+    const modelIdEffective = get(effectiveModelId);
+    await addMessage(convId, {
+      role: 'assistant',
+      content: 'Generated images for your prompt.',
+      imageUrls: urls,
+      modelId: modelIdEffective || `grok:${modelId}`,
+    });
+    await loadMessages();
   }
 
   /** Video: open modal (prompt + model). */
@@ -682,30 +749,26 @@
       <div class="ui-splash-wrap flex-1 flex flex-col items-center justify-center px-4 py-6 min-h-0">
         <div class="w-full max-w-[min(40rem,92%)] mx-auto flex flex-col items-center gap-5">
 
-          <h1 class="ui-greeting-title text-2xl md:text-3xl font-bold text-center" style="color: var(--ui-text-primary);">ATOM Chat</h1>
-          <p class="ui-greeting-welcome text-sm text-center" style="color: var(--ui-text-secondary);">Local AI. No cloud. No compromise.</p>
-          {#if welcomeLine}
-            <p class="ui-greeting-welcome text-sm text-center animate-fade-in opacity-80" style="color: var(--ui-text-secondary);">{welcomeLine}</p>
-          {/if}
+          <div class="flex flex-col items-center gap-2">
+            <h1 class="ui-greeting-title text-3xl md:text-4xl font-extrabold tracking-tight text-center" style="color: var(--ui-text-primary);">ATOM <span style="color: var(--ui-accent);">Chat</span></h1>
+            <div class="ui-splash-divider w-16 mt-1"></div>
+            <p class="ui-greeting-welcome text-sm text-center font-medium" style="color: var(--ui-text-secondary);">Local AI. No cloud. No compromise.</p>
+            {#if welcomeLine}
+              <p class="ui-greeting-welcome text-sm text-center animate-fade-in" style="color: var(--ui-text-secondary); opacity: 0.7;">{welcomeLine}</p>
+            {/if}
+          </div>
           {#if $chatError}
-            <div class="w-full px-4 py-2.5 rounded-lg text-sm flex flex-col gap-1.5" style="background: color-mix(in srgb, var(--ui-accent-hot, #dc2626) 10%, transparent); color: var(--ui-text-primary);">
-              <div class="flex items-start justify-between gap-2">
-                <span class="min-w-0">{$chatError}</span>
-                <button type="button" class="shrink-0 p-1 rounded transition-opacity hover:opacity-80" style="color: var(--ui-text-secondary);" onclick={() => chatError.set(null)} aria-label="Dismiss">×</button>
-              </div>
-              {#if isModelLoadBlockingError($chatError)}
-                <p class="text-xs leading-snug opacity-90 pr-6" style="color: var(--ui-text-secondary);">
-                  Load the model in LM Studio, then dismiss this message and send again.
-                </p>
-              {/if}
+            <div class="w-full px-4 py-2.5 rounded-lg text-sm flex items-center justify-between gap-2" style="background: color-mix(in srgb, var(--ui-accent-hot, #dc2626) 10%, transparent); color: var(--ui-text-primary);">
+              <span>{$chatError}</span>
+              <button type="button" class="shrink-0 p-1 rounded transition-opacity hover:opacity-80" style="color: var(--ui-text-secondary);" onclick={() => chatError.set(null)} aria-label="Dismiss">×</button>
             </div>
           {/if}
           <div class="w-full min-w-0">
             <ChatInput
               onSend={sendUserMessage}
               onStop={() => chatAbortController?.abort?.()}
-              onGenerateImageGrok={$effectiveModelId && isGrokModel($effectiveModelId) && $grokApiKey?.trim() ? handleGrokImage : undefined}
-              onGenerateImageDeepSeek={hasDeepinfraKey ? openImageOptionsModal : undefined}
+              onGenerateImageGrok={undefined}
+              onGenerateImageDeepSeek={(hasDeepinfraKey || $grokApiKey?.trim()) ? openImageOptionsModal : undefined}
               onGenerateVideoDeepSeek={hasDeepinfraKey ? openVideoModal : undefined}
               imageGenerating={imageGenerating}
               videoGenerating={videoGenerating}
@@ -720,19 +783,12 @@
       <div class="flex-1 overflow-y-auto min-h-0">
         <MessageList />
       </div>
-      <div class="shrink-0 p-4 chat-input-dock" style="background: color-mix(in srgb, var(--ui-border) 8%, var(--ui-bg-main));">
+      <div class="shrink-0 p-4 chat-input-dock" style="background-color: var(--ui-bg-main); border-top: 1px solid var(--ui-border);">
         <div class="max-w-[min(52rem,92%)] mx-auto w-full">
           {#if $chatError}
-            <div class="mb-3 px-4 py-3 rounded-xl text-sm flex flex-col gap-1.5" style="background: color-mix(in srgb, var(--ui-accent-hot, #dc2626) 10%, transparent); color: var(--ui-text-primary);">
-              <div class="flex items-start justify-between gap-2">
-                <span class="min-w-0">{$chatError}</span>
-                <button type="button" class="shrink-0 p-1.5 rounded-lg transition-opacity hover:opacity-80" style="color: var(--ui-text-secondary);" onclick={() => chatError.set(null)} aria-label="Dismiss">×</button>
-              </div>
-              {#if isModelLoadBlockingError($chatError)}
-                <p class="text-xs leading-snug opacity-90 pr-8" style="color: var(--ui-text-secondary);">
-                  Load the model in LM Studio, then dismiss this message and send again.
-                </p>
-              {/if}
+            <div class="mb-3 px-4 py-3 rounded-xl text-sm flex items-center justify-between gap-2" style="background: color-mix(in srgb, var(--ui-accent-hot, #dc2626) 10%, transparent); color: var(--ui-text-primary);">
+              <span>{$chatError}</span>
+              <button type="button" class="shrink-0 p-1.5 rounded-lg transition-opacity hover:opacity-80" style="color: var(--ui-text-secondary);" onclick={() => chatError.set(null)} aria-label="Dismiss">×</button>
             </div>
           {/if}
           <ChatInput
@@ -751,8 +807,8 @@
   {:else}
     <div class="flex-1 flex items-center justify-center p-8">
       <div class="text-center max-w-sm">
-        <p class="text-xl font-semibold text-zinc-800 dark:text-zinc-200">Start a conversation</p>
-        <p class="text-sm text-zinc-500 dark:text-zinc-400 mt-2">Create a new chat from the sidebar or select an existing one.</p>
+        <p class="text-xl font-semibold" style="color: var(--ui-text-primary);">Start a conversation</p>
+        <p class="text-sm mt-2" style="color: var(--ui-text-secondary);">Create a new chat from the sidebar or select an existing one.</p>
       </div>
     </div>
   {/if}

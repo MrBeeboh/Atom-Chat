@@ -3,11 +3,19 @@ import { svelte } from '@sveltejs/vite-plugin-svelte'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { execSync } from 'node:child_process'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
+function gitRev() {
+  try { return execSync('git rev-parse --short HEAD', { stdio: ['pipe', 'pipe', 'ignore'] }).toString().trim(); } catch { return 'dev'; }
+}
+
 // https://vite.dev/config/
 export default defineConfig({
+  define: {
+    __GIT_REV__: JSON.stringify(gitRev()),
+  },
   plugins: [svelte(), tailwindcss()],
   resolve: {
     alias: {

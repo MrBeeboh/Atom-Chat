@@ -27,16 +27,18 @@
     aria-labelledby="confirm-title"
     transition:fade={{ duration: 150 }}
   >
-    <div
-      class="absolute inset-0 bg-black/50"
+<div
+      class="absolute inset-0 bg-black/50 backdrop-blur-sm"
       role="button"
       tabindex="0"
-      aria-label="Close"
+      aria-label="Close modal"
       onclick={onCancel}
       onkeydown={(e) => e.key === 'Enter' || e.key === ' ' ? (e.preventDefault(), onCancel()) : null}
+      onkeyup={(e) => e.key === 'Escape' && onCancel()}
     ></div>
     <div
       class="relative rounded-xl border shadow-xl max-w-md w-full p-4"
+      role="presentation"
       style="background-color: var(--ui-bg-sidebar); border-color: var(--ui-border);"
       onclick={(e) => e.stopPropagation()}
     >

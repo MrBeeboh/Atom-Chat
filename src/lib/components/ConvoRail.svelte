@@ -232,6 +232,9 @@
             aria-label="Search conversations" />
         </div>
         <ul class="flex-1 overflow-y-auto overflow-x-hidden mt-1 space-y-0.5 px-1 min-h-0 min-w-0">
+          {#if filteredList.length === 0}
+            <li class="px-2 py-4 text-xs" style="color: var(--ui-text-secondary);">No conversations match "{searchQuery}"</li>
+          {:else}
           {#each ['today', 'yesterday', 'week', 'older'] as key}
             {#if filteredGroups[key]?.length > 0}
               <li class="px-2 pt-2 pb-0.5 text-[10px] font-medium uppercase tracking-wider" style="color: var(--ui-text-secondary);">{key === 'today' ? 'Today' : key === 'yesterday' ? 'Yesterday' : key === 'week' ? 'This week' : 'Older'}</li>
@@ -247,12 +250,13 @@
                     onclick={() => select(conv.id)}
                     onkeydown={(e) => e.key === 'Enter' && select(conv.id)}>
                     <span class="truncate flex-1 text-xs min-w-0">{conv.title}</span>
-                    <button type="button" class="opacity-0 group-hover:opacity-100 p-0.5 rounded shrink-0 text-[10px] hover:bg-black/10" style="color: var(--ui-text-secondary);" onclick={(e) => { e.stopPropagation(); remove(e, conv.id); }} aria-label="Delete">×</button>
+                    <button type="button" class="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 p-0.5 rounded shrink-0 text-[10px] hover:bg-black/10" style="color: var(--ui-text-secondary);" onclick={(e) => { e.stopPropagation(); remove(e, conv.id); }} aria-label="Delete">×</button>
                   </div>
                 </li>
               {/each}
             {/if}
           {/each}
+          {/if}
         </ul>
       {:else if activeSection === 'pinned'}
         <ul class="flex-1 overflow-y-auto overflow-x-hidden mt-1 space-y-0.5 px-1 min-h-0 min-w-0">
@@ -277,7 +281,7 @@
                         <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 17v5M9 10.76a2 2 0 0 1-1.11 1.79l-1.78 9.09A1 1 0 0 1 5 21v-1a1 1 0 0 1 .89-.99l1.81-.18L9 10.76zM15 10.76l1.11 8.07 1.81.18A1 1 0 0 0 19 21v-1a1 1 0 0 0-.89-1l-1.78-9.09A2 2 0 0 1 15 10.76zM20 10.76a2 2 0 0 0-1.11 1.79l-1.78 9.09A1 1 0 0 1 15 21v-1a1 1 0 0 1 .89-.99l1.81-.18M4 10.76a2 2 0 0 1 1.11 1.79l1.78 9.09A1 1 0 0 0 9 21v-1a1 1 0 0 0-.89-.99L6.3 19" /></svg>
                       </button>
                       <span class="truncate flex-1 text-xs min-w-0">{conv.title}</span>
-                      <button type="button" class="opacity-0 group-hover:opacity-100 p-0.5 rounded shrink-0 text-[10px] hover:bg-black/10" style="color: var(--ui-text-secondary);" onclick={(e) => { e.stopPropagation(); remove(e, conv.id); }} aria-label="Delete">×</button>
+                      <button type="button" class="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 p-0.5 rounded shrink-0 text-[10px] hover:bg-black/10" style="color: var(--ui-text-secondary);" onclick={(e) => { e.stopPropagation(); remove(e, conv.id); }} aria-label="Delete">×</button>
                     </div>
                   </li>
                 {/each}
@@ -306,7 +310,7 @@
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M12 17v5M9 10.76a2 2 0 0 1-1.11 1.79l-1.78 9.09A1 1 0 0 1 5 21v-1a1 1 0 0 1 .89-.99l1.81-.18" /><path d="M15 10.76a2 2 0 0 0 1.11 1.79l1.78 9.09A1 1 0 0 0 19 21v-1a1 1 0 0 0-.89-.99l-1.81-.18" /><path d="M20 10.76a2 2 0 0 0-1.11 1.79l-1.78 9.09A1 1 0 0 1 15 21v-1a1 1 0 0 1 .89-.99l1.81-.18" /><path d="M4 10.76a2 2 0 0 1 1.11 1.79l1.78 9.09A1 1 0 0 0 9 21v-1a1 1 0 0 0-.89-.99L6.3 19" /></svg>
                     </button>
                     <span class="truncate flex-1 text-xs min-w-0">{conv.title}</span>
-                    <button type="button" class="opacity-0 group-hover:opacity-100 p-0.5 rounded shrink-0 text-[10px] hover:bg-black/10" style="color: var(--ui-text-secondary);" onclick={(e) => { e.stopPropagation(); remove(e, conv.id); }} aria-label="Delete">×</button>
+                    <button type="button" class="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 p-0.5 rounded shrink-0 text-[10px] hover:bg-black/10" style="color: var(--ui-text-secondary);" onclick={(e) => { e.stopPropagation(); remove(e, conv.id); }} aria-label="Delete">×</button>
                   </div>
                 </li>
               {/each}
@@ -344,10 +348,6 @@
     background: color-mix(in srgb, var(--ui-accent) 14%, transparent);
     border-left: 3px solid var(--ui-accent);
     border-radius: 4px 8px 8px 4px;
-  }
-  .rail-icon-labeled:focus-visible {
-    box-shadow: none;
-    outline: none;
   }
   .rail-icon-label {
     font-size: 11px;

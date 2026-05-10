@@ -1,7 +1,6 @@
 <script>
   import { get } from 'svelte/store';
-  import { isStreaming, voiceServerUrl, pendingDroppedFiles, webSearchForNextMessage, webSearchInProgress, webSearchConnected, layout, braveApiKey, chatError } from '$lib/stores.js';
-  import { isModelLoadBlockingError } from '$lib/chatErrorUtils.js';
+  import { isStreaming, voiceServerUrl, pendingDroppedFiles, webSearchForNextMessage, webSearchInProgress, webSearchConnected, layout, braveApiKey } from '$lib/stores.js';
   import ThinkingAtom from '$lib/components/ThinkingAtom.svelte';
   import { COCKPIT_SENDING, COCKPIT_SEARCHING, pickWitty } from '$lib/cockpitCopy.js';
   import { warmUpSearchConnection, syncBraveKeyToProxy } from '$lib/duckduckgo.js';
@@ -41,8 +40,6 @@
 
   /** Ready to send: has text or attachments. Used for Send button "ready" state. */
   const canSend = $derived(!!(text.trim() || attachments.length));
-  /** LM Studio model not loaded — same error will repeat until user fixes or dismisses. */
-  const modelSendBlocked = $derived(isModelLoadBlockingError($chatError));
   /** Brief "sending" state for bar animation when user hits Send. */
   let sending = $state(false);
   /** Brief success feedback (checkmark) after send. */
@@ -191,7 +188,6 @@
 
   async function handleSubmit() {
     if ($isStreaming) return;
-    if (modelSendBlocked) return;
     const userMessage = (text || '').trim();
     const imageDataUrls = attachments.filter((a) => !a.isVideo).map((a) => a.dataUrl);
     const videoDataUrls = attachments.filter((a) => a.isVideo).map((a) => a.dataUrl);
@@ -569,7 +565,7 @@
       {#if onGenerateImageGrok || onGenerateImageDeepSeek}
         <button
           type="button"
-          class="media-icon-btn chat-input-tool-fade {imageGenerating ? 'media-icon-btn-active' : ''}"
+          class="media-icon-btn {imageGenerating ? 'media-icon-btn-active' : ''}"
           disabled={$isStreaming || imageGenerating || !text.trim()}
           onclick={handleImageClick}
           title={imageGenerating ? 'Generating image…' : (onGenerateImageGrok ? 'Generate image (Grok)' : 'Generate image (DeepInfra)')}
@@ -591,14 +587,14 @@
       {#if onGenerateVideoDeepSeek}
         <button
           type="button"
-          class="media-icon-btn chat-input-tool-fade {videoGenerating ? 'media-icon-btn-active' : ''}"
+          class="media-icon-btn {videoGenerating ? 'media-icon-btn-active' : ''}"
           disabled={$isStreaming || videoGenerating || !text.trim()}
           onclick={handleVideoClick}
           title={videoGenerating ? `Generating video… ${videoGenElapsed}` : 'Generate video (DeepInfra)'}
           aria-label={videoGenerating ? 'Generating video' : 'Generate video'}
         >
           {#if videoGenerating}
-            <span class="media-icon-generating"><ThinkingAtom size={16} /><span class="media-elapsed">{videoGenElapsed}</span></span>
+            <span class="media-icon-generating"><ThinkingAtom size={16} /><span class="media-elapsed-dot" aria-hidden="true"></span><span class="media-elapsed">{videoGenElapsed}</span></span>
           {:else}
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
               <rect x="2.5" y="3.5" width="19" height="17" rx="3" stroke="currentColor" stroke-width="1.5"/>
@@ -613,7 +609,7 @@
   {/if}
   <button
     type="button"
-    class="mic-button chat-input-tool-fade"
+    class="mic-button"
     title={recording ? 'Stop recording (click again)' : 'Voice input – start Python server first'}
     disabled={$isStreaming || (voiceProcessing && !recording)}
     onclick={toggleVoice}
@@ -629,7 +625,7 @@
   </button>
   <button
     type="button"
-    class="web-search-button chat-input-tool-fade"
+    class="web-search-button"
     class:active={$webSearchForNextMessage}
     title={webSearchWarmingUp ? 'Connecting…' : $webSearchForNextMessage ? ($webSearchConnected ? 'Web search on – connected (click to turn off)' : 'Web search on – not connected yet (click globe again to retry)') : 'Search the web for next message'}
     disabled={$isStreaming}
@@ -672,17 +668,14 @@
   {:else}
     <button
       onclick={handleSubmit}
-      disabled={$isStreaming || $webSearchInProgress || justSent || (!text.trim() && attachments.length === 0) || modelSendBlocked}
+      disabled={$isStreaming || $webSearchInProgress || justSent || (!text.trim() && attachments.length === 0)}
       class="send-button"
-      class:send-ready={canSend && !justSent && !modelSendBlocked}
-      title={modelSendBlocked ? 'Load the model in LM Studio, then dismiss the error above' : undefined}
+      class:send-ready={canSend && !justSent}
     >
       {#if justSent}
         <span class="send-feedback send-feedback-success" aria-live="polite">✓ Sent</span>
       {:else if sendError}
         <span class="send-feedback send-feedback-error" aria-live="assertive">✕ Try again</span>
-      {:else if modelSendBlocked}
-        <span class="send-blocked-label text-[11px] font-semibold leading-tight text-center px-0.5" aria-live="polite">Load model</span>
       {:else if $webSearchInProgress}
         <span class="inline-flex items-center gap-1.5"><ThinkingAtom size={16} />{searchingMessage || 'Searching…'}</span>
       {:else if $isStreaming}
@@ -732,21 +725,6 @@
   .chat-input-bar:focus-within {
     border-color: color-mix(in srgb, var(--ui-accent, #3b82f6) 45%, var(--ui-border));
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent, #3b82f6) 12%, transparent);
-  }
-
-  .chat-input-bar .chat-input-tool-fade {
-    opacity: 0.55;
-    transition: opacity 0.16s ease;
-  }
-  .chat-input-bar:hover .chat-input-tool-fade,
-  .chat-input-bar:focus-within .chat-input-tool-fade {
-    opacity: 1;
-  }
-  .chat-input-bar .web-search-button.active,
-  .chat-input-bar .media-icon-btn-active.chat-input-tool-fade,
-  .chat-input-bar .mic-button:disabled,
-  .chat-input-bar .web-search-button:disabled {
-    opacity: 1;
   }
 
   .chat-input-bar-attach {
@@ -982,7 +960,13 @@
     opacity: 1;
     cursor: default;
     color: var(--ui-accent, #3b82f6);
-    background: color-mix(in srgb, var(--ui-accent, #3b82f6) 8%, transparent);
+    background: color-mix(in srgb, var(--ui-accent, #3b82f6) 12%, transparent);
+    animation: media-btn-generating 1.4s ease-in-out infinite;
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--ui-accent, #3b82f6) 25%, transparent);
+  }
+  @keyframes media-btn-generating {
+    0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ui-accent) 20%, transparent); }
+    50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--ui-accent) 10%, transparent); }
   }
 
   .media-icon-label {
@@ -1002,6 +986,18 @@
     font-weight: 600;
     color: var(--ui-accent, #3b82f6);
     font-variant-numeric: tabular-nums;
+  }
+  .media-elapsed-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--ui-accent-hot, #dc2626);
+    animation: media-elapsed-dot-pulse 1s ease-in-out infinite;
+    flex-shrink: 0;
+  }
+  @keyframes media-elapsed-dot-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.3; transform: scale(0.7); }
   }
 
   .mic-button {
@@ -1250,9 +1246,16 @@
   }
   .attachments-row {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 8px;
     align-items: flex-start;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    padding-bottom: 2px;
+  }
+  .attachments-row::-webkit-scrollbar {
+    display: none;
   }
   .attachment-thumb {
     position: relative;

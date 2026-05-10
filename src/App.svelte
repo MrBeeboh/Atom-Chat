@@ -34,7 +34,12 @@
     const v = $layout;
     if (v !== 'cockpit' && v !== 'arena') layout.set('cockpit');
   });
+  const HEADER_MODEL_MIN = 'min-width: 22rem;';
   const HEADER_PRESET_MIN = 'min-width: 7rem;';
+  const HEADER_THEME_MIN = 'min-width: 10rem;';
+  const HEADER_GROUP_GAP = 'gap: 0.75rem;';
+  const HEADER_BETWEEN_GROUPS = '1.25rem';
+  const HEADER_RIGHT_GROUP = 'margin-left: auto;';
 
   /** Witty LM Studio / cloud status line; updates when connection state changes. */
   let lmStatusMessage = $state('');
@@ -150,10 +155,11 @@
   {#if $layout === 'cockpit'}
     <div class="flex h-full flex-col">
       <!-- Cockpit header: 3-zone layout — left (brand+layout), center (model+preset), right (theme+status) -->
-      <header class="cockpit-header shrink-0 flex items-center px-4 py-2.5" style="background-color: var(--ui-bg-sidebar);">
+      <header class="cockpit-header shrink-0 flex items-center px-4 py-2.5" style="background-color: var(--ui-bg-sidebar); border-bottom: 1px solid var(--ui-border);">
         <!-- Left: brand + layout pill -->
         <div class="flex items-center gap-3 shrink-0" role="group" aria-label="Brand and layout">
           <span class="cockpit-brand flex items-center gap-1.5 shrink-0 text-lg font-bold" style="color: var(--ui-accent);"><AtomLogo size={22} />ATOM</span>
+          <span class="font-mono text-[9px] px-1.5 py-0.5 rounded shrink-0 select-none" style="background: color-mix(in srgb, var(--ui-accent) 12%, transparent); color: var(--ui-accent); opacity: 0.65;" title="Build revision">{__GIT_REV__}</span>
           <nav class="layout-pill flex rounded-full p-0.5 shrink-0 text-xs font-medium" style="background: color-mix(in srgb, var(--ui-border) 60%, transparent);" aria-label="Layout: Cockpit or Arena">
             {#each LAYOUT_OPTS as opt}
               <button type="button" class="layout-pill-btn rounded-full px-3 py-1.5 transition-all" style="background: {$layout === opt.value ? 'var(--ui-accent)' : 'transparent'}; color: {$layout === opt.value ? 'var(--ui-bg-main)' : 'var(--ui-text-secondary)'};" onclick={() => layout.set(opt.value)}>{opt.label}</button>
@@ -161,20 +167,15 @@
           </nav>
         </div>
         <!-- Center: model selector + preset -->
-        <div class="flex-1 flex items-center justify-center gap-2 sm:gap-3 min-w-0 px-2 sm:px-4" role="group" aria-label="Model and preset">
-          <span class="text-xs font-semibold uppercase tracking-wider shrink-0 hidden sm:inline" style="color: var(--ui-text-secondary);">Model</span>
-          <div class="min-w-0 flex-1 flex justify-center max-w-full">
-            <div class="min-w-0 w-full max-w-[min(15rem,56vw)] sm:max-w-[min(18rem,48vw)] md:max-w-[min(20rem,42vw)] lg:max-w-[min(22rem,36vw)]">
-              <ModelSelector compact={true} />
-            </div>
-          </div>
+        <div class="flex-1 flex items-center justify-center gap-3 min-w-0 px-4" role="group" aria-label="Model and preset">
+          <span class="text-xs font-semibold uppercase tracking-wider shrink-0" style="color: var(--ui-text-secondary);">Model</span>
+          <div class="min-w-0" style="{HEADER_MODEL_MIN}"><ModelSelector /></div>
           <div class="shrink-0" style="{HEADER_PRESET_MIN}"><PresetSelect compact={true} /></div>
         </div>
         <!-- Right: theme + status -->
-        <div class="flex items-center gap-3 shrink-0" role="group" aria-label="Appearance and status">
-          <div class="flex items-center gap-2 shrink-0" role="group" aria-label="UI palette and color scheme">
+        <div class="flex items-center gap-4 shrink-0" role="group" aria-label="Appearance and status">
+          <div class="flex items-center gap-2 shrink-0" style="min-width: 8.5rem;">
             <UiThemeSelect compact={true} />
-            <span class="w-px h-7 shrink-0 self-center opacity-70" style="background: var(--ui-border);" aria-hidden="true"></span>
             <ThemeToggle />
           </div>
           <span class="flex items-center gap-1.5 shrink-0 text-xs font-medium" style="color: var(--ui-text-primary);" title={lmStatusMessage} aria-label={lmStatusMessage}>
@@ -229,109 +230,44 @@
 
   {:else if $layout === 'arena'}
     <div class="flex h-full flex-col">
-      <header
-        class="arena-shell-header shrink-0 flex flex-wrap items-center gap-x-3 gap-y-2 px-3 sm:px-4 py-2.5 text-sm border-b"
-        style="background: var(--ui-bg-sidebar); border-color: color-mix(in srgb, var(--ui-border) 85%, transparent); color: var(--ui-text-secondary);"
-      >
-        <!-- Brand + layout -->
-        <div class="flex items-center gap-2 sm:gap-3 shrink-0" role="group" aria-label="Brand and layout">
-          <button
-            type="button"
-            class="md:hidden flex items-center justify-center rounded-lg min-h-[44px] min-w-[44px] transition-colors hover:opacity-85"
-            style="color: var(--ui-text-secondary); background: color-mix(in srgb, var(--ui-border) 35%, transparent);"
-            onclick={() => sidebarOpen.set(true)}
-            aria-label="Open menu"
-          >
-            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
-              <path d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-          </button>
-          <span class="flex items-center gap-1.5 text-base sm:text-lg font-bold tracking-tight shrink-0" style="color: var(--ui-accent);">
-            <AtomLogo size={22} />ATOM Arena
-          </span>
-          <nav
-            class="layout-pill flex rounded-full p-0.5 shrink-0 text-[11px] sm:text-xs font-semibold shadow-sm"
-            style="background: color-mix(in srgb, var(--ui-border) 55%, transparent); box-shadow: inset 0 1px 0 color-mix(in srgb, white 6%, transparent);"
-            aria-label="Layout: Cockpit or Arena"
-          >
+      <header class="shrink-0 flex items-center flex-wrap px-3 py-2 text-sm" style="background: var(--ui-bg-sidebar); color: var(--ui-text-secondary); gap: {HEADER_BETWEEN_GROUPS}; border-bottom: 1px solid var(--ui-border);">
+        <div class="flex items-center shrink-0" style="{HEADER_GROUP_GAP}" role="group" aria-label="Brand and layout">
+          <button type="button" class="md:hidden p-2 rounded-md min-h-[44px] min-w-[44px] flex items-center justify-center transition-opacity hover:opacity-80" style="color: var(--ui-text-secondary);" onclick={() => sidebarOpen.set(true)} aria-label="Open menu">☰</button>
+          <span class="flex items-center gap-1.5 text-lg font-bold shrink-0" style="color: var(--ui-accent);"><AtomLogo size={22} />ATOM Arena</span>
+          <span class="font-mono text-[9px] px-1.5 py-0.5 rounded shrink-0 select-none" style="background: color-mix(in srgb, var(--ui-accent) 12%, transparent); color: var(--ui-accent); opacity: 0.65;" title="Build revision">{__GIT_REV__}</span>
+          <nav class="layout-pill flex rounded-full p-0.5 shrink-0 text-xs font-medium" style="background: color-mix(in srgb, var(--ui-border) 60%, transparent);" aria-label="Layout: Cockpit or Arena">
             {#each LAYOUT_OPTS as opt}
-              <button
-                type="button"
-                class="layout-pill-btn rounded-full px-2.5 sm:px-3 py-1.5 transition-all duration-150"
-                style="background: {$layout === opt.value ? 'var(--ui-accent)' : 'transparent'}; color: {$layout === opt.value ? 'var(--ui-bg-main)' : 'var(--ui-text-secondary)'}; box-shadow: {$layout === opt.value ? '0 1px 2px color-mix(in srgb, black 12%, transparent)' : 'none'};"
-                onclick={() => layout.set(opt.value)}
-              >{opt.label}</button>
+              <button type="button" class="layout-pill-btn rounded-full px-3 py-1.5 transition-all" style="background: {$layout === opt.value ? 'var(--ui-accent)' : 'transparent'}; color: {$layout === opt.value ? 'var(--ui-bg-main)' : 'var(--ui-text-secondary)'};" onclick={() => layout.set(opt.value)}>{opt.label}</button>
             {/each}
           </nav>
         </div>
-
-        <span class="hidden sm:block w-px h-7 shrink-0 opacity-60" style="background: var(--ui-border);" aria-hidden="true"></span>
-
-        <!-- Panel count -->
-        <div class="flex items-center gap-2 shrink-0" role="group" aria-label="Arena panels">
-          <span class="text-[10px] font-bold uppercase tracking-wider" style="color: var(--ui-text-secondary); opacity: 0.85;" title="Keyboard: Alt+1–4">Panels</span>
-          <div class="flex rounded-lg p-0.5 gap-0.5" style="background: color-mix(in srgb, var(--ui-border) 40%, transparent);" role="group" aria-label="Arena panel count">
+        <div class="flex items-center gap-2 shrink-0" style="{HEADER_GROUP_GAP}" role="group" aria-label="Arena panels">
+          <span class="text-[11px]" style="color: var(--ui-text-secondary);" title="Alt+1–4">Panels</span>
+          <div class="flex gap-0.5" role="group" aria-label="Arena panel count">
             {#each [1, 2, 3, 4] as n}
-              <button
-                type="button"
-                class="min-w-[2rem] h-7 rounded-md text-xs font-bold transition-all duration-150 {$arenaPanelCount === n ? 'shadow-sm' : 'opacity-55 hover:opacity-90'}"
-                style="{$arenaPanelCount === n ? 'background: var(--ui-accent); color: var(--ui-bg-main);' : 'color: var(--ui-text-secondary); background: transparent;'}"
-                onclick={() => arenaPanelCount.set(n)}
-                aria-label="{n} panel{n === 1 ? '' : 's'} (Alt+{n})"
-                aria-pressed={$arenaPanelCount === n}
-                title="{n} panel{n === 1 ? '' : 's'} — Alt+{n}"
-              >{n}</button>
+              <button type="button" class="w-8 h-7 rounded-md text-xs font-medium transition-opacity {$arenaPanelCount === n ? '' : 'opacity-60'}" style="{$arenaPanelCount === n ? 'background: color-mix(in srgb, var(--ui-accent) 14%, transparent); color: var(--ui-accent);' : 'color: var(--ui-text-secondary);'}" onclick={() => arenaPanelCount.set(n)} aria-label="{n} panel{n === 1 ? '' : 's'} (Alt+{n})" aria-pressed={$arenaPanelCount === n} title="{n} panel{n === 1 ? '' : 's'} — Alt+{n}">{n}</button>
             {/each}
           </div>
+          <span class="text-[11px]" style="color: var(--ui-text-secondary);">Chat → A</span>
         </div>
-
-        <!-- Preset + theme + toggle: inline on large screens -->
-        <div class="hidden lg:flex items-center gap-2 shrink-0 pl-1" role="group" aria-label="Preset and appearance">
-          <span class="w-px h-7 shrink-0 opacity-60" style="background: var(--ui-border);" aria-hidden="true"></span>
-          <div style="{HEADER_PRESET_MIN}" title="Global system prompt preset. Slots can override in Options.">
-            <PresetSelect compact={true} />
-          </div>
+        <div class="shrink-0" style="{HEADER_PRESET_MIN}" title="Global system prompt preset. Arena slots can override via Options."><PresetSelect compact={true} /></div>
+        <div class="flex items-center shrink-0 pl-3" style="{HEADER_GROUP_GAP} {HEADER_THEME_MIN}" role="group" aria-label="Appearance">
           <UiThemeSelect compact={true} />
-          <span class="w-px h-7 shrink-0 opacity-60" style="background: var(--ui-border);" aria-hidden="true"></span>
           <ThemeToggle />
         </div>
-
-        <!-- Collapsed appearance on smaller screens -->
-        <details class="lg:hidden group shrink-0 rounded-lg border open:pb-2 open:px-2 open:pt-1" style="border-color: color-mix(in srgb, var(--ui-border) 70%, transparent); background: color-mix(in srgb, var(--ui-border) 12%, transparent);">
-          <summary class="cursor-pointer select-none list-none flex items-center gap-1.5 py-1.5 px-2 text-[11px] font-bold uppercase tracking-wide [&::-webkit-details-marker]:hidden" style="color: var(--ui-text-secondary);">
-            Look & preset
-            <svg class="w-3.5 h-3.5 transition-transform group-open:rotate-180 opacity-70" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" /></svg>
-          </summary>
-          <div class="flex flex-wrap items-center gap-2 pt-1 pb-0.5" role="group" aria-label="Preset and appearance">
-            <div style="{HEADER_PRESET_MIN}"><PresetSelect compact={true} /></div>
-            <UiThemeSelect compact={true} />
-            <ThemeToggle />
-          </div>
-        </details>
-
-        <div class="flex-1 min-w-[1rem]" aria-hidden="true"></div>
-
-        <!-- Connection status (same semantics as Cockpit: cloud fallback when LM down) -->
-        <div class="flex items-center gap-2 shrink-0 w-full sm:w-auto justify-end sm:justify-start" role="status" aria-label={lmStatusMessage}>
-          <span
-            class="flex items-center gap-2 shrink-0 text-xs font-medium px-2 py-1 rounded-lg max-w-[min(100%,20rem)]"
-            style="color: var(--ui-text-primary); background: color-mix(in srgb, var(--ui-border) 25%, transparent);"
-            title={lmStatusMessage}
-          >
-            <span
-              class="w-2 h-2 rounded-full shrink-0"
-              style="background-color: {$lmStudioConnected === true ? '#22c55e' : $lmStudioConnected === false ? ($cloudApisAvailable ? '#3b82f6' : '#ef4444') : '#94a3b8'}; box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-bg-sidebar) 70%, transparent);"
-              aria-hidden="true"
-            ></span>
-            <span class="truncate">{lmStatusMessage}</span>
+        <div class="flex-1 min-w-4 shrink" aria-hidden="true"></div>
+        <div class="flex items-center shrink-0" style="{HEADER_GROUP_GAP} {HEADER_RIGHT_GROUP}" role="group" aria-label="Status">
+          <span class="flex items-center gap-1.5 shrink-0 text-xs" style="color: var(--ui-text-secondary);" title={lmStatusMessage} aria-label={lmStatusMessage}>
+            <span class="w-2 h-2 rounded-full shrink-0" style="background-color: {$lmStudioConnected === true ? '#22c55e' : $lmStudioConnected === false ? '#ef4444' : '#94a3b8'};" aria-hidden="true"></span>
+            <span class="hidden sm:inline">{lmStatusMessage}</span>
           </span>
         </div>
       </header>
       <div class="flex flex-1 min-h-0 relative">
         <aside
-          class="shrink-0 overflow-hidden hidden md:flex flex-col transition-[width] duration-200 relative min-w-0 {$layout === 'arena' ? 'arena-sidebar-secondary' : ''}"
-          style="width: {$sidebarCollapsed ? '52px' : '13rem'}; background-color: var(--ui-bg-sidebar);">
-          {#if $sidebarCollapsed}
+          class="shrink-0 hidden md:flex flex-col transition-[width] duration-200 relative min-w-0 {$layout === 'arena' ? 'arena-sidebar-secondary' : 'overflow-hidden'}"
+          style="width: {$sidebarCollapsed ? ($layout === 'arena' ? '0px' : '52px') : '13rem'}; background-color: {$sidebarCollapsed && $layout === 'arena' ? 'transparent' : 'var(--ui-bg-sidebar)'}; overflow: {$layout === 'arena' ? 'visible' : 'hidden'};">
+          {#if $sidebarCollapsed && $layout !== 'arena'}
             <div class="panel-tab-strip-icon-wrap pr-1" aria-hidden="true">
               <span class="panel-tab-strip-icon" title="Conversations">
                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
@@ -341,7 +277,9 @@
           <button
             type="button"
             class="panel-tab {sidebarTabBounce ? 'panel-tab-bounce' : ''}"
-            style="--panel-tab-transform: translate(100%, -50%); top: 50%; right: 0;"
+            style="{$layout === 'arena' && $sidebarCollapsed
+              ? 'position: fixed; left: 0; top: 50%; --panel-tab-transform: translate(0, -50%); transform: translate(0, -50%); border-radius: 0 8px 8px 0; border-left: none; z-index: 150;'
+              : '--panel-tab-transform: translate(100%, -50%); top: 50%; right: 0;'}"
             title={$sidebarCollapsed ? 'Expand sidebar (conversations)' : 'Collapse sidebar'}
             aria-label={$sidebarCollapsed ? 'Expand sidebar (conversations)' : 'Collapse sidebar'}
             onclick={toggleSidebarCollapsed}>

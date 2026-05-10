@@ -92,7 +92,6 @@
 </script>
 
 {#if judgmentPopup}
-  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <div
     class="judgment-modal"
     role="dialog"
@@ -101,12 +100,14 @@
     style="left: {judgmentPopupPos?.x ?? 0}px; top: {judgmentPopupPos?.y ?? 0}px;"
   >
     <!-- Header (drag handle) -->
-    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-    <div
-      class="judgment-header"
-      onmousedown={startDrag}
-      ontouchstart={startDrag}
-    >
+  <div
+    class="judgment-header cursor-move select-none"
+    role="button"
+    tabindex="0"
+    aria-label="Drag to move popup"
+    onmousedown={startDrag}
+    onkeydown={(e) => e.key === 'Enter' && startDrag(new MouseEvent('mousedown'))}
+  >
       <div class="judgment-header-left">
         <span class="judgment-title">Round {judgmentPopup.questionIndex != null ? judgmentPopup.questionIndex + 1 : '?'}</span>
         {#if arenaCurrentRunMeta?.judge_model}

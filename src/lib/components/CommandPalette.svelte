@@ -75,7 +75,7 @@
       { id: 'export-chat', label: 'Export Chat', shortcut: 'Ctrl+Shift+E', category: 'Actions', run: () => chatCommand.set({ type: 'export', ts: Date.now() }) },
       { id: 'clear-chat', label: 'Clear Chat', shortcut: 'Ctrl+Shift+L', category: 'Actions', run: () => chatCommand.set({ type: 'clear', ts: Date.now() }) },
       { id: 'bulk-erase', label: 'Bulk erase all chats', shortcut: '', category: 'Actions', run: () => runBulkErase() },
-      { id: 'settings', label: 'Open Settings', shortcut: '', category: 'Actions', run: () => settingsOpen.set(true) },
+      { id: 'settings', label: 'Open Settings', shortcut: 'Ctrl+,', category: 'Actions', run: () => settingsOpen.set(true) },
     ];
     actions.forEach((a) => {
       if (fuzzyMatch(a.label + ' ' + (a.shortcut || ''), q)) items.push(a);
@@ -220,6 +220,10 @@
           cockpitIntelOpen.update((v) => !v);
         }
       }
+      if ((e.ctrlKey || e.metaKey) && e.key === ',' && !open) {
+        e.preventDefault();
+        settingsOpen.set(true);
+      }
     }
     document.addEventListener('keydown', globalKeydown);
     return () => document.removeEventListener('keydown', globalKeydown);
@@ -245,7 +249,7 @@
       onkeydown={(e) => e.stopPropagation()}
       transition:scale={{ start: 0.72, duration: 500, easing: quintOut }}>
       <div class="flex items-center gap-2 px-4 py-3 border-b" style="border-color: var(--ui-border);">
-        <span class="text-zinc-400 dark:text-zinc-500 shrink-0" aria-hidden="true">&#8250;</span>
+        <span class="shrink-0" style="color: var(--ui-text-secondary); opacity: 0.6;" aria-hidden="true">&#8250;</span>
         <input
           bind:this={inputEl}
           bind:value={query}
@@ -255,7 +259,8 @@
           placeholder="Search commands, models, chats..."
           aria-label="Search" />
       </div>
-      <div class="max-h-[60vh] overflow-y-auto py-2">
+      <div class="cp-results-wrap" style="max-height: 60vh; overflow-y: auto; position: relative;">
+        <div class="py-2">
         {#if items.length === 0}
           <div class="px-4 py-6 text-center text-sm" style="color: var(--ui-text-secondary);">No matches</div>
         {:else}
@@ -277,7 +282,23 @@
             </button>
           {/each}
         {/if}
+        </div>
+        <div class="cp-scroll-fade" aria-hidden="true"></div>
       </div>
     </div>
   </div>
 {/if}
+
+<style>
+  .cp-results-wrap {
+    scrollbar-width: thin;
+  }
+  .cp-scroll-fade {
+    position: sticky;
+    bottom: 0;
+    height: 28px;
+    margin-top: -28px;
+    pointer-events: none;
+    background: linear-gradient(to bottom, transparent, var(--ui-bg-sidebar, #fff));
+  }
+</style>

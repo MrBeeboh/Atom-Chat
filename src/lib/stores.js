@@ -155,6 +155,13 @@ if (typeof localStorage !== 'undefined') {
   braveApiKey.subscribe((v) => localStorage.setItem('braveApiKey', (typeof v === 'string' ? v : '').trim()));
 }
 
+/** Cerebras API key (optional). When set, Cerebras models appear in the model list and can be used for chat. Stored trimmed to avoid copy-paste spaces. */
+const getStoredCerebrasApiKey = () => (typeof localStorage !== 'undefined' ? (localStorage.getItem('cerebrasApiKey') ?? '').trim() : null) ?? '';
+export const cerebrasApiKey = writable(getStoredCerebrasApiKey());
+if (typeof localStorage !== 'undefined') {
+  cerebrasApiKey.subscribe((v) => localStorage.setItem('cerebrasApiKey', (typeof v === 'string' ? v : '').trim()));
+}
+
 /** Together image endpoint name: required for FLUX.1-schnell-Free (create dedicated endpoint at api.together.ai, then paste the endpoint name here). */
 const getStoredTogetherImageEndpoint = () => (typeof localStorage !== 'undefined' ? (localStorage.getItem('togetherImageEndpoint') ?? '').trim() : null) ?? '';
 export const togetherImageEndpoint = writable(getStoredTogetherImageEndpoint());
@@ -162,10 +169,10 @@ if (typeof localStorage !== 'undefined') {
   togetherImageEndpoint.subscribe((v) => localStorage.setItem('togetherImageEndpoint', (typeof v === 'string' ? v : '').trim()));
 }
 
-/** True when at least one cloud API key (DeepSeek or Grok) is set. Used for status line when LM Studio is down. */
+/** True when at least one cloud API key (DeepSeek, Grok, or Cerebras) is set. Used for status line when LM Studio is down. */
 export const cloudApisAvailable = derived(
-  [deepSeekApiKey, grokApiKey],
-  ([a, b]) => !!(typeof a === 'string' && a.trim()) || !!(typeof b === 'string' && b.trim())
+  [deepSeekApiKey, grokApiKey, cerebrasApiKey],
+  ([a, b, c]) => !!(typeof a === 'string' && a.trim()) || !!(typeof b === 'string' && b.trim()) || !!(typeof c === 'string' && c.trim())
 );
 
 /** Layout: cockpit | arena only (restore point). Old layouts migrate to cockpit. */

@@ -7,6 +7,8 @@
    */
   import { get } from "svelte/store";
   import { onMount } from "svelte";
+  import { fly } from "svelte/transition";
+  import { quintOut } from "svelte/easing";
   import {
     chatError,
     dashboardModelA,
@@ -27,7 +29,6 @@
     arenaScoringModelId,
     arenaBlindReview,
     arenaDeterministicJudge,
-    arenaRequestTimeoutSeconds,
     arenaSlotOverrides,
     models,
     pendingDroppedFiles,
@@ -62,40 +63,23 @@
   import ChatInput from "$lib/components/ChatInput.svelte";
   import ThinkingAtom from "$lib/components/ThinkingAtom.svelte";
   import ModelSelectorSlot from "$lib/components/ModelSelectorSlot.svelte";
-import ArenaPanel from "$lib/components/ArenaPanel.svelte";
-import ArenaScoreMatrix from "$lib/components/ArenaScoreMatrix.svelte";
-import ArenaHeader from "$lib/components/ArenaHeader.svelte";
-import ArenaControlBar from "$lib/components/ArenaControlBar.svelte";
-import ArenaQuestionPanel from "$lib/components/ArenaQuestionPanel.svelte";
-import ArenaLoadQuestionsModal from "$lib/components/ArenaLoadQuestionsModal.svelte";
-import ArenaJudgmentModal from "$lib/components/ArenaJudgmentModal.svelte";
-import {
-  generateId,
+  import ArenaPanel from "$lib/components/ArenaPanel.svelte";
+  import ArenaScoreMatrix from "$lib/components/ArenaScoreMatrix.svelte";
+  import ArenaControlBar from "$lib/components/ArenaControlBar.svelte";
+  import {
+    generateId,
     resizeImageDataUrlsForVision,
     shouldSkipImageResizeForVision,
   } from "$lib/utils.js";
-  import { getModelCapabilities } from "$lib/modelCapabilities.js";
-  import { arenaWarn } from "$lib/arenaDashboard/arenaDashboardLog.js";
   import {
-    saveArenaSlotMessages,
-    loadArenaSlotMessages,
-    loadPanelPosition,
-    readArenaScoresFromLocalStorage,
-    readArenaPanelWidths,
-    writeArenaPanelWidths,
-} from "$lib/arenaDashboard/arenaDashboardPersistence.js";
-import {
-  parseJudgeScoresAndExplanations,
-    parseJudgeScoresMerged,
-    parseBlindJudgeScoresMerged,
+    parseJudgeScores,
+    parseJudgeScoresAndExplanations,
+    parseBlindJudgeScores,
     buildJudgePrompt,
     buildJudgePromptBlind,
     buildArenaQuestionGenerationPrompt,
     parseGeneratedQuestionSet,
-    buildArenaJsonRepairPrompt,
-    buildJudgeScoreExtractionPrompt,
     normalizeGeneratedQuestionSet,
-    parseQuestionsAndAnswers,
     makeSeededRandom,
     pickJudgeModel,
     isCloudModel,
@@ -199,24 +183,6 @@ import {
   const parsedAnswers = $derived(parsedQuestions.map((q) => (q.correct_answer != null ? String(q.correct_answer) : "")));
   let buildArenaInProgress = $state(false);
   let buildArenaError = $state("");
-  /** Last judge raw output when Build Arena JSON parse failed (for Repair JSON). */
-  let lastFailedBuildRaw = $state("");
-  let manualImportText = $state(
-    typeof localStorage !== "undefined" ? localStorage.getItem("arenaManualImportDraft") ?? "" : "",
-  );
-  let manualImportError = $state("");
-  /** Blind review slot order for the last scoring run (re-parse / re-extract). */
-  let lastBlindResponseOrder = $state(/** @type {string[] | null} */ (null));
-  let reExtractBusy = $state(false);
-  let showFloatQuestionPanel = $state(false);
-  let floatQuestionPanelPos = $state({ x: 24, y: 100 });
-  let floatQuestionPanelSize = $state({ w: 320, h: 200 });
-  let showLoadQuestionsModal = $state(false);
-  $effect(() => {
-    if (typeof localStorage !== "undefined")
-      localStorage.setItem("arenaManualImportDraft", manualImportText ?? "");
-  });
-
   async function buildArena() {
     buildArenaError = "";
     const contestantIds = [
@@ -285,28 +251,17 @@ import {
       const { content } = await requestChatCompletion({
         model: judgeId,
         messages,
-        options: { temperature: 0.6, max_tokens: 8192 },
+        options: { temperature: 0.1, max_tokens: 8192 },
       });
       timestamps.generation_end = Date.now();
-      let parsed = parseGeneratedQuestionSet(content);
+      const parsed = parseGeneratedQuestionSet(content);
       if (!parsed || parsed.questions.length === 0) {
-        const repairMsgs = buildArenaJsonRepairPrompt(content);
-        const { content: repaired } = await requestChatCompletion({
-          model: judgeId,
-          messages: repairMsgs,
-          options: { temperature: 0.2, max_tokens: 8192 },
-        });
-        parsed = parseGeneratedQuestionSet(repaired);
-      }
-      if (!parsed || parsed.questions.length === 0) {
-        lastFailedBuildRaw = content;
-        buildArenaError =
-          "Judge did not return valid JSON (repair pass failed). Use Repair JSON, import manually, or try another model.";
+        buildArenaError = "Judge did not return valid JSON. Try again or check the model.";
         return;
       }
-      lastFailedBuildRaw = "";
       const normalized = normalizeGeneratedQuestionSet(parsed);
-      builtQuestionSet = { questions: normalized.questions };
+      const trimmed = normalized.questions.slice(0, questionCount);
+      builtQuestionSet = { questions: trimmed };
       builtQuestionSetMeta = {
         run_id: runId,
         tool_calls: [],
@@ -329,151 +284,18 @@ import {
       questionIndex = 0;
       if (judgeId && !isCloudModel(judgeId)) {
         await unloadModel(judgeId);
-        await waitUntilUnloaded([judgeId], { pollIntervalMs: 400, timeoutMs: 15000 }).catch((err) =>
-          arenaWarn("buildArenaWaitUnloaded", err, { judgeId }),
-        );
+        await waitUntilUnloaded([judgeId], { pollIntervalMs: 400, timeoutMs: 15000 }).catch(() => {});
       }
     } catch (e) {
       buildArenaError = e?.message || "Build Arena failed.";
       if (judgeId && !isCloudModel(judgeId)) {
-        await unloadModel(judgeId).catch((err) => arenaWarn("buildArenaUnloadJudge", err, { judgeId }));
+        await unloadModel(judgeId).catch(() => {});
       }
     } finally {
       buildArenaInProgress = false;
       arenaTransitionPhase = null;
     }
   }
-
-  async function repairBuildFromLastRaw() {
-    const raw = lastFailedBuildRaw?.trim();
-    if (!raw) {
-      buildArenaError = "No saved judge output to repair. Run Build Arena once, or paste into Import.";
-      return;
-    }
-    buildArenaError = "";
-    const contestantIds = [
-      get(dashboardModelA),
-      get(dashboardModelB),
-      get(dashboardModelC),
-      get(dashboardModelD),
-    ].filter(Boolean);
-    const pick = pickJudgeModel({
-      userChoice: get(arenaScoringModelId)?.trim() || "",
-      contestantIds,
-      availableModels: get(models) || [],
-    });
-    if (pick.error || !pick.id) {
-      buildArenaError = pick.error || "No judge model available.";
-      return;
-    }
-    const judgeId = pick.id;
-    buildArenaInProgress = true;
-    arenaTransitionPhase = "loading_judge";
-    buildLoadingMessageIndex = Math.floor(Math.random() * ARENA_BUILD_LOADING_LINES.length);
-    try {
-      await unloadAllModelsNative();
-      await new Promise((r) => setTimeout(r, 500));
-      if (!isCloudModel(judgeId)) {
-        await loadModel(judgeId);
-        await new Promise((r) => setTimeout(r, 800));
-      }
-      const repairMsgs = buildArenaJsonRepairPrompt(raw);
-      const { content } = await requestChatCompletion({
-        model: judgeId,
-        messages: repairMsgs,
-        options: { temperature: 0.2, max_tokens: 8192 },
-      });
-      const parsed = parseGeneratedQuestionSet(content);
-      if (!parsed || parsed.questions.length === 0) {
-        buildArenaError = "Repair pass did not yield valid JSON. Try another model or use Import.";
-        return;
-      }
-      lastFailedBuildRaw = "";
-      const normalized = normalizeGeneratedQuestionSet(parsed);
-      builtQuestionSet = { questions: normalized.questions };
-      const runId = generateId();
-      builtQuestionSetMeta = {
-        run_id: runId,
-        tool_calls: [],
-        urls_accessed: [],
-        timestamps: { repair_at: Date.now() },
-      };
-      const buildSeed =
-        typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : String(Date.now());
-      arenaRunMetadata = {
-        run_id: runId,
-        timestamp: Date.now(),
-        judge_model: judgeId,
-        contestant_models: contestantIds.filter(Boolean),
-        blind_review: get(arenaBlindReview),
-        deterministic_judge: get(arenaDeterministicJudge),
-        builder_internet_enabled: false,
-        question_count: normalized.questions.length,
-        categories: [],
-        seed: buildSeed,
-        source: "repair_json",
-      };
-      questionIndex = 0;
-    } catch (e) {
-      buildArenaError = e?.message || "Repair failed.";
-    } finally {
-      buildArenaInProgress = false;
-      arenaTransitionPhase = null;
-      if (judgeId && !isCloudModel(judgeId)) {
-        await unloadModel(judgeId).catch((err) => arenaWarn("repairBuildUnloadJudge", err, { judgeId }));
-        await waitUntilUnloaded([judgeId], { pollIntervalMs: 400, timeoutMs: 15000 }).catch((err) =>
-          arenaWarn("repairBuildWaitUnloaded", err, { judgeId }),
-        );
-      }
-    }
-  }
-
-  /** @returns {boolean} */
-  function applyManualQuestionImport() {
-    const text = (manualImportText || "").trim();
-    manualImportError = "";
-    if (!text) {
-      manualImportError = "Paste questions first (numbered list, Q/A pairs, or JSON array).";
-      return false;
-    }
-    const parsed = parseQuestionsAndAnswers(text);
-    if (!parsed.questions.length) {
-      manualImportError = "No questions found. Try JSON [{\"question\":\"...\",\"answer\":\"...\"}] or numbered Q&A.";
-      return false;
-    }
-    const normalized = normalizeGeneratedQuestionSet(parsed);
-    if (!normalized.questions.length) {
-      manualImportError = "Could not normalize questions.";
-      return false;
-    }
-    builtQuestionSet = { questions: normalized.questions };
-    builtQuestionSetMeta = {
-      run_id: generateId(),
-      tool_calls: [],
-      urls_accessed: [],
-      timestamps: { manual_import_at: Date.now() },
-    };
-    const buildSeed =
-      typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : String(Date.now());
-    arenaRunMetadata = {
-      run_id: builtQuestionSetMeta.run_id,
-      timestamp: Date.now(),
-      judge_model: null,
-      contestant_models: [],
-      blind_review: get(arenaBlindReview),
-      deterministic_judge: get(arenaDeterministicJudge),
-      builder_internet_enabled: false,
-      question_count: normalized.questions.length,
-      categories: [],
-      seed: buildSeed,
-      source: "manual_import",
-    };
-    questionIndex = 0;
-    buildArenaError = "";
-    lastFailedBuildRaw = "";
-    return true;
-  }
-
   const currentQuestionItem = $derived(
     parsedQuestions.length > 0 ? parsedQuestions[questionIndex % parsedQuestions.length] : null,
   );
@@ -546,9 +368,25 @@ import {
   let judgmentPopup = $state(
     /** @type {null | { scores: Record<string, number>, explanation: string, rawJudgeOutput?: string, questionIndex?: number, explanations?: Record<string, string> }} */ (null),
   );
-  /** Draggable position of the Scores panel (null = centered). Reset when popup closes. */
-  let judgmentPopupPos = $state(/** @type {null | { x: number, y: number }} */ (null));
-  /** Ref for the Scores panel card (used to read position when starting drag). */
+  /** 1.0 = full width, 0 = closed. Driven by auto-close countdown. */
+  let judgmentAutoCloseProgress = $state(1.0);
+  /** When the drawer is hovered/focused, the countdown pauses. */
+  let judgmentDrawerHovered = $state(false);
+
+  $effect(() => {
+    if (!judgmentPopup) { judgmentAutoCloseProgress = 1.0; return; }
+    const DURATION = 7000;
+    let elapsed = 0;
+    let lastTick = Date.now();
+    const id = setInterval(() => {
+      const now = Date.now();
+      if (!judgmentDrawerHovered) elapsed += now - lastTick;
+      lastTick = now;
+      judgmentAutoCloseProgress = Math.max(0, 1 - elapsed / DURATION);
+      if (judgmentAutoCloseProgress <= 0) { clearInterval(id); judgmentPopup = null; }
+    }, 50);
+    return () => clearInterval(id);
+  });
 
   /** Fisher–Yates shuffle of indices [0..n-1]. */
   function shuffleIndices(n) {
@@ -591,6 +429,7 @@ import {
     wittyIndexLoadingModel = (wittyIndexLoadingModel + 1) % arr.length;
     return i;
   }
+
 
   /** Transition: 'ejecting' | 'loading' | 'loading_judge' | 'judge_web' | 'scoring' (atom animation). */
   let arenaTransitionPhase = $state(
@@ -644,19 +483,28 @@ import {
 
   // ---------- Arena message persistence (survive refresh) ----------
   function saveArenaMessages() {
-    const r = saveArenaSlotMessages(
-      typeof sessionStorage !== "undefined" ? sessionStorage : null,
-      { A: messagesA, B: messagesB, C: messagesC, D: messagesD },
-    );
-    if (!r.ok) arenaWarn("saveArenaMessages", r.error);
+    if (typeof sessionStorage === "undefined") return;
+    try {
+      sessionStorage.setItem("arenaMessagesA", JSON.stringify(messagesA));
+      sessionStorage.setItem("arenaMessagesB", JSON.stringify(messagesB));
+      sessionStorage.setItem("arenaMessagesC", JSON.stringify(messagesC));
+      sessionStorage.setItem("arenaMessagesD", JSON.stringify(messagesD));
+    } catch (_) {
+      /* sessionStorage full or unavailable */
+    }
   }
   function loadArenaMessages() {
-    const r = loadArenaSlotMessages(typeof sessionStorage !== "undefined" ? sessionStorage : null);
-    if (!r.ok) arenaWarn("loadArenaMessages", r.error);
-    messagesA = /** @type {typeof messagesA} */ (r.data.A);
-    messagesB = /** @type {typeof messagesB} */ (r.data.B);
-    messagesC = /** @type {typeof messagesC} */ (r.data.C);
-    messagesD = /** @type {typeof messagesD} */ (r.data.D);
+    if (typeof sessionStorage === "undefined") return;
+    try {
+      const a = sessionStorage.getItem("arenaMessagesA");
+      const b = sessionStorage.getItem("arenaMessagesB");
+      const c = sessionStorage.getItem("arenaMessagesC");
+      const d = sessionStorage.getItem("arenaMessagesD");
+      if (a) messagesA = JSON.parse(a);
+      if (b) messagesB = JSON.parse(b);
+      if (c) messagesC = JSON.parse(c);
+      if (d) messagesD = JSON.parse(d);
+    } catch (_) {}
   }
   // Load persisted messages on mount; eject any loaded models so Arena starts clean.
   onMount(() => {
@@ -671,8 +519,8 @@ import {
           // Still loaded — poll until empty or timeout
           await waitUntilUnloaded(loaded, { pollIntervalMs: 500, timeoutMs: 15000 });
         }
-      } catch (e) {
-        arenaWarn("arenaOpenEjectAll", e);
+      } catch (_) {
+        /* best-effort; don't block UI */
       }
     })();
   });
@@ -685,15 +533,101 @@ import {
     saveArenaMessages();
   });
 
+  // _REMOVED_JUDGE_WEB_LINES: dead code removed (migrated to arenaLogic.js).
+
   // ---------- Draggable floating panels (question + Ask the Judge) ----------
-  let askJudgePanelPos = $state(loadPanelPosition("arenaAskJudgePanelPos", 16, 300));
+  function loadPanelPos(key, defaultX, defaultY) {
+    if (typeof localStorage === "undefined")
+      return { x: defaultX, y: defaultY };
+    try {
+      const s = localStorage.getItem(key);
+      if (!s) return { x: defaultX, y: defaultY };
+      const { x, y } = JSON.parse(s);
+      if (typeof x === "number" && typeof y === "number") return { x, y };
+    } catch (_) {}
+    return { x: defaultX, y: defaultY };
+  }
+  let askJudgePanelPos = $state(loadPanelPos("arenaAskJudgePanelPos", 16, 300));
+
+  /**
+   * Svelte action: make the panel draggable by its handle. Handle must be a direct child of the panel.
+   * Updates getPos/setPos and persists to localStorage on drag end; clamps to viewport.
+   */
+  function makeDraggable(handleEl, params) {
+    if (!params || !handleEl) return;
+    const { storageKey, getPos, setPos } = params;
+    const panelEl = handleEl.parentElement;
+    if (!panelEl) return;
+
+    let dragging = false;
+    function move(e) {
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      setPos({ x: startLeft + dx, y: startTop + dy });
+    }
+    function up() {
+      dragging = false;
+      document.removeEventListener("pointermove", move);
+      document.removeEventListener("pointerup", up);
+      const pos = getPos();
+      const rect = panelEl.getBoundingClientRect();
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const x = Math.max(0, Math.min(vw - rect.width, pos.x));
+      const y = Math.max(0, Math.min(vh - rect.height, pos.y));
+      setPos({ x, y });
+      if (typeof localStorage !== "undefined")
+        localStorage.setItem(storageKey, JSON.stringify({ x, y }));
+    }
+    let startX, startY, startLeft, startTop;
+    function down(e) {
+      if (e.button !== 0) return;
+      if (e.target && e.target.closest && e.target.closest("button")) return;
+      e.preventDefault();
+      startX = e.clientX;
+      startY = e.clientY;
+      const p = getPos();
+      startLeft = p.x;
+      startTop = p.y;
+      dragging = true;
+      document.addEventListener("pointermove", move);
+      document.addEventListener("pointerup", up);
+    }
+    handleEl.addEventListener("pointerdown", down);
+    return {
+      destroy() {
+        handleEl.removeEventListener("pointerdown", down);
+        // Always clean up document listeners on destroy (prevents leaks if destroyed mid-drag)
+        if (dragging) {
+          document.removeEventListener("pointermove", move);
+          document.removeEventListener("pointerup", up);
+        }
+      },
+    };
+  }
 
   /** Eject-all in progress; message after (success or error). */
   let ejectBusy = $state(false);
   let ejectMessage = $state(/** @type {null | string} */ (null));
 
   /** Running scores for all four slots (A–D). Persisted to localStorage. */
-  let arenaScores = $state(readArenaScoresFromLocalStorage());
+  const loadArenaScores = () => {
+    if (typeof localStorage === "undefined") return { A: 0, B: 0, C: 0, D: 0 };
+    try {
+      const raw = localStorage.getItem("arenaScores");
+      if (!raw) return { A: 0, B: 0, C: 0, D: 0 };
+      const o = JSON.parse(raw);
+      return {
+        A: Number(o.A) || 0,
+        B: Number(o.B) || 0,
+        C: Number(o.C) || 0,
+        D: Number(o.D) || 0,
+      };
+    } catch {
+      return { A: 0, B: 0, C: 0, D: 0 };
+    }
+  };
+  let arenaScores = $state(loadArenaScores());
   $effect(() => {
     if (typeof localStorage !== "undefined" && arenaScores)
       localStorage.setItem("arenaScores", JSON.stringify(arenaScores));
@@ -865,12 +799,7 @@ import {
   }
 
   // ---------- Stream / send ----------
-  /** Wall-clock cap for each contestant/judge stream (ms). User setting 60–900 s. */
-  function arenaStreamTimeoutMs() {
-    const sec = Number(get(arenaRequestTimeoutSeconds));
-    const clamped = Math.min(900, Math.max(60, Number.isFinite(sec) ? sec : 180));
-    return clamped * 1000;
-  }
+  const ARENA_TIMEOUT_MS = 120000; // spec: timeout_seconds_per_model: 120
 
   /**
    * Send one question to one model in one Arena slot.
@@ -880,7 +809,7 @@ import {
    *      No history, no judge text, no scoring format, no competition framing.
    *   2. The question text may include contest rules (prepended by caller) — but those
    *      rules must never mention judges, scoring, other models, or competition.
-   *   3. A configurable hard timeout aborts the stream if the model hangs (Arena Settings → Execution).
+   *   3. A 120 s hard timeout aborts the stream if the model hangs.
    *
    * @param {string} slot  - 'A'|'B'|'C'|'D'
    * @param {string} modelId
@@ -928,7 +857,7 @@ import {
     let elapsedMs = 0;
     lastSampleAt = Date.now();
     lastSampleTokens = 0;
-    const softTimeoutMs = arenaStreamTimeoutMs();
+    const softTimeoutMs = 120000;
     let lastErr = null;
     for (let attempt = 1; attempt <= 2; attempt++) {
       const controller = new AbortController();
@@ -948,7 +877,6 @@ import {
             frequency_penalty: slotOpts.frequency_penalty,
             stop: slotOpts.stop?.length ? slotOpts.stop : undefined,
             ttl: slotOpts.model_ttl_seconds,
-            request_timeout_ms: softTimeoutMs,
           },
           signal: controller.signal,
           onDone() {
@@ -979,93 +907,19 @@ import {
         if (result.usage) usage = result.usage;
         if ($settings.audio_enabled && !result?.aborted)
           playComplete($settings.audio_volume);
-        if (result?.aborted) {
-          lastErr = null;
-          if (detectLoop(fullContent)) {
-            if (attempt === 1) {
-              fullContent = "";
-              updateMessage(slot, assistantMsgId, { content: "", modelId });
-              continue;
-            }
-            setSlotError(slot, "Output stopped (repetition detected).");
-            updateMessage(slot, assistantMsgId, {
-              content: sanitizeContestantResponse(fullContent) || "",
-              stats: null,
-              modelId,
-            });
-            return undefined;
-          }
-          const partialSan = sanitizeContestantResponse(fullContent) || "";
-          if (partialSan) {
-            setSlotError(
-              slot,
-              "Hit the time limit; partial answer is kept. Increase Max response time (Arena Settings → Execution) if needed.",
-            );
-            break;
-          }
-          if (attempt === 1) {
-            fullContent = "";
-            updateMessage(slot, assistantMsgId, { content: "", modelId });
-            continue;
-          }
-          setSlotError(
-            slot,
-            "Timeout with no output. Increase Max response time (Arena Settings → Execution).",
-          );
-          updateMessage(slot, assistantMsgId, {
-            content: "(no output before timeout)",
-            stats: null,
-            modelId,
-          });
-          return undefined;
-        }
         lastErr = null;
         break;
       } catch (err) {
         lastErr = err;
         clearTimeout(timeoutId);
-        if (err?.name !== "AbortError") arenaWarn("sendToSlot", err, { slot, modelId });
         if (err?.name === "AbortError") {
-          if (detectLoop(fullContent)) {
-            if (attempt === 1) {
-              fullContent = "";
-              updateMessage(slot, assistantMsgId, { content: "", modelId });
-              continue;
-            }
-            setSlotError(slot, "Output stopped (repetition detected).");
-            updateMessage(slot, assistantMsgId, {
-              content: sanitizeContestantResponse(fullContent) || "",
-              stats: null,
-              modelId,
-            });
-            return undefined;
-          }
-          const partialRaw = (fullContent || "").trim();
-          if (attempt === 1 && partialRaw.length > 0) {
-            setSlotError(
-              slot,
-              "Hit the time limit; partial answer is kept. Increase Max response time (Arena Settings → Execution) if the model needs longer.",
-            );
-            lastErr = null;
-            break;
-          }
           if (attempt === 1) {
             fullContent = "";
             updateMessage(slot, assistantMsgId, { content: "", modelId });
             continue;
           }
-          const partialSan = sanitizeContestantResponse(fullContent) || "";
-          setSlotError(
-            slot,
-            partialSan
-              ? "Hit the time limit after retry; partial answer is kept below."
-              : "Timeout with no output. Increase Max response time (Arena Settings → Execution).",
-          );
-          updateMessage(slot, assistantMsgId, {
-            content: partialSan || "(no output before timeout)",
-            stats: null,
-            modelId,
-          });
+          setSlotError(slot, "Timeout (no response after retry). Score: 0.");
+          updateMessage(slot, assistantMsgId, { content: "", stats: null, modelId });
           return undefined;
         }
         setSlotError(slot, err?.message || "Failed to get response.");
@@ -1114,28 +968,9 @@ import {
     return { latency_ms: elapsedMs, token_count: tokenCount, timestamp: Date.now() };
   }
 
-  /**
-   * @param {string} text
-   * @param {string[]} [imageDataUrls]
-   * @param {string | null} [questionId]
-   * @param {{ autoJudge?: boolean }} [options] - When `autoJudge` is false, does not schedule `runJudgment` after contestants finish (caller must invoke it). Avoids double scoring with Run All.
-   */
-  async function sendUserMessage(text, imageDataUrls = [], questionId = null, options = {}) {
-    const { autoJudge = true } = options;
+  async function sendUserMessage(text, imageDataUrls = [], questionId = null) {
     if (!text || !String(text).trim() || $isStreaming) return;
     chatError.set(null);
-
-    // Warn if user tries to send images to a non-vision model
-    const hasImages = (imageDataUrls?.length ?? 0) > 0;
-    if (hasImages) {
-      // Check all selected models for vision support
-      const modelsToCheck = [$dashboardModelA, $dashboardModelB, $dashboardModelC, $dashboardModelD].filter(Boolean);
-      const nonVisionModels = modelsToCheck.filter((mid) => !getModelCapabilities(mid).vision);
-      if (nonVisionModels.length > 0) {
-        chatError.set(`These models may not support images: ${nonVisionModels.join(', ')}. The error "Cannot read" usually means the model doesn't support image input. Try vision models (name contains "vl", "vision", "qwen2.5-vl", "llava", etc.) or remove the images.`);
-        return;
-      }
-    }
 
     let effectiveText = String(text).trim();
     const webMode = get(arenaWebSearchMode);
@@ -1152,7 +987,6 @@ import {
         );
         effectiveText = formatted + "\n\n---\nUser question: " + effectiveText;
       } catch (e) {
-        arenaWarn("sendUserMessageWebSearch", e);
         webSearchConnected.set(false);
         chatError.set(
           e?.message ||
@@ -1260,54 +1094,29 @@ import {
       messagesC = [];
       messagesD = [];
 
-      /* Eject every loaded model so the first contestant has full VRAM. Uses native API (no helper needed).
-         Skip when all contestants are cloud models (no VRAM to free). */
-      if (typeof console !== "undefined" && console.log) {
-        console.log("[Arena debug] Initial eject check - selected:", selected.map(s => ({slot: s.slot, modelId: s.modelId, cloud: isCloudModel(s.modelId)})));
-      }
+      /* Eject every loaded model so the first contestant has full VRAM. Uses native API (no helper needed). */
       arenaTransitionPhase = "ejecting";
-      if (selected.some((s) => s.modelId && !isCloudModel(s.modelId))) {
-        if (typeof console !== "undefined" && console.log) {
-          console.log("[Arena debug] Starting initial eject (unloading local models)");
-        }
-        await unloadAllModelsNative();
-        const loadedBefore = await getLoadedModelKeys();
-        if (loadedBefore.length > 0) {
-          if (typeof console !== "undefined" && console.log) {
-            console.log("[Arena debug] Waiting for initial eject - loadedBefore:", loadedBefore);
-          }
-          await waitUntilUnloaded(loadedBefore, {
-            pollIntervalMs: 400,
-            timeoutMs: 25000,
-          });
-          if (typeof console !== "undefined" && console.log) {
-            console.log("[Arena debug] Initial eject wait complete");
-          }
-        }
-        await new Promise((r) => setTimeout(r, 1000));
-        if (typeof console !== "undefined" && console.log) {
-          console.log("[Arena debug] Initial eject complete");
-        }
-      } else {
-        if (typeof console !== "undefined" && console.log) {
-          console.log("[Arena debug] Skipping initial eject - all contestants are cloud");
-        }
+      await unloadAllModelsNative();
+      const loadedBefore = await getLoadedModelKeys();
+      if (loadedBefore.length > 0) {
+        await waitUntilUnloaded(loadedBefore, {
+          pollIntervalMs: 400,
+          timeoutMs: 25000,
+        });
       }
+      await new Promise((r) => setTimeout(r, 1000));
       arenaTransitionPhase = null;
       if (runId !== currentRun) return;
 
-      /* Arena runs one model at a time: load first contestant, then for each slot answer → eject → load next.
-         Skip loadModel for cloud contestants (they don't use LM Studio VRAM). */
-      if (selected[0]?.modelId && !isCloudModel(selected[0].modelId)) {
-        loadingModelMessageIndex = getNextWittyLoadingModel();
-        arenaTransitionPhase = "loading";
-        try {
-          await loadModel(selected[0].modelId);
-        } catch (e) {
-          arenaWarn("preloadFirstContestant", e);
-        }
-        arenaTransitionPhase = null;
+      /* Arena runs one model at a time: load first contestant, then for each slot answer → eject → load next. */
+      loadingModelMessageIndex = getNextWittyLoadingModel();
+      arenaTransitionPhase = "loading";
+      try {
+        if (selected[0]?.modelId) await loadModel(selected[0].modelId);
+      } catch (_) {
+        /* Load may fail; sendToSlot may load on demand */
       }
+      arenaTransitionPhase = null;
       if (runId !== currentRun) return;
 
       let completedCount = 0;
@@ -1347,40 +1156,24 @@ import {
         /* Always unload current contestant so only one model is ever loaded (including after the last slot). */
         if (runId !== currentRun) break;
         arenaTransitionPhase = "ejecting";
-        if (typeof console !== "undefined" && console.log) {
-          console.log("[Arena debug] Per-slot eject check for slot", s.slot, "modelId:", s.modelId, "isCloud:", !!s.modelId && isCloudModel(s.modelId));
-        }
         try {
-          if (s.modelId && !isCloudModel(s.modelId)) {
-            if (typeof console !== "undefined" && console.log) {
-              console.log("[Arena debug] Unloading contestant model:", s.modelId);
-            }
+          if (s.modelId) {
             await unloadModel(s.modelId);
             await waitUntilUnloaded([s.modelId], { pollIntervalMs: 400, timeoutMs: 15000 });
-            if (typeof console !== "undefined" && console.log) {
-              console.log("[Arena debug] Contestant model unloaded successfully");
-            }
-          } else {
-            if (typeof console !== "undefined" && console.log) {
-              console.log("[Arena debug] Skipping eject for cloud contestant or no modelId");
-            }
           }
-        } catch (e) {
-          arenaWarn("unloadContestantAfterSlot", e, { slot: s.slot, modelId: s.modelId });
-          if (typeof console !== "undefined" && console.error) {
-            console.error("[Arena debug] Error during per-slot eject:", e);
-          }
+        } catch (_) {
+          /* LM Studio may not support unload or already unloaded; continue */
         }
         arenaTransitionPhase = null;
         if (runId !== currentRun) break;
         const next = selected[i + 1];
-        if (next?.modelId && !isCloudModel(next.modelId)) {
+        if (next?.modelId) {
           loadingModelMessageIndex = getNextWittyLoadingModel();
           arenaTransitionPhase = "loading";
           try {
             await loadModel(next.modelId);
-          } catch (e) {
-            arenaWarn("preloadNextContestant", e, { modelId: next.modelId });
+          } catch (_) {
+            /* Load may fail; sendToSlot will load on demand */
           }
           arenaTransitionPhase = null;
         }
@@ -1390,14 +1183,10 @@ import {
         isStreaming.set(false);
         liveTokens.set(null);
         liveTokPerSec.set(null);
-        /* Show judge phase only when we schedule judgment here (Run All calls runJudgment itself). */
-        if (autoJudge) {
-          judgeLoadingMessageIndex = getNextWittyJudgeLoading();
-          arenaTransitionPhase = "loading_judge";
-          setTimeout(() => runJudgment(), 500);
-        } else {
-          arenaTransitionPhase = null;
-        }
+        /* Show judge phase immediately so the user sees progress; then run judgment after a short delay. */
+        judgeLoadingMessageIndex = getNextWittyJudgeLoading();
+        arenaTransitionPhase = "loading_judge";
+        setTimeout(() => runJudgment(), 500);
       }
       if (failedSlots.length > 0 && completedCount > 0) {
         chatError.set(
@@ -1426,9 +1215,7 @@ import {
     for (const slot of ["A", "B", "C", "D"]) {
       try {
         aborters[slot]?.abort();
-      } catch (e) {
-        arenaWarn("abortSlotStream", e, { slot });
-      }
+      } catch (_) {}
       aborters[slot] = null;
       setRunning(slot, false);
     }
@@ -1537,9 +1324,8 @@ import {
         messagesD = [];
         chatError.set(null);
         try {
-          await sendUserMessage(toSend, [], item?.id ?? null, { autoJudge: false });
+          await sendUserMessage(toSend, [], item?.id ?? null);
         } catch (e) {
-          arenaWarn("runAllSendUserMessage", e, { questionIndex: i });
           chatError.set(e?.message || `Failed on question ${i + 1}.`);
           continue;
         }
@@ -1566,7 +1352,6 @@ import {
             try {
               await runJudgment();
             } catch (e) {
-              arenaWarn("runAllJudgment", e, { questionIndex: i });
               chatError.set(
                 e?.message || `Scoring failed on question ${i + 1}.`,
               );
@@ -1609,152 +1394,6 @@ import {
     });
     if (ok) {
       ejectAllModels();
-    }
-  }
-
-  function retryJudgmentParse() {
-    const raw = judgmentPopup?.rawJudgeOutput;
-    if (!raw || typeof raw !== "string") return;
-    const useBlind = get(arenaBlindReview);
-    let roundScores = /** @type {Record<string, number>} */ ({});
-    let popupExplanations = /** @type {Record<string, string> | undefined} */ (undefined);
-    let displayExplanation = raw;
-    if (useBlind && lastBlindResponseOrder?.length) {
-      const m = parseBlindJudgeScoresMerged(raw, lastBlindResponseOrder);
-      roundScores = m.scores;
-      popupExplanations = m.explanations;
-      const lines = ["A", "B", "C", "D"]
-        .filter((slot) => roundScores[slot] !== undefined)
-        .map((slot) => `Model ${slot}: ${roundScores[slot]}/10 - ${(m.explanations[slot] || "").trim() || "—"}`);
-      displayExplanation = lines.length ? lines.join("\n") : raw;
-    } else {
-      const m = parseJudgeScoresMerged(raw);
-      roundScores = m.scores;
-      popupExplanations = m.explanations;
-      const lines = ["A", "B", "C", "D"]
-        .filter((slot) => roundScores[slot] !== undefined)
-        .map((slot) => `Model ${slot}: ${roundScores[slot]}/10 - ${(m.explanations[slot] || "").trim() || "—"}`);
-      displayExplanation = lines.length ? lines.join("\n") : raw;
-    }
-    const hadScores =
-      judgmentPopup.scores && Object.keys(judgmentPopup.scores).length > 0;
-    const qIdx = judgmentPopup.questionIndex ?? questionIndex % Math.max(1, parsedQuestions.length);
-    if (Object.keys(roundScores).length > 0 && !hadScores) {
-      const qText =
-        (parsedQuestions[qIdx]?.text != null ? String(parsedQuestions[qIdx].text) : null) || "(free-form prompt)";
-      scoreHistory = addScoreRound(scoreHistory, qIdx, qText, roundScores);
-      arenaScores = computeTotals(scoreHistory);
-    }
-    if (Object.keys(roundScores).length === 0) {
-      chatError.set("Still could not parse scores. Try AI re-extract or check raw output.");
-    } else {
-      chatError.set(null);
-    }
-    judgmentPopup = {
-      scores: roundScores,
-      explanation: displayExplanation,
-      rawJudgeOutput: raw,
-      questionIndex: qIdx,
-      explanations: popupExplanations,
-    };
-  }
-
-  async function reExtractJudgeScoresWithAi() {
-    const raw = judgmentPopup?.rawJudgeOutput;
-    if (!raw || reExtractBusy) return;
-    const n = get(arenaPanelCount);
-    const slotAIsJudge = get(arenaSlotAIsJudge);
-    const contestantIds = [
-      slotAIsJudge ? null : get(dashboardModelA),
-      n >= 2 ? get(dashboardModelB) : null,
-      n >= 3 ? get(dashboardModelC) : null,
-      n >= 4 ? get(dashboardModelD) : null,
-    ].filter(Boolean);
-    let judgeId = null;
-    if (slotAIsJudge && get(dashboardModelA)) {
-      judgeId = get(dashboardModelA);
-    } else {
-      const pick = pickJudgeModel({
-        userChoice: get(arenaScoringModelId)?.trim() || "",
-        contestantIds,
-        availableModels: get(models),
-      });
-      if (pick.id) judgeId = pick.id;
-      else if (contestantIds.length) judgeId = contestantIds[0];
-    }
-    if (!judgeId) {
-      chatError.set("No judge model for AI re-extract.");
-      return;
-    }
-    reExtractBusy = true;
-    chatError.set(null);
-    try {
-      await unloadAllModelsNative();
-      const loadedBefore = await getLoadedModelKeys();
-      if (loadedBefore.length > 0) {
-        await waitUntilUnloaded(loadedBefore, {
-          pollIntervalMs: 400,
-          timeoutMs: 25000,
-        });
-      }
-      await new Promise((r) => setTimeout(r, 400));
-      if (!isCloudModel(judgeId)) await loadModel(judgeId);
-      const useBlind = get(arenaBlindReview);
-      const exMsgs = buildJudgeScoreExtractionPrompt(raw, useBlind, useBlind ? lastBlindResponseOrder : null);
-      const { content: exContent } = await requestChatCompletion({
-        model: judgeId,
-        messages: exMsgs,
-        options: { temperature: 0, max_tokens: 1024 },
-      });
-      let roundScores = /** @type {Record<string, number>} */ ({});
-      let popupExplanations = /** @type {Record<string, string> | undefined} */ (undefined);
-      let displayExplanation = exContent;
-      if (useBlind && lastBlindResponseOrder?.length) {
-        const ex = parseBlindJudgeScoresMerged(exContent, lastBlindResponseOrder);
-        roundScores = ex.scores;
-        popupExplanations = ex.explanations;
-        const lines = ["A", "B", "C", "D"]
-          .filter((slot) => roundScores[slot] !== undefined)
-          .map((slot) => `Model ${slot}: ${roundScores[slot]}/10 - ${(ex.explanations[slot] || "").trim() || "—"}`);
-        displayExplanation = lines.length ? lines.join("\n") : exContent;
-      } else {
-        const ex = parseJudgeScoresMerged(exContent);
-        roundScores = ex.scores;
-        popupExplanations = ex.explanations;
-        const lines = ["A", "B", "C", "D"]
-          .filter((slot) => roundScores[slot] !== undefined)
-          .map((slot) => `Model ${slot}: ${roundScores[slot]}/10 - ${(ex.explanations[slot] || "").trim() || "—"}`);
-        displayExplanation = lines.length ? lines.join("\n") : exContent;
-      }
-      const hadScores =
-        judgmentPopup.scores && Object.keys(judgmentPopup.scores).length > 0;
-      const qIdx = judgmentPopup.questionIndex ?? questionIndex % Math.max(1, parsedQuestions.length);
-      if (Object.keys(roundScores).length > 0 && !hadScores) {
-        const qText =
-          (parsedQuestions[qIdx]?.text != null ? String(parsedQuestions[qIdx].text) : null) || "(free-form prompt)";
-        scoreHistory = addScoreRound(scoreHistory, qIdx, qText, roundScores);
-        arenaScores = computeTotals(scoreHistory);
-      }
-      if (Object.keys(roundScores).length === 0) {
-        chatError.set("AI re-extract did not find scores.");
-      }
-      judgmentPopup = {
-        scores: roundScores,
-        explanation: displayExplanation,
-        rawJudgeOutput: judgmentPopup.rawJudgeOutput,
-        questionIndex: qIdx,
-        explanations: popupExplanations,
-      };
-    } catch (e) {
-      chatError.set(e?.message || "AI re-extract failed.");
-    } finally {
-      if (judgeId && !isCloudModel(judgeId)) {
-        await unloadModel(judgeId).catch((err) => arenaWarn("reExtractUnloadJudge", err, { judgeId }));
-        await waitUntilUnloaded([judgeId], { pollIntervalMs: 400, timeoutMs: 15000 }).catch((err) =>
-          arenaWarn("reExtractWaitUnloaded", err, { judgeId }),
-        );
-      }
-      reExtractBusy = false;
     }
   }
 
@@ -1812,71 +1451,30 @@ import {
       chatError.set("Run a question so all contestants respond first.");
       return;
     }
-     try {
-       if (typeof console !== "undefined" && console.log) {
-         console.log("[Arena debug] Starting pre-judge eject, judgeId:", judgeId, "isCloud:", !!judgeId && isCloudModel(judgeId));
-       }
-       arenaTransitionPhase = "ejecting";
-       if (!isCloudModel(judgeId)) {
-         if (typeof console !== "undefined" && console.log) {
-           console.log("[Arena debug] Starting unloadAllModelsNative for judge eject");
-         }
-         await unloadAllModelsNative();
-         const loadedBefore = await getLoadedModelKeys();
-         if (loadedBefore.length > 0) {
-           if (typeof console !== "undefined" && console.log) {
-             console.log("[Arena debug] Waiting for models to unload:", loadedBefore);
-           }
-           await waitUntilUnloaded(loadedBefore, {
-             pollIntervalMs: 400,
-             timeoutMs: 25000,
-           });
-           if (typeof console !== "undefined" && console.log) {
-             console.log("[Arena debug] Models unloaded successfully");
-           }
-         }
-         await new Promise((r) => setTimeout(r, 1000));
-         if (typeof console !== "undefined" && console.log) {
-           console.log("[Arena debug] Pre-judge eject complete");
-         }
-       } else {
-         if (typeof console !== "undefined" && console.log) {
-           console.log("[Arena debug] Skipping eject for cloud judge");
-         }
-       }
-       judgeLoadingMessageIndex = getNextWittyJudgeLoading();
-       arenaTransitionPhase = "loading_judge";
-       if (!isCloudModel(judgeId)) {
-         if (typeof console !== "undefined" && console.log) {
-           console.log("[Arena debug] Loading judge model:", judgeId);
-         }
-         try {
-           await loadModel(judgeId);
-           if (typeof console !== "undefined" && console.log) {
-             console.log("[Arena debug] Judge model loaded successfully");
-           }
-         } catch (e) {
-           arenaWarn("loadJudgeModel", e, { judgeId });
-           if (typeof console !== "undefined" && console.error) {
-             console.error("[Arena debug] Failed to load judge model:", e);
-           }
-         }
-       } else {
-         if (typeof console !== "undefined" && console.log) {
-           console.log("[Arena debug] Skipping load for cloud judge");
-         }
-         await new Promise((r) => setTimeout(r, 200));
-       }
-       if (typeof console !== "undefined" && console.log) {
-         console.log("[Arena debug] Pre-judge phase complete, setting to null");
-       }
-       arenaTransitionPhase = null;
-     } finally {
-       if (typeof console !== "undefined" && console.log) {
-         console.log("[Arena debug] Finally block for runJudgment eject");
-       }
-       arenaTransitionPhase = null;
-     }
+    try {
+      arenaTransitionPhase = "ejecting";
+      await unloadAllModelsNative();
+      const loadedBefore = await getLoadedModelKeys();
+      if (loadedBefore.length > 0) {
+        await waitUntilUnloaded(loadedBefore, {
+          pollIntervalMs: 400,
+          timeoutMs: 25000,
+        });
+      }
+      await new Promise((r) => setTimeout(r, 1000));
+      judgeLoadingMessageIndex = getNextWittyJudgeLoading();
+      arenaTransitionPhase = "loading_judge";
+      if (!isCloudModel(judgeId)) {
+        try {
+          await loadModel(judgeId);
+        } catch (_) {}
+      } else {
+        await new Promise((r) => setTimeout(r, 200));
+      }
+      arenaTransitionPhase = null;
+    } finally {
+      arenaTransitionPhase = null;
+    }
 
     const lastUserMsg = slotsWithResponses[0].msgs
       .filter((m) => m.role === "user")
@@ -1891,8 +1489,7 @@ import {
         const searchResult = await searchDuckDuckGo(promptText);
         webSearchConnected.set(true);
         judgeWebContext = formatSearchResultForChat(promptText, searchResult);
-      } catch (e) {
-        arenaWarn("judgeWebSearch", e);
+      } catch (_) {
         webSearchConnected.set(false);
       } finally {
         arenaTransitionPhase = null;
@@ -1937,38 +1534,30 @@ import {
     chatError.set(null);
     const controller = new AbortController();
     aborters["A"] = controller;
-    const judgeTimeoutMs = arenaStreamTimeoutMs();
-    const judgeTimeoutId = setTimeout(() => controller.abort(), judgeTimeoutMs);
+    const judgeTimeoutId = setTimeout(() => controller.abort(), ARENA_TIMEOUT_MS);
     let fullContent = "";
     const judgeOpts = getSettingsForSlot("A");
-     try {
-       if (typeof console !== "undefined" && console.log) {
-         console.log("[Arena debug] About to start scoring request with judgeId:", judgeId);
-       }
-       arenaTransitionPhase = "scoring";
-       await streamChatCompletion({
-         model: judgeId,
-         messages,
-         options: {
-           temperature: useDeterministicJudge ? 0 : judgeOpts.temperature,
-           max_tokens: judgeOpts.max_tokens,
-           top_p: judgeOpts.top_p,
-           top_k: judgeOpts.top_k,
-           repeat_penalty: judgeOpts.repeat_penalty,
-           presence_penalty: judgeOpts.presence_penalty,
-           frequency_penalty: judgeOpts.frequency_penalty,
-           stop: judgeOpts.stop?.length ? judgeOpts.stop : undefined,
-           ttl: judgeOpts.model_ttl_seconds,
-           request_timeout_ms: judgeTimeoutMs,
-         },
-         signal: controller.signal,
-         onChunk(chunk) {
-           fullContent += chunk;
-         },
-       });
-       if (typeof console !== "undefined" && console.log) {
-         console.log("[Arena debug] Scoring request completed, fullContent length:", fullContent.length);
-       }
+    try {
+      arenaTransitionPhase = "scoring";
+      await streamChatCompletion({
+        model: judgeId,
+        messages,
+        options: {
+          temperature: useDeterministicJudge ? 0 : judgeOpts.temperature,
+          max_tokens: judgeOpts.max_tokens,
+          top_p: judgeOpts.top_p,
+          top_k: judgeOpts.top_k,
+          repeat_penalty: judgeOpts.repeat_penalty,
+          presence_penalty: judgeOpts.presence_penalty,
+          frequency_penalty: judgeOpts.frequency_penalty,
+          stop: judgeOpts.stop?.length ? judgeOpts.stop : undefined,
+          ttl: judgeOpts.model_ttl_seconds,
+        },
+        signal: controller.signal,
+        onChunk(chunk) {
+          fullContent += chunk;
+        },
+      });
       fullContent = fullContent.replace(
         /([.!?;])\s*(Model\s+[A-D]:)/gi,
         "$1\n\n$2",
@@ -1980,64 +1569,22 @@ import {
       if (get(arenaDebugMode) && typeof console !== "undefined" && console.log) {
         console.log("[Arena debug] judge_raw_output", { judge_raw_output: fullContent });
       }
-      let roundScores = /** @type {Record<string, number>} */ ({});
+      let roundScores;
       let displayExplanation = fullContent;
       let popupExplanations = /** @type {Record<string, string> | undefined} */ (undefined);
       if (useBlindReview && responseOrder) {
-        lastBlindResponseOrder = [...responseOrder];
-        const blind = parseBlindJudgeScoresMerged(fullContent, responseOrder);
+        const blind = parseBlindJudgeScores(fullContent, responseOrder);
         roundScores = blind.scores;
         popupExplanations = blind.explanations;
         const lines = ["A", "B", "C", "D"]
           .filter((slot) => roundScores[slot] !== undefined)
           .map((slot) => `Model ${slot}: ${roundScores[slot]}/10 - ${(blind.explanations[slot] || "").trim() || "—"}`);
-        displayExplanation = lines.length ? lines.join("\n") : fullContent;
+        displayExplanation = lines.join("\n");
       } else {
-        lastBlindResponseOrder = null;
-        const named = parseJudgeScoresMerged(fullContent);
-        roundScores = named.scores;
-        popupExplanations = named.explanations;
-        const lines = ["A", "B", "C", "D"]
-          .filter((slot) => roundScores[slot] !== undefined)
-          .map((slot) => `Model ${slot}: ${roundScores[slot]}/10 - ${(named.explanations[slot] || "").trim() || "—"}`);
-        displayExplanation = lines.length ? lines.join("\n") : fullContent;
-      }
-      let parsedOk = Object.keys(roundScores).length > 0;
-      if (!parsedOk && judgeId) {
-        try {
-          const exMsgs = buildJudgeScoreExtractionPrompt(
-            fullContent,
-            useBlindReview,
-            useBlindReview ? responseOrder : null,
-          );
-          const { content: exContent } = await requestChatCompletion({
-            model: judgeId,
-            messages: exMsgs,
-            options: { temperature: 0, max_tokens: 1024 },
-          });
-          if (useBlindReview && responseOrder) {
-            const ex = parseBlindJudgeScoresMerged(exContent, responseOrder);
-            roundScores = ex.scores;
-            popupExplanations = ex.explanations;
-            const lines = ["A", "B", "C", "D"]
-              .filter((slot) => roundScores[slot] !== undefined)
-              .map((slot) => `Model ${slot}: ${roundScores[slot]}/10 - ${(ex.explanations[slot] || "").trim() || "—"}`);
-            displayExplanation = lines.length ? lines.join("\n") : exContent;
-          } else {
-            const ex = parseJudgeScoresMerged(exContent);
-            roundScores = ex.scores;
-            popupExplanations = ex.explanations;
-            const lines = ["A", "B", "C", "D"]
-              .filter((slot) => roundScores[slot] !== undefined)
-              .map((slot) => `Model ${slot}: ${roundScores[slot]}/10 - ${(ex.explanations[slot] || "").trim() || "—"}`);
-            displayExplanation = lines.length ? lines.join("\n") : exContent;
-          }
-          parsedOk = Object.keys(roundScores).length > 0;
-        } catch (exErr) {
-          arenaWarn("scoreExtractionPass", exErr);
-        }
+        roundScores = parseJudgeScores(fullContent);
       }
       const qIdx = questionIndex % Math.max(1, parsedQuestions.length);
+      const parsedOk = Object.keys(roundScores).length > 0;
       if (!parsedOk && slotsWithResponses.length > 0) {
         chatError.set("Judge output could not be parsed. See modal for raw output.");
         if (typeof console !== "undefined" && console.error) {
@@ -2064,32 +1611,20 @@ import {
           explanations: popupExplanations,
         };
       }
-       if (typeof console !== "undefined" && console.log && arenaCurrentRunMeta) {
-         console.log("[Arena run metadata]", {
-           run_id: arenaCurrentRunMeta.run_id,
-           seed: arenaCurrentRunMeta.seed,
-           question_index: arenaCurrentRunMeta.question_index,
-           deterministic_judge: arenaCurrentRunMeta.deterministic_judge,
-           blind_review: arenaCurrentRunMeta.blind_review,
-           model_list: arenaCurrentRunMeta.model_list,
-           judge_model: arenaCurrentRunMeta.judge_model,
-           responses: arenaCurrentRunMeta.responses,
-           scores: roundScores,
-         });
-       }
-       
-       // Debug judgment popup
-       if (typeof console !== "undefined" && console.log) {
-         console.log("[Arena debug] Setting judgmentPopup:", {
-           hasScores: !!judgmentPopup && !!judgmentPopup.scores && Object.keys(judgmentPopup.scores).length > 0,
-           scoreKeys: judgmentPopup ? Object.keys(judgmentPopup.scores || {}) : [],
-           hasExplanation: !!judgmentPopup && !!judgmentPopup.explanation,
-           explanationLength: judgmentPopup?.explanation?.length || 0,
-           hasRawOutput: !!judgmentPopup && !!judgmentPopup.rawJudgeOutput,
-           rawLength: judgmentPopup?.rawJudgeOutput?.length || 0
-         });
-       }
-     } catch (err) {
+      if (typeof console !== "undefined" && console.log && arenaCurrentRunMeta) {
+        console.log("[Arena run metadata]", {
+          run_id: arenaCurrentRunMeta.run_id,
+          seed: arenaCurrentRunMeta.seed,
+          question_index: arenaCurrentRunMeta.question_index,
+          deterministic_judge: arenaCurrentRunMeta.deterministic_judge,
+          blind_review: arenaCurrentRunMeta.blind_review,
+          model_list: arenaCurrentRunMeta.model_list,
+          judge_model: arenaCurrentRunMeta.judge_model,
+          responses: arenaCurrentRunMeta.responses,
+          scores: roundScores,
+        });
+      }
+    } catch (err) {
       if (err?.name !== "AbortError") {
         const msg = err?.message || "Scoring request failed.";
         chatError.set(msg);
@@ -2104,40 +1639,19 @@ import {
           console.error("[Arena judge_failure] abort_and_log_error", { error: msg, raw_output: fullContent, run_id: arenaCurrentRunMeta?.run_id });
         }
       }
-     } finally {
-       clearTimeout(judgeTimeoutId);
-       aborters["A"] = null;
-       // Unload judge model after scoring (skip for cloud judge — uses no VRAM)
-       if (typeof console !== "undefined" && console.log) {
-         console.log("[Arena debug] Starting post-judge eject, judgeId:", judgeId, "isCloud:", !!judgeId && isCloudModel(judgeId));
-       }
-       arenaTransitionPhase = "ejecting";
-       try {
-         if (judgeId && !isCloudModel(judgeId)) {
-           if (typeof console !== "undefined" && console.log) {
-             console.log("[Arena debug] Unloading judge model:", judgeId);
-           }
-           await unloadModel(judgeId);
-           await waitUntilUnloaded([judgeId], { pollIntervalMs: 400, timeoutMs: 15000 });
-           if (typeof console !== "undefined" && console.log) {
-             console.log("[Arena debug] Judge model unloaded successfully");
-           }
-         } else {
-           if (typeof console !== "undefined" && console.log) {
-             console.log("[Arena debug] Skipping eject for cloud judge or no judgeId");
-           }
-         }
-       } catch (e) {
-         arenaWarn("unloadJudgeAfterScoring", e, { judgeId });
-         if (typeof console !== "undefined" && console.error) {
-           console.error("[Arena debug] Error in post-judge eject:", e);
-         }
-       }
-       if (typeof console !== "undefined" && console.log) {
-         console.log("[Arena debug] Post-judge eject complete, setting phase to null");
-       }
-       arenaTransitionPhase = null;
-     }
+    } finally {
+      clearTimeout(judgeTimeoutId);
+      aborters["A"] = null;
+      // Unload judge model after scoring (skip for cloud judge — uses no VRAM)
+      arenaTransitionPhase = "ejecting";
+      try {
+        if (judgeId && !isCloudModel(judgeId)) {
+          await unloadModel(judgeId);
+          await waitUntilUnloaded([judgeId], { pollIntervalMs: 400, timeoutMs: 15000 });
+        }
+      } catch (_) { /* best-effort */ }
+      arenaTransitionPhase = null;
+    }
   }
 
   async function ejectAllModels() {
@@ -2249,8 +1763,6 @@ import {
     );
 
     const controller = new AbortController();
-    const askJudgeMs = arenaStreamTimeoutMs();
-    const askJudgeTimeoutId = setTimeout(() => controller.abort(), askJudgeMs);
     const askJudgeOpts = getSettingsForSlot("A");
     try {
       await streamChatCompletion({
@@ -2260,7 +1772,6 @@ import {
           temperature: askJudgeOpts.temperature,
           max_tokens: askJudgeOpts.max_tokens,
           top_p: askJudgeOpts.top_p,
-          request_timeout_ms: askJudgeMs,
         },
         signal: controller.signal,
         onChunk(chunk) {
@@ -2269,11 +1780,9 @@ import {
       });
     } catch (err) {
       if (err?.name !== "AbortError") {
-        arenaWarn("askTheJudgeStream", err);
         askJudgeReply = `Error: ${err?.message || "Request failed."}`;
       }
     } finally {
-      clearTimeout(askJudgeTimeoutId);
       askJudgeLoading = false;
     }
   }
@@ -2326,9 +1835,19 @@ import {
   });
 
   // ---------- Layout (resizable panel widths) ----------
-  let panelWidths = $state(readArenaPanelWidths());
+  function loadPanelWidths() {
+    if (typeof localStorage === "undefined") return [25, 25, 25, 25];
+    try {
+      const r = JSON.parse(localStorage.getItem("arenaPanelWidths") || "[]");
+      return r.length === 4 ? r : [25, 25, 25, 25];
+    } catch {
+      return [25, 25, 25, 25];
+    }
+  }
+  let panelWidths = $state(loadPanelWidths());
   function savePanelWidths() {
-    writeArenaPanelWidths(panelWidths);
+    if (typeof localStorage !== "undefined")
+      localStorage.setItem("arenaPanelWidths", JSON.stringify(panelWidths));
   }
   const gridCols = $derived.by(() => {
     const n = $arenaPanelCount;
@@ -2452,19 +1971,10 @@ import {
     if (files?.length) pendingDroppedFiles.set(files);
   }}
 >
-  <!-- === Header: model cards A–D (selector + score) === -->
-  <ArenaHeader
-    arenaPanelCount={$arenaPanelCount}
-    running={running}
-    arenaScores={arenaScores}
-    windowWidth={windowWidth}
-  />
-
   <!-- === Arena control bar: Question | Run | Web | Judge | Tools === -->
   <ArenaControlBar
     currentQuestionNum={currentQuestionNum}
     currentQuestionTotal={currentQuestionTotal}
-    currentQuestionText={currentQuestionText}
     parsedQuestions={parsedQuestions}
     builtQuestionCount={builtQuestionSet ? builtQuestionSet.questions.length : 0}
     buildArenaInProgress={buildArenaInProgress}
@@ -2472,12 +1982,7 @@ import {
     runAllActive={runAllActive}
     runAllProgress={runAllProgress}
     arenaWebWarmingUp={arenaWebWarmingUp}
-    onOpenLoadModal={() => {
-      showLoadQuestionsModal = true;
-    }}
-    resetWebWarmUpAttempted={() => {
-      arenaWebWarmUpAttempted = false;
-    }}
+    arenaWebWarmUpAttempted={arenaWebWarmUpAttempted}
     prevQuestion={prevQuestion}
     jumpToQuestion={jumpToQuestion}
     advanceQuestionIndex={advanceQuestionIndex}
@@ -2488,36 +1993,16 @@ import {
     runArenaWarmUp={runArenaWarmUp}
     startOver={startOver}
   />
+  {#if runAllActive}
+    <div class="arena-runall-progress shrink-0" role="progressbar" aria-valuenow={runAllProgress.current} aria-valuemin={0} aria-valuemax={runAllProgress.total} aria-label="Run All progress">
+      <div class="arena-runall-progress-fill" style="width: {runAllProgress.total > 0 ? (runAllProgress.current / runAllProgress.total) * 100 : 0}%"></div>
+    </div>
+  {/if}
 
   <!-- === Main content + docked right settings panel === -->
   <div class="flex-1 min-h-0 flex relative">
   <!-- Main content column -->
   <div class="flex-1 min-w-0 flex flex-col min-h-0">
-
-  {#if currentQuestionTotal === 0}
-    <div
-      class="shrink-0 px-4 py-5 text-center border-b"
-      style="border-color: var(--ui-border); background: color-mix(in srgb, var(--ui-border) 5%, transparent);"
-      role="status"
-    >
-      <p class="text-base font-semibold" style="color: var(--ui-text-primary);">Load a question set to start</p>
-      <p class="text-xs mt-2 max-w-lg mx-auto leading-relaxed" style="color: var(--ui-text-secondary);">
-        Then use <strong>Ask</strong> in the toolbar to send the current question to every model column.
-      </p>
-      <button
-        type="button"
-        class="mt-4 h-10 px-5 rounded-lg text-sm font-bold transition-opacity hover:opacity-90"
-        style="background: var(--ui-accent); color: var(--ui-bg-main);"
-        onclick={() => {
-          showLoadQuestionsModal = true;
-        }}
-        aria-label="Open load questions dialog"
-      >Load questions</button>
-      {#if buildArenaError}
-        <p class="text-xs mt-3 font-medium" style="color: var(--atom-teal);" role="alert">{buildArenaError}</p>
-      {/if}
-    </div>
-  {/if}
 
   <!-- === Sticky question text bar (always visible above panels) === -->
   {#if currentQuestionTotal > 0 && currentQuestionText}
@@ -2530,54 +2015,18 @@ import {
         style="color: var(--ui-accent);">Q{currentQuestionNum}</span
       >
       <span
-        class="text-sm truncate flex-1 min-w-0"
+        class="text-sm truncate"
         style="color: var(--ui-text-primary);"
         title={currentQuestionText}>{currentQuestionText}</span
       >
-      <button
-        type="button"
-        class="shrink-0 h-7 px-2 rounded-md text-[11px] font-medium border transition-opacity hover:opacity-90"
-        style="border-color: var(--ui-border); color: var(--ui-text-secondary); background: var(--ui-input-bg);"
-        onclick={() => {
-          showFloatQuestionPanel = true;
-        }}
-        title="Open draggable floating card with the current question"
-        aria-label="Float current question in a movable panel"
-      >Float</button>
     </div>
   {/if}
 
-  <!-- === Response panels A–D, or compact placeholder when no set === -->
-  {#if currentQuestionTotal === 0}
-    <div class="flex-1 min-h-0 flex flex-col items-stretch p-4 min-h-[10rem]">
-      <div
-        class="flex-1 flex flex-col items-center justify-center rounded-xl border border-dashed px-4 py-6 text-center max-w-2xl mx-auto w-full"
-        style="border-color: color-mix(in srgb, var(--ui-border) 65%, var(--ui-accent)); background: color-mix(in srgb, var(--ui-border) 4%, transparent);"
-      >
-        <p class="text-[11px] font-semibold uppercase tracking-wide" style="color: var(--ui-text-secondary);">
-          Contestant columns
-        </p>
-        <p class="text-sm mt-1.5" style="color: var(--ui-text-primary);">
-          {$arenaPanelCount} panel{$arenaPanelCount === 1 ? "" : "s"} ready — responses appear here after you load questions and press Ask.
-        </p>
-        <div
-          class="flex justify-center gap-2 mt-5 opacity-55 pointer-events-none select-none"
-          aria-hidden="true"
-        >
-          {#each SLOTS.slice(0, $arenaPanelCount) as slot}
-            <div
-              class="w-11 h-16 sm:w-14 sm:h-20 rounded-lg border-2 flex items-center justify-center text-sm font-bold"
-              style="border-color: {SLOT_COLORS[slot]}; color: {SLOT_COLORS[slot]}; background: color-mix(in srgb, {SLOT_COLORS[slot]} 12%, transparent);"
-            >{slot}</div>
-          {/each}
-        </div>
-      </div>
-    </div>
-  {:else}
+  <!-- === Response panels A–D (resizable) === -->
   <div
     bind:this={gridEl}
-    class="flex-1 min-h-0 grid gap-3 p-4 atom-layout-transition relative grid-rows-[minmax(0,1fr)]"
-    style="grid-template-columns: {responsiveGridCols};"
+    class="flex-1 min-h-0 grid gap-3 atom-layout-transition relative grid-rows-[minmax(0,1fr)]"
+    style="grid-template-columns: {responsiveGridCols}; padding: 1rem; padding-right: {arenaSettingsCollapsed ? '2.5rem' : '1rem'};"
   >
     {#each slotData as data, i (data.slot)}
       {#if data.slot === "A"}
@@ -2696,7 +2145,6 @@ import {
       {/if}
     {/each}
   </div>
-  {/if}
 
   {#if arenaTransitionPhase}
     <div
@@ -2765,48 +2213,25 @@ import {
           type="button"
           class="shrink-0 p-1 rounded hover:opacity-80"
           onclick={() => chatError.set(null)}
-          aria-label="Dismiss">×</button>
+          aria-label="Dismiss">×</button
+        >
       </div>
     {/if}
-    {#if currentQuestionTotal === 0}
-      <p
-        class="text-xs text-center py-3 px-4 max-w-xl mx-auto leading-relaxed"
-        style="color: var(--ui-text-secondary);"
-      >
-        The optional message bar is hidden until you load a question set. Use <strong>Load questions</strong> or
-        <strong>Build Arena</strong>, then <strong>Ask</strong> in the toolbar.
-      </p>
-    {:else}
-      <p
-        class="text-xs mb-2 max-w-2xl mx-auto w-full px-1 leading-relaxed"
-        style="color: var(--ui-text-secondary);"
-      >
-        Optional: extra message to <strong>all slots</strong> (same as Cockpit — attachments and Send). Formal
-        runs use <strong>Ask</strong> / <strong>Next</strong> / <strong>Run All</strong> above.
-      </p>
-      <section class="max-w-2xl mx-auto w-full" aria-label="Optional message to all slots">
-        <ChatInput onSend={sendUserMessage} onStop={stopAll} />
-      </section>
-    {/if}
+    <section class="max-w-2xl mx-auto w-full" aria-label="Send prompt">
+      <ChatInput onSend={sendUserMessage} onStop={stopAll} />
+    </section>
   </div>
 
   </div><!-- end main content column -->
 
-  <!-- === Docked right settings panel (like left sidebar). When collapsed, show a visible strip so the tab is never clipped. === -->
+  <!-- === Docked right settings panel. Collapsed = zero flex width + fixed edge tab. === -->
   {#if arenaSettingsCollapsed}
-    <div
-      class="arena-settings-tab-strip shrink-0 hidden md:flex items-center justify-center relative min-h-0 border-l"
-      style="width: 52px; background-color: var(--ui-bg-sidebar); border-color: var(--ui-border);"
-    >
-      <div class="panel-tab-strip-icon-wrap pl-1" aria-hidden="true">
-        <span class="panel-tab-strip-icon" title="Arena settings">
-          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 0 0-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 0 0-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 0 0-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 0 0-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 0 0 1.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z" /></svg>
-        </span>
-      </div>
+    <!-- Zero-width placeholder; button fixed at screen right so it never eats panel space -->
+    <div class="shrink-0 hidden md:block" style="width: 0; overflow: visible;">
       <button
         type="button"
         class="panel-tab"
-        style="--panel-tab-transform: translate(-100%, -50%); left: 0; top: 50%; border-right: none; border-radius: 6px 0 0 6px;"
+        style="position: fixed; right: 0; top: 50%; --panel-tab-transform: translate(0, -50%); transform: translate(0, -50%); border-radius: 8px 0 0 8px; border-right: none; z-index: 150;"
         title="Show Arena settings"
         aria-label="Show Arena settings"
         onclick={() => (arenaSettingsCollapsed = false)}
@@ -2819,22 +2244,22 @@ import {
       class="shrink-0 border-l hidden md:flex flex-col transition-[width] duration-200 relative overflow-visible"
       style="width: 320px; background-color: var(--ui-bg-main); border-color: var(--ui-border);"
     >
-      <button
-        type="button"
-        class="panel-tab"
-        style="--panel-tab-transform: translate(-100%, -50%); top: 50%; left: 0; border-right: none; border-radius: 6px 0 0 6px;"
-        title="Hide Arena settings"
-        aria-label="Hide Arena settings"
-        onclick={() => (arenaSettingsCollapsed = true)}
-      >
-        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7" /></svg>
-      </button>
       <div class="w-full flex flex-col min-h-0 h-full min-w-0 overflow-hidden">
       <div
         class="shrink-0 flex items-center justify-between px-4 py-3 border-b"
         style="border-color: var(--ui-border);"
       >
         <h2 class="text-sm font-semibold" style="color: var(--ui-text-primary);">Arena Settings</h2>
+        <button
+          type="button"
+          class="w-7 h-7 flex items-center justify-center rounded-lg transition-opacity hover:opacity-70 shrink-0"
+          style="color: var(--ui-text-secondary);"
+          title="Hide Arena settings"
+          aria-label="Hide Arena settings"
+          onclick={() => (arenaSettingsCollapsed = true)}
+        >
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;"><path d="M9 5l7 7-7 7" /></svg>
+        </button>
       </div>
       <div class="flex-1 overflow-y-auto px-4 py-4 space-y-6">
         <!-- 1. Arena Builder (Phase 1: question generation) -->
@@ -2904,40 +2329,6 @@ import {
           {#if buildArenaError}
             <p class="text-xs mt-2 font-medium" style="color: var(--atom-teal);" role="alert">{buildArenaError}</p>
           {/if}
-          {#if lastFailedBuildRaw?.trim() && !buildArenaInProgress}
-            <button
-              type="button"
-              class="mt-3 w-full h-9 rounded-lg text-xs font-semibold border transition-opacity hover:opacity-90"
-              style="border-color: var(--ui-border); background: var(--ui-input-bg); color: var(--ui-text-primary);"
-              onclick={repairBuildFromLastRaw}
-              aria-label="Repair JSON from last failed build output"
-            >Repair JSON (last judge output)</button>
-          {/if}
-        </section>
-        <!-- 1b. Manual import -->
-        <section>
-          <h3 class="font-semibold text-sm mb-1" style="color: var(--ui-text-primary);">Import questions (manual)</h3>
-          <p class="text-xs mb-2" style="color: var(--ui-text-secondary);">
-            Paste a question set instead of Build Arena: JSON array, numbered list, Q:/A: pairs, or Questions:/Answers: blocks (same rules as the parser).
-          </p>
-          <textarea
-            id="arena-manual-import"
-            class="w-full rounded-md resize-y text-[13px] font-sans mb-2"
-            style="padding: 10px; background-color: var(--ui-input-bg); border: 1px solid var(--ui-border); color: var(--ui-text-primary); min-height: 120px;"
-            placeholder="JSON array, numbered Q/A, or Q:/A: blocks — see Import help text above"
-            rows="6"
-            bind:value={manualImportText}
-          ></textarea>
-          {#if manualImportError}
-            <p class="text-xs mb-2 font-medium" style="color: var(--atom-teal);" role="alert">{manualImportError}</p>
-          {/if}
-          <button
-            type="button"
-            class="w-full h-9 rounded-lg text-xs font-bold transition-opacity hover:opacity-90"
-            style="background: var(--ui-accent); color: var(--ui-bg-main);"
-            onclick={applyManualQuestionImport}
-            aria-label="Apply pasted questions to Arena"
-          >Apply import</button>
         </section>
         <!-- 2. Judge instructions -->
         <section>
@@ -3016,32 +2407,6 @@ import {
             <input type="checkbox" bind:checked={$arenaDeterministicJudge} class="rounded mt-0.5" style="accent-color: var(--ui-accent);" />
             <span>Deterministic judge (temp 0)</span>
           </label>
-          <div class="mt-3 pt-2 border-t" style="border-color: var(--ui-border);">
-            <label for="arena-request-timeout" class="block text-xs font-medium mb-1" style="color: var(--ui-text-secondary);"
-              >Max response time (contestants & judge)</label
-            >
-            <div class="flex flex-wrap items-center gap-2">
-              <input
-                id="arena-request-timeout"
-                type="number"
-                min="60"
-                max="900"
-                step="30"
-                class="w-[5.5rem] h-8 px-2 rounded-md border text-xs font-mono tabular-nums"
-                style="border-color: var(--ui-border); background-color: var(--ui-input-bg); color: var(--ui-text-primary);"
-                aria-label="Maximum seconds per model response before timeout"
-                value={$arenaRequestTimeoutSeconds}
-                oninput={(e) => {
-                  const raw = parseInt(e.currentTarget?.value ?? "", 10);
-                  if (Number.isNaN(raw)) return;
-                  arenaRequestTimeoutSeconds.set(Math.min(900, Math.max(60, raw)));
-                }}
-              />
-              <span class="text-[11px] leading-snug flex-1 min-w-[8rem]" style="color: var(--ui-text-secondary);"
-                >seconds (1–15 min). Raise this for models with long internal reasoning before they stream tokens.</span
-              >
-            </div>
-          </div>
         </section>
         <!-- 6. Judge model -->
         <section>
@@ -3102,42 +2467,118 @@ import {
   {/if}
   </div><!-- end flex row -->
 
-  <ArenaLoadQuestionsModal
-    bind:open={showLoadQuestionsModal}
-    buildArenaInProgress={buildArenaInProgress}
-    buildArenaError={buildArenaError}
-    lastFailedBuildRaw={lastFailedBuildRaw}
-    bind:manualImportText={manualImportText}
-    manualImportError={manualImportError}
-    onBuildArena={buildArena}
-    onApplyImport={applyManualQuestionImport}
-    onRepairJson={repairBuildFromLastRaw}
-    onOpenSettings={() => {
-      arenaSettingsCollapsed = false;
-    }}
-  />
+  <!-- Judgment result drawer (slides in from right, no backdrop, arena stays interactive) -->
+  {#if judgmentPopup}
+    <div
+      class="fixed top-0 right-0 bottom-0 z-[200] flex flex-col pointer-events-none"
+      style="width: 320px;"
+      role="complementary"
+      aria-label="Judgment results"
+    >
+      <div
+        class="flex-1 flex flex-col pointer-events-auto shadow-2xl"
+        style="background-color: var(--ui-bg-sidebar); border-left: 1px solid var(--ui-border); border-top: 3px solid var(--ui-accent);"
+        transition:fly={{ x: 320, duration: 350, easing: quintOut }}
+        onmouseenter={() => (judgmentDrawerHovered = true)}
+        onmouseleave={() => (judgmentDrawerHovered = false)}
+        onfocusin={() => (judgmentDrawerHovered = true)}
+        onfocusout={() => (judgmentDrawerHovered = false)}
+      >
+        <!-- Auto-close progress bar -->
+        <div class="shrink-0 h-0.5 w-full" style="background: color-mix(in srgb, var(--ui-border) 40%, transparent);">
+          <div class="h-full transition-none" style="width: {judgmentAutoCloseProgress * 100}%; background: var(--ui-accent); opacity: {judgmentDrawerHovered ? 0.3 : 0.7};"></div>
+        </div>
+        <!-- Drawer header -->
+        <div class="shrink-0 flex items-center justify-between px-3 py-2.5" style="border-bottom: 1px solid var(--ui-border);">
+          <div class="flex items-center gap-2">
+            <span class="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded" style="background: color-mix(in srgb, var(--ui-accent) 12%, transparent); color: var(--ui-accent);">Judge</span>
+            <span class="text-sm font-semibold" style="color: var(--ui-text-primary);">Round Results</span>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <!-- Copy JSON -->
+            <button
+              type="button"
+              class="px-2 py-1 rounded text-[10px] font-medium transition-opacity hover:opacity-80"
+              style="color: var(--ui-text-secondary); border: 1px solid var(--ui-border);"
+              onclick={() => {
+                const raw = judgmentPopup.rawJudgeOutput ?? judgmentPopup.explanation;
+                const explanations = judgmentPopup.explanations && Object.keys(judgmentPopup.explanations).length > 0
+                  ? judgmentPopup.explanations
+                  : parseJudgeScoresAndExplanations(judgmentPopup.explanation).explanations;
+                navigator.clipboard?.writeText(JSON.stringify({ questionIndex: judgmentPopup.questionIndex ?? -1, scores: judgmentPopup.scores, explanations: Object.keys(explanations || {}).length ? explanations : undefined, rawExplanation: raw }, null, 2));
+              }}
+              aria-label="Copy results as JSON">JSON</button>
+            <!-- Copy CSV -->
+            <button
+              type="button"
+              class="px-2 py-1 rounded text-[10px] font-medium transition-opacity hover:opacity-80"
+              style="color: var(--ui-text-secondary); border: 1px solid var(--ui-border);"
+              onclick={() => {
+                const q = judgmentPopup.questionIndex ?? -1;
+                const expl = judgmentPopup.explanations || {};
+                const rows = ["A", "B", "C", "D"].filter((s) => judgmentPopup.scores[s] !== undefined).map((s) => `${q},${s},${judgmentPopup.scores[s]},"${(expl[s] ?? "").replace(/"/g, '""')}"`);
+                navigator.clipboard?.writeText(["questionIndex,slot,score,explanation", ...rows].join("\n"));
+              }}
+              aria-label="Copy results as CSV">CSV</button>
+            <!-- Close -->
+            <button
+              type="button"
+              class="w-7 h-7 flex items-center justify-center rounded-lg text-lg leading-none transition-opacity hover:opacity-70"
+              style="color: var(--ui-text-secondary);"
+              onclick={() => { judgmentPopup = null; }}
+              aria-label="Close">×</button>
+          </div>
+        </div>
 
-  <ArenaQuestionPanel
-    open={showFloatQuestionPanel}
-    onClose={() => {
-      showFloatQuestionPanel = false;
-    }}
-    bind:questionPanelPos={floatQuestionPanelPos}
-    bind:questionPanelSize={floatQuestionPanelSize}
-    currentQuestionText={currentQuestionText}
-    currentQuestionNum={currentQuestionNum}
-  />
+        <!-- Score summary bar -->
+        <div class="shrink-0 grid px-3 py-2.5" style="grid-template-columns: repeat(4, 1fr); gap: 6px; border-bottom: 1px solid var(--ui-border); background: color-mix(in srgb, var(--ui-accent) 4%, var(--ui-bg-main));">
+          {#each ["A", "B", "C", "D"] as s}
+            {@const hasScore = judgmentPopup.scores[s] !== undefined}
+            {@const c = SLOT_COLORS[s]}
+            {@const sc = hasScore ? judgmentPopup.scores[s] : null}
+            <div class="rounded-lg px-1.5 py-1.5 text-center" style="background: {hasScore ? `color-mix(in srgb, ${c} 10%, transparent)` : 'color-mix(in srgb, var(--ui-border) 20%, transparent)'}; border: 1px solid {hasScore ? `color-mix(in srgb, ${c} 25%, transparent)` : 'transparent'}; opacity: {hasScore ? 1 : 0.3};">
+              <div class="text-[10px] font-bold uppercase tracking-wide mb-0.5" style="color: {c};">{s}</div>
+              <div class="text-base font-black tabular-nums leading-none" style="color: {c};">{hasScore ? sc : '—'}</div>
+              <div class="text-[9px] opacity-60 mt-0.5" style="color: {c};">/10</div>
+            </div>
+          {/each}
+        </div>
 
-  <ArenaJudgmentModal
-    judgmentPopup={judgmentPopup}
-    bind:judgmentPopupPos
-    arenaCurrentRunMeta={arenaCurrentRunMeta}
-    reExtractBusy={reExtractBusy}
-    onRetryParse={retryJudgmentParse}
-    onReExtract={reExtractJudgeScoresWithAi}
-    onDismiss={() => {
-      judgmentPopup = null;
-      judgmentPopupPos = null;
-    }}
-  />
+        <!-- Per-model explanations -->
+        <div class="flex-1 min-h-0 overflow-y-auto px-4 py-3 flex flex-col gap-3">
+          {#each ["A", "B", "C", "D"] as s}
+            {#if judgmentPopup.scores[s] !== undefined}
+              {@const color = SLOT_COLORS[s]}
+              {@const score = judgmentPopup.scores[s]}
+              {@const expl = judgmentPopup.explanations?.[s] || ""}
+              <div class="rounded-lg p-3" style="background: color-mix(in srgb, {color} 6%, var(--ui-bg-main)); border-left: 3px solid {color};">
+                <div class="flex items-center justify-between mb-1">
+                  <span class="text-xs font-bold uppercase tracking-wide" style="color: {color};">Model {s}</span>
+                  <span class="text-sm font-bold tabular-nums" style="color: {color};">{score}<span class="text-[10px] font-normal opacity-60">/10</span></span>
+                </div>
+                {#if expl}
+                  <p class="text-xs leading-relaxed" style="color: var(--ui-text-secondary);">{expl}</p>
+                {/if}
+              </div>
+            {/if}
+          {/each}
+          {#if !judgmentPopup.explanations || Object.keys(judgmentPopup.explanations).length === 0}
+            <p class="text-xs leading-relaxed whitespace-pre-wrap" style="color: var(--ui-text-secondary);">{judgmentPopup.explanation}</p>
+          {/if}
+          {#if arenaCurrentRunMeta}
+            <button
+              type="button"
+              class="mt-1 text-[10px] underline text-left transition-opacity hover:opacity-70"
+              style="color: var(--ui-text-secondary);"
+              onclick={() => {
+                const meta = { run_id: arenaCurrentRunMeta.run_id, seed: arenaCurrentRunMeta.seed, timestamp: arenaCurrentRunMeta.start_timestamp, question_index: arenaCurrentRunMeta.question_index, deterministic_judge: arenaCurrentRunMeta.deterministic_judge, blind_review: arenaCurrentRunMeta.blind_review, model_list: arenaCurrentRunMeta.model_list, judge_model: arenaCurrentRunMeta.judge_model, responses: arenaCurrentRunMeta.responses, scores: judgmentPopup.scores };
+                navigator.clipboard?.writeText(JSON.stringify(meta, null, 2));
+              }}>Copy run metadata</button>
+          {/if}
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- Old modal settings panel removed: now docked as right sidebar above -->
 </div>

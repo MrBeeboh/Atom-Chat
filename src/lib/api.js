@@ -84,6 +84,36 @@ const CLOUD_PROVIDERS = {
     models: ['grok-3-mini', 'grok-3', 'grok-4', 'grok-4-1-fast-reasoning', 'grok-4-1-fast-non-reasoning', 'grok-4-fast-reasoning', 'grok-4-latest'],
     getKey: () => (typeof localStorage !== 'undefined' ? localStorage.getItem('grokApiKey') : null) ?? '',
   },
+  cerebras: {
+    name: 'Cerebras',
+    baseUrl: 'https://api.cerebras.ai/v1',
+    /** base already has /v1; chat path is /chat/completions */
+    models: ['llama3.1-8b', 'llama3.1-70b', 'llama-3.3-70b', 'llama-4-scout-17b-16e-instruct', 'qwen-3-32b', 'deepseek-r1-distill-llama-70b'],
+    getKey: () => (typeof localStorage !== 'undefined' ? localStorage.getItem('cerebrasApiKey') : null) ?? '',
+  },
+  deepinfra: {
+    name: 'DeepInfra',
+    baseUrl: 'https://api.deepinfra.com/v1/openai',
+    /** /v1/openai is NOT /v1, so URL construction uses custom path */
+    models: [
+      'meta-llama/Llama-3.3-70B-Instruct',
+      'meta-llama/Llama-3.1-8B-Instruct',
+      'meta-llama/Llama-3.1-405B-Instruct-Turbo',
+      'mistralai/Mistral-Small-3.1-24B-Instruct-2503',
+      'Qwen/Qwen3-235B-A22B',
+      'Qwen/Qwen2.5-72B-Instruct',
+      'Qwen/Qwen2.5-32B-Instruct',
+      'Qwen/Qwen2.5-14B-Instruct',
+      'Qwen/Qwen2.5-7B-Instruct',
+      'nvidia/Llama-3.3-Nemotron-Super-49B-v1',
+      'microsoft/Phi-4-multimodal-instruct',
+      'deepseek-ai/DeepSeek-R1',
+      'deepseek-ai/DeepSeek-V3-0324',
+      'google/gemma-2-27b-it',
+      'google/gemma-2-9b-it',
+    ],
+    getKey: () => (typeof localStorage !== 'undefined' ? localStorage.getItem('deepinfraApiKey') : null) ?? '',
+  },
 };
 
 /** Short descriptive tag for cloud models (shown next to name in selector). */
@@ -97,6 +127,27 @@ const MODEL_TYPE_TAGS = {
   'grok-4-latest': 'Reasoning (Latest)',
   'deepseek-chat': 'Chat',
   'deepseek-reasoner': 'Reasoning',
+  'llama3.1-8b': 'Fast Chat',
+  'llama3.1-70b': 'Chat',
+  'llama-3.3-70b': 'Chat',
+  'llama-4-scout-17b-16e-instruct': 'Scout',
+  'qwen-3-32b': 'Chat',
+  'deepseek-r1-distill-llama-70b': 'Reasoning',
+  'meta-llama/Llama-3.3-70B-Instruct': 'Chat',
+  'meta-llama/Llama-3.1-8B-Instruct': 'Fast Chat',
+  'meta-llama/Llama-3.1-405B-Instruct-Turbo': 'Chat',
+  'mistralai/Mistral-Small-3.1-24B-Instruct-2503': 'Chat',
+  'Qwen/Qwen3-235B-A22B': 'Chat',
+  'Qwen/Qwen2.5-72B-Instruct': 'Chat',
+  'Qwen/Qwen2.5-32B-Instruct': 'Chat',
+  'Qwen/Qwen2.5-14B-Instruct': 'Chat',
+  'Qwen/Qwen2.5-7B-Instruct': 'Fast Chat',
+  'nvidia/Llama-3.3-Nemotron-Super-49B-v1': 'Chat',
+  'microsoft/Phi-4-multimodal-instruct': 'Multimodal',
+  'deepseek-ai/DeepSeek-R1': 'Reasoning',
+  'deepseek-ai/DeepSeek-V3-0324': 'Chat',
+  'google/gemma-2-27b-it': 'Chat',
+  'google/gemma-2-9b-it': 'Fast Chat',
 };
 
 /** Get short model type tag (e.g. "Reasoning", "Fast Chat"). Returns null if no tag. */
@@ -148,6 +199,11 @@ export function isDeepSeekModel(modelId) {
   return typeof modelId === 'string' && modelId.startsWith('deepseek:');
 }
 
+/** True when model id is DeepInfra. Used to route to DeepInfra's OpenAI-compatible endpoint. */
+function isDeepinfraModel(modelId) {
+  return typeof modelId === 'string' && modelId.startsWith('deepinfra:');
+}
+
 /** DeepSeek does NOT have a native image generation API (they only analyze images). Endpoint below does not exist; kept for possible future proxy (e.g. Together AI). */
 const DEEPSEEK_IMAGES_GENERATIONS_URL = 'https://api.deepseek.com/v1/images/generations';
 
@@ -179,7 +235,7 @@ function parseChatApiError(status, bodyText, modelId) {
   let code = '';
   const isCloud = modelId && String(modelId).includes(':');
   const cloudHint = isCloud
-    ? ' Check Settings → Cloud APIs (DeepSeek & Grok): confirm the key is correct, has no extra spaces, and is valid for the selected provider.'
+    ? ' Check Settings → Cloud APIs (DeepSeek, Grok, Cerebras, DeepInfra): confirm the key is correct, has no extra spaces, and is valid for the selected provider.'
     : '';
 
   if (bodyText && bodyText.trim()) {
@@ -575,11 +631,11 @@ function parseGrokResponseOutput(data) {
  * @param {string} [opts.response_format='url'] - 'url' or 'b64_json'
  * @returns {Promise<{ data: Array<{ url?: string, b64_json?: string }> }>}
  */
-export async function requestGrokImageGeneration({ prompt, n = 1, aspect_ratio = '1:1', resolution = '1k', response_format = 'url' }) {
-  const { headers: authHeaders } = getBaseAndAuth('grok:grok-4');
-  if (!authHeaders?.Authorization) throw new Error('Grok API key required. Add it in Settings → Cloud APIs.');
+export async function requestGrokImageGeneration({ prompt, n = 1, aspect_ratio = '1:1', resolution = '1k', response_format = 'url', apiKey, modelId }) {
+  const key = (apiKey || '').trim() || (typeof localStorage !== 'undefined' ? localStorage.getItem('grokApiKey') : null)?.trim() || '';
+  if (!key) throw new Error('Grok API key required. Add it in Settings → Cloud APIs.');
   const body = {
-    model: 'grok-imagine-image',
+    model: modelId || 'grok-imagine-image',
     prompt: String(prompt).trim(),
     n: Math.max(1, Math.min(10, Number(n) || 1)),
     aspect_ratio: aspect_ratio || '1:1',
@@ -591,30 +647,14 @@ export async function requestGrokImageGeneration({ prompt, n = 1, aspect_ratio =
   try {
     const res = await fetch(XAI_IMAGES_GENERATIONS_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
       body: JSON.stringify(body),
       signal: ctrl.signal,
     });
     clearTimeout(to);
     if (!res.ok) {
       const text = await res.text();
-      if (res.status === 404 || /model.*not.*found|invalid.*model/i.test(text)) {
-        const fallbackCtrl = new AbortController();
-        const fallbackTo = setTimeout(() => fallbackCtrl.abort(), 60000);
-        try {
-          const fallback = await fetch(XAI_IMAGES_GENERATIONS_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...authHeaders },
-            body: JSON.stringify({ ...body, model: 'grok-2-image' }),
-            signal: fallbackCtrl.signal,
-          });
-          clearTimeout(fallbackTo);
-          if (fallback.ok) return fallback.json();
-        } catch (_) {
-          clearTimeout(fallbackTo);
-        }
-      }
-      throw new Error(parseChatApiError(res.status, text, 'grok:grok-imagine-image'));
+      throw new Error(parseChatApiError(res.status, text, `grok:${body.model}`));
     }
     return res.json();
   } catch (err) {
@@ -742,8 +782,8 @@ export async function requestDeepInfraImageGeneration({
     num_images: Math.max(1, Math.min(4, Number(num_images) || 1)),
     num_inference_steps: Math.max(1, Math.min(50, Number(num_inference_steps) || 30)),
     guidance_scale: Number(guidance_scale) || 7.5,
-    width: Math.max(128, Math.min(1024, Number(width) || 1024)),
-    height: Math.max(128, Math.min(1024, Number(height) || 1024)),
+    width: Math.max(128, Math.min(2048, Number(width) || 1024)),
+    height: Math.max(128, Math.min(2048, Number(height) || 1024)),
   };
   if (negative_prompt != null && String(negative_prompt).trim() !== '') body.negative_prompt = String(negative_prompt).trim();
   const url = `${DEEPINFRA_INFERENCE_BASE}/${encodeURIComponent(modelId)}`;
@@ -888,7 +928,7 @@ export async function requestChatCompletion({ model, messages, options = {} }) {
   }
   const { base, headers: authHeaders } = getBaseAndAuth(model);
   const resolvedModel = resolveModelId(model);
-  const url = base.endsWith('/v1') ? `${base}/chat/completions` : `${base}/v1/chat/completions`;
+  const url = isDeepinfraModel(model) ? `${base}/chat/completions` : (base.endsWith('/v1') ? `${base}/chat/completions` : `${base}/v1/chat/completions`);
   const headers = { 'Content-Type': 'application/json', ...authHeaders };
   const isCloud = model && String(model).includes(':');
   const rawMax = options.max_tokens ?? 1024;
@@ -900,7 +940,7 @@ export async function requestChatCompletion({ model, messages, options = {} }) {
     temperature: options.temperature ?? 0.3,
     max_tokens: maxTokens,
     ...(options.top_p != null && { top_p: options.top_p }),
-    ...(options.top_k != null && { top_k: options.top_k }),
+    ...(!isCloud && options.top_k != null && { top_k: options.top_k }),
     ...(!isCloud && options.repeat_penalty != null && { repeat_penalty: options.repeat_penalty }),
     ...(!isCloud && options.presence_penalty != null && { presence_penalty: options.presence_penalty }),
     ...(!isCloud && options.frequency_penalty != null && { frequency_penalty: options.frequency_penalty }),
@@ -1139,7 +1179,7 @@ export async function streamChatCompletion({ model, messages, options = {}, onCh
   };
   const { base, headers: authHeaders } = getBaseAndAuth(model);
   const resolvedModel = resolveModelId(model);
-  const streamUrl = base.endsWith('/v1') ? `${base}/chat/completions` : `${base}/v1/chat/completions`;
+  const streamUrl = isDeepinfraModel(model) ? `${base}/chat/completions` : (base.endsWith('/v1') ? `${base}/chat/completions` : `${base}/v1/chat/completions`);
   const headers = { 'Content-Type': 'application/json', ...authHeaders };
   const isCloud = model && String(model).includes(':');
   const rawMax = options.max_tokens ?? 4096;
@@ -1152,7 +1192,7 @@ export async function streamChatCompletion({ model, messages, options = {}, onCh
     temperature: options.temperature ?? 0.7,
     max_tokens: maxTokens,
     ...(options.top_p != null && { top_p: options.top_p }),
-    ...(options.top_k != null && { top_k: options.top_k }),
+    ...(!isCloud && options.top_k != null && { top_k: options.top_k }),
     ...(!isCloud && options.repeat_penalty != null && { repeat_penalty: options.repeat_penalty }),
     ...(!isCloud && options.presence_penalty != null && { presence_penalty: options.presence_penalty }),
     ...(!isCloud && options.frequency_penalty != null && { frequency_penalty: options.frequency_penalty }),

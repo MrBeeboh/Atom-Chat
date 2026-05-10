@@ -33,6 +33,14 @@
 {/if}
 
 {#if $openStore}
+  <div
+    class="side-panel-backdrop"
+    role="button"
+    tabindex="-1"
+    aria-label="Close panel"
+    onclick={() => openStore.set(false)}
+    onkeydown={(e) => e.key === 'Escape' && openStore.set(false)}
+  ></div>
   <aside
     class="side-panel"
     class:left={position === 'left'}
@@ -62,6 +70,18 @@
 {/if}
 
 <style>
+  .side-panel-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 49;
+    background: transparent;
+  }
+  @media (max-width: 768px) {
+    .side-panel-backdrop {
+      background: rgba(0, 0, 0, 0.35);
+    }
+  }
+
   .side-panel-trigger {
     position: fixed;
     z-index: 45;

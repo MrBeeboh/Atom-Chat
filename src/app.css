@@ -57,7 +57,7 @@ html { --metrics-axis: #d4d4d4; --metrics-grid: #e5e5e5; }
 .prose-chat pre { @apply rounded-lg p-3 my-2 overflow-x-auto text-sm; }
 .prose-chat code { @apply rounded px-1.5 py-0.5 text-sm; }
 .prose-chat pre code { @apply p-0 bg-transparent; }
-.prose-chat blockquote { @apply border-l-4 border-zinc-300 dark:border-zinc-600 pl-4 my-2 italic; }
+.prose-chat blockquote { border-left: 4px solid var(--ui-border); padding-left: 1rem; margin: 0.5rem 0; font-style: italic; }
 .prose-chat a { @apply text-blue-600 dark:text-blue-400 underline; }
 
 /* Assistant: thinking (light italics) vs answer (standard) when model uses think tags */
@@ -84,10 +84,10 @@ html { --metrics-axis: #d4d4d4; --metrics-grid: #e5e5e5; }
   --atom-amber: #fbbf24;
 }
 
-/* Thinking indicator: sleek minimal atom – theme accent, GPU-friendly animation */
+/* Thinking indicator: atom with orbiting electrons – theme accent, GPU-friendly animation */
 @keyframes atom-nucleus-pulse {
-  0%, 100% { opacity: 0.6; }
-  50% { opacity: 1; }
+  0%, 100% { opacity: 0.7; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.15); }
 }
 @keyframes atom-orbit-spin {
   from { transform: rotate(0deg); }
@@ -97,48 +97,89 @@ html { --metrics-axis: #d4d4d4; --metrics-grid: #e5e5e5; }
   from { transform: rotate(360deg); }
   to { transform: rotate(0deg); }
 }
+@keyframes atom-electron-orbit {
+  0% { transform: rotate(0deg) translateX(6px) rotate(0deg); opacity: 1; }
+  25% { opacity: 0.6; }
+  50% { opacity: 1; }
+  75% { opacity: 0.6; }
+  100% { transform: rotate(360deg) translateX(6px) rotate(-360deg); opacity: 1; }
+}
+@keyframes atom-electron-orbit-2 {
+  0% { transform: rotate(120deg) translateX(9px) rotate(-120deg); opacity: 0.4; }
+  25% { opacity: 1; }
+  50% { opacity: 0.4; }
+  75% { opacity: 1; }
+  100% { transform: rotate(480deg) translateX(9px) rotate(-480deg); opacity: 0.4; }
+}
+@keyframes atom-electron-orbit-3 {
+  0% { transform: rotate(240deg) translateX(12px) rotate(-240deg); opacity: 0.6; }
+  25% { opacity: 0.8; }
+  50% { opacity: 0.4; }
+  75% { opacity: 1; }
+  100% { transform: rotate(600deg) translateX(12px) rotate(-600deg); opacity: 0.6; }
+}
 .thinking-atom-icon {
   display: block;
-  /* Nucleus glow uses theme accent so it contrasts with any background */
   --atom-nucleus-glow: color-mix(in srgb, var(--ui-accent) 70%, transparent);
-  filter: drop-shadow(0 0 6px var(--atom-nucleus-glow)) drop-shadow(0 0 10px var(--atom-nucleus-glow));
+  filter: drop-shadow(0 0 6px var(--atom-nucleus-glow)) drop-shadow(0 0 12px var(--atom-nucleus-glow));
 }
 .thinking-atom-nucleus {
   fill: var(--ui-accent);
   transform-origin: 16px 16px;
-  animation: atom-nucleus-pulse 2s ease-in-out infinite;
-  filter: drop-shadow(0 0 4px var(--ui-accent));
+  animation: atom-nucleus-pulse 1.6s ease-in-out infinite;
+  filter: drop-shadow(0 0 6px var(--ui-accent));
 }
 .thinking-atom-orbit,
 .thinking-atom-orbit-2,
 .thinking-atom-orbit-3 {
   transform-origin: 16px 16px;
-  stroke-width: 1.5;
+  stroke-width: 1.2;
   stroke-linecap: round;
   fill: none;
-  opacity: 1;
+  opacity: 0.6;
 }
 .thinking-atom-orbit {
-  stroke: #00f0ff;
-  animation: atom-orbit-spin 4s linear infinite;
+  stroke: color-mix(in srgb, var(--ui-accent) 80%, var(--ui-text-primary));
+  animation: atom-orbit-spin 3s linear infinite;
 }
 .thinking-atom-orbit-2 {
-  stroke: #ff00ff;
-  animation: atom-orbit-spin-reverse 3s linear infinite;
+  stroke: color-mix(in srgb, var(--ui-accent) 50%, cyan);
+  animation: atom-orbit-spin-reverse 2.5s linear infinite;
 }
 .thinking-atom-orbit-3 {
-  stroke: #00ff00;
-  animation: atom-orbit-spin 5s linear infinite;
+  stroke: color-mix(in srgb, var(--ui-accent) 40%, magenta);
+  animation: atom-orbit-spin 4s linear infinite;
+}
+/* Electrons traveling along orbits */
+.thinking-atom-icon .electron {
+  fill: var(--ui-accent);
+  filter: drop-shadow(0 0 4px var(--ui-accent));
+}
+.thinking-atom-icon .electron-1 {
+  animation: atom-electron-orbit 3s linear infinite;
+  transform-origin: 16px 16px;
+}
+.thinking-atom-icon .electron-2 {
+  animation: atom-electron-orbit-2 2.5s linear infinite;
+  transform-origin: 16px 16px;
+}
+.thinking-atom-icon .electron-3 {
+  animation: atom-electron-orbit-3 4s linear infinite;
+  transform-origin: 16px 16px;
 }
 @media (prefers-reduced-motion: reduce) {
   .thinking-atom-icon .thinking-atom-nucleus,
   .thinking-atom-icon .thinking-atom-orbit,
   .thinking-atom-icon .thinking-atom-orbit-2,
-  .thinking-atom-icon .thinking-atom-orbit-3 {
+  .thinking-atom-icon .thinking-atom-orbit-3,
+  .thinking-atom-icon .electron {
     animation: none;
   }
   .thinking-atom-icon .thinking-atom-nucleus {
     opacity: 1;
+  }
+  .thinking-atom-icon .electron {
+    opacity: 0;
   }
 }
 
@@ -378,7 +419,47 @@ html { --metrics-axis: #d4d4d4; --metrics-grid: #e5e5e5; }
   }
 }
 
-/* ========== UI theme variables (4 themes: Sage, Obsidian, Nova, Studio) ========== */
+/* ========== UI theme variables (3 themes: Forge, Sage, Obsidian) ========== */
+
+/* Forge — Bold amber/copper on slate. Strong, industrial, high contrast. */
+[data-ui-theme="forge"] {
+  --ui-bg-main: #f4f4f5;
+  --ui-bg-sidebar: #e4e4e7;
+  --ui-accent: #b45309;
+  --ui-accent-hot: #c2410c;
+  --ui-accent-cool: #92400e;
+  --ui-text-primary: #18181b;
+  --ui-text-secondary: #52525b;
+  --ui-border: rgba(180, 83, 9, 0.22);
+  --ui-sidebar-active: #d4d4d8;
+  --ui-sidebar-hover: #dcdce0;
+  --ui-input-bg: #ffffff;
+  --ui-input-border: #d4d4d8;
+  --ui-glow: rgba(180, 83, 9, 0.2);
+  --atom-accent: #b45309;
+  --atom-accent-light: #d97706;
+  --atom-teal: #0d9488;
+  --atom-amber: #d97706;
+}
+.dark[data-ui-theme="forge"] {
+  --ui-bg-main: #18181b;
+  --ui-bg-sidebar: #27272a;
+  --ui-accent: #f59e0b;
+  --ui-accent-hot: #fb923c;
+  --ui-accent-cool: #eab308;
+  --ui-text-primary: #fafafa;
+  --ui-text-secondary: #a1a1aa;
+  --ui-border: rgba(245, 158, 11, 0.2);
+  --ui-sidebar-active: #3f3f46;
+  --ui-sidebar-hover: #52525b;
+  --ui-input-bg: #27272a;
+  --ui-input-border: #3f3f46;
+  --ui-glow: rgba(245, 158, 11, 0.25);
+  --atom-accent: #f59e0b;
+  --atom-accent-light: #fbbf24;
+  --atom-teal: #2dd4bf;
+  --atom-amber: #fbbf24;
+}
 
 /* Sage — Eco-brutalism / grounded neutrals (2026 credibility). Organic, minimal, honest. */
 [data-ui-theme="sage"] {
@@ -631,16 +712,6 @@ body {
   --arena-bar-bg: var(--ui-input-bg);
 }
 
-/* Q pill: force full question text — no ellipsis, no clamping */
-.arena-command-toolbar select,
-.arena-question-bar select,
-.arena-command-toolbar .q-pill-text,
-.arena-question-bar .q-pill-text {
-  white-space: normal;
-  text-overflow: clip;
-  -webkit-line-clamp: unset;
-}
-
 /* Q1, model names, and bar controls: clear sans-serif for readability */
 .arena-question-bar,
 .arena-question-bar *,
@@ -693,6 +764,11 @@ body {
 }
 
 /* Arena question panel: resize handles (edge/corner) */
+.arena-resize-handle {
+  cursor: col-resize;
+  background-color: color-mix(in srgb, var(--ui-border) 40%, transparent);
+  transition: background-color 0.15s;
+}
 .arena-resize-handle:hover { background-color: color-mix(in srgb, var(--ui-accent) 30%, transparent) !important; }
 
 /* Streaming: pulsing border glow */
@@ -768,4 +844,18 @@ body {
   .atom-complete-flash { animation: none; }
   .atom-error-shake { animation: none; }
   .atom-gradient-bg::before { animation: none; }
+}
+
+/* Arena Run All progress bar */
+.arena-runall-progress {
+  height: 3px;
+  background: color-mix(in srgb, var(--ui-border) 50%, transparent);
+  position: relative;
+  overflow: hidden;
+}
+.arena-runall-progress-fill {
+  height: 100%;
+  background: var(--ui-accent);
+  transition: width 0.3s ease;
+  border-radius: 0 2px 2px 0;
 }

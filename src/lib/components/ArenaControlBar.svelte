@@ -2,36 +2,36 @@
   import { playClick } from "$lib/audio.js";
   import { isStreaming, settings } from "$lib/stores.js";
 
-  // Props
-  export let currentQuestionNum = 0;
-  export let currentQuestionTotal = 0;
-  /** Full text of the current question (tooltip on selector). */
-  export let currentQuestionText = "";
-  export let parsedQuestions = [];
-  export let builtQuestionCount = 0;
-  export let buildArenaInProgress = false;
-  export let buildArenaError = "";
-  export let runAllActive = false;
-  export let runAllProgress = { current: 0, total: 0 };
+  let {
+    currentQuestionNum = 0,
+    currentQuestionTotal = 0,
+    currentQuestionText = "",
+    parsedQuestions = [],
+    builtQuestionCount = 0,
+    buildArenaInProgress = false,
+    buildArenaError = "",
+    runAllActive = false,
+    runAllProgress = { current: 0, total: 0 },
+    onOpenLoadModal = () => {},
+    onBuildArena = () => {},
+    prevQuestion = () => {},
+    jumpToQuestion = (_num) => {},
+    advanceQuestionIndex = () => {},
+    askCurrentQuestion = () => {},
+    askNextQuestion = () => {},
+    runAllQuestions = () => {},
+    stopRunAll = () => {},
+    startOver = () => {},
+    onToggleQuestionPanel = () => {},
+    arenaWebWarmingUp = false,
+    resetWebWarmUpAttempted = () => {},
+    runArenaWarmUp = () => {},
+  } = $props();
 
-  /** Opens Load questions modal (Build + quick import) */
-  export let onOpenLoadModal = () => {};
-
-  // Callbacks (parent handles)
-  export let onBuildArena = () => {};
-  export let prevQuestion = () => {};
-  export let jumpToQuestion = (_num) => {};
-  export let advanceQuestionIndex = () => {};
-  export let askCurrentQuestion = () => {};
-  export let askNextQuestion = () => {};
-  export let runAllQuestions = () => {};
-  export let stopRunAll = () => {};
-  export let startOver = () => {};
-  export let onToggleQuestionPanel = () => {};
-
-  $: questionSelectTitle =
+  let questionSelectTitle = $derived(
     currentQuestionText?.trim() ||
-    (currentQuestionTotal > 0 ? `Question ${currentQuestionNum} of ${currentQuestionTotal}` : "");
+    (currentQuestionTotal > 0 ? `Question ${currentQuestionNum} of ${currentQuestionTotal}` : "")
+  );
 </script>
 
 <!-- Toolbar: three-zone layout (left · center · right) -->

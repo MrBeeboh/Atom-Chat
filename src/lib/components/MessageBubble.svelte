@@ -99,10 +99,9 @@
   in:fly={{ y: 20, duration: 380, easing: quintOut }}
 >
   <div
-    class="message-bubble-inner w-full rounded-[10px] px-3 py-2 shadow-sm relative overflow-hidden
-      {isUser
-      ? 'ui-user-bubble'
-      : 'bg-white dark:bg-zinc-800/90 text-zinc-900 dark:text-zinc-100 border border-zinc-200/80 dark:border-zinc-700/80'}"
+    class="message-bubble-inner group rounded-[10px] px-3 py-2 shadow-sm relative overflow-hidden
+      {isUser ? 'ui-user-bubble max-w-[85%]' : 'w-full'}"
+    style={isUser ? '' : 'background-color: var(--ui-bg-sidebar); color: var(--ui-text-primary); border: 1px solid var(--ui-border);'}
   >
     <!-- No background div here; handled by CSS below -->
 
@@ -145,10 +144,12 @@
     {:else if isAssistant}
       {#if message.modelId}
         <div
-          class="flex items-center gap-1.5 mb-2 pb-2 border-b border-zinc-200/60 dark:border-zinc-600/60"
+          class="flex items-center gap-1.5 mb-2 pb-2"
+          style="border-bottom: 1px solid var(--ui-border);"
         >
           <span
-            class="text-xs font-medium text-zinc-500 dark:text-zinc-400 truncate"
+            class="text-[10px] font-semibold uppercase tracking-wider truncate"
+            style="color: var(--ui-accent); opacity: 0.85;"
             title={message.modelId}>{message.modelId}</span
           >
         </div>
@@ -205,7 +206,7 @@
                 <img
                   src={url}
                   alt="Result image"
-                  class="max-h-32 rounded border border-zinc-200 dark:border-zinc-600"
+                  class="max-h-32 rounded" style="border: 1px solid var(--ui-border);"
                   loading="lazy"
                 />
               {/each}
@@ -221,7 +222,7 @@
         >
           {#each imageRefs as ref (ref.image_id)}
             <div
-              class="shrink-0 rounded border border-zinc-200 dark:border-zinc-600 overflow-hidden bg-zinc-100 dark:bg-zinc-800/80"
+              class="shrink-0 rounded overflow-hidden" style="border: 1px solid var(--ui-border); background-color: var(--ui-bg-sidebar);"
               role="listitem"
             >
               <img
@@ -234,7 +235,7 @@
                 loading="lazy"
               />
               <p
-                class="p-1.5 text-[10px] text-zinc-500 dark:text-zinc-400 truncate max-w-[120px]"
+                class="p-1.5 text-[10px] truncate max-w-[120px]" style="color: var(--ui-text-secondary);"
               >
                 ID: {ref.image_id}
               </p>
@@ -250,7 +251,7 @@
         >
           {#each imageUrls as url (url)}
             <div
-              class="shrink-0 rounded border border-zinc-200 dark:border-zinc-600 overflow-hidden bg-zinc-100 dark:bg-zinc-800/80"
+              class="shrink-0 rounded overflow-hidden" style="border: 1px solid var(--ui-border); background-color: var(--ui-bg-sidebar);"
               role="listitem"
             >
               <img
@@ -271,7 +272,7 @@
         >
           {#each videoUrls as url (url)}
             <div
-              class="rounded border border-zinc-200 dark:border-zinc-600 overflow-hidden bg-zinc-100 dark:bg-zinc-800/80 max-w-2xl"
+              class="rounded overflow-hidden max-w-2xl" style="border: 1px solid var(--ui-border); background-color: var(--ui-bg-sidebar);"
               role="listitem"
             >
               <AuthVideo {url} apiKey={deepinfraKey} />
@@ -290,19 +291,13 @@
     <!-- Copy/Pin buttons for ALL messages (User or Assistant) -->
     {#if (isUser && (content || contentArray.length)) || (isAssistant && (content || hasThinkingOrAnswer))}
       <div
-        class="flex items-center gap-1 mt-2 pt-2 {isUser ? 'justify-end' : ''}"
+        class="flex items-center gap-1 mt-2 pt-2 opacity-0 group-hover:opacity-100 transition-opacity duration-150 {isUser ? 'justify-end' : ''}"
       >
         <!-- Copy button with clipboard icon -->
         <button
           type="button"
-          class="flex items-center gap-1 text-[10px] px-2 py-1 rounded border {isUser
-            ? 'border-primary-200 dark:border-primary-700 hover:bg-primary-100 dark:hover:bg-primary-800/50'
-            : 'border-zinc-200 dark:border-zinc-600 hover:bg-zinc-100 dark:hover:bg-zinc-700/80'} transition-all duration-200"
-          style="color: {copyFeedback
-            ? 'var(--ui-accent, #22c55e)'
-            : isUser
-              ? 'inherit'
-              : 'var(--ui-text-secondary)'};"
+          class="flex items-center gap-1 text-[10px] px-2 py-1 rounded border transition-all duration-200"
+          style="border-color: var(--ui-border); color: {copyFeedback ? 'var(--ui-accent)' : 'var(--ui-text-secondary)'}; background: transparent;"
           onclick={copyContent}
           title={copyFeedback ? "Copied!" : "Copy to clipboard"}
         >
@@ -343,14 +338,8 @@
         <!-- Pin button with pin icon -->
         <button
           type="button"
-          class="flex items-center gap-1 text-[10px] px-2 py-1 rounded border {isUser
-            ? 'border-primary-200 dark:border-primary-700 hover:bg-primary-100 dark:hover:bg-primary-800/50'
-            : 'border-zinc-200 dark:border-zinc-600 hover:bg-zinc-100 dark:hover:bg-zinc-700/80'} transition-all duration-200"
-          style="color: {pinFeedback
-            ? 'var(--ui-accent, #22c55e)'
-            : isUser
-              ? 'inherit'
-              : 'var(--ui-text-secondary)'};"
+          class="flex items-center gap-1 text-[10px] px-2 py-1 rounded border transition-all duration-200"
+          style="border-color: var(--ui-border); color: {pinFeedback ? 'var(--ui-accent)' : 'var(--ui-text-secondary)'}; background: transparent;"
           onclick={pinContent}
           title={pinFeedback ? "Pinned!" : "Pin to Workbench"}
         >
