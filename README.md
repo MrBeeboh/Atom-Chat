@@ -1,51 +1,64 @@
-# ATOM
+# ATOM Chat
 
-A minimal, information-dense chat frontend for local AI. Connects to any OpenAI-compatible API (e.g. [LM Studio](https://lmstudio.ai/))’—no backend required.
-
-## Requirements
-
-- A model server (e.g. **LM Studio**) running with at least one model loaded
-- API server enabled (default: **http://localhost:1234**)
+A local-first AI chat and model evaluation tool. Compare models head-to-head in the Arena, generate images, search the web — all from your machine. No cloud required.
 
 ## Quick start
 
 ```bash
-npm install
-npm run dev
+./setup.sh        # install deps, build, detect LM Studio, create desktop launcher
+npm run dev       # start dev server at http://localhost:5173
 ```
 
-Open http://localhost:5173. Choose a model from the dropdown, start a new chat, and send messages.
+That's it. Pick a model, start a chat.
 
-**Voice input (mic):** Use **`npm run start`** (or the ATOM desktop icon). That runs `scripts/start-atom.sh`, which starts the voice server on port 8765 then the UI. Plain `npm run dev` does *not* start the voice server. If you use a desktop launcher, point it at `npm run start` from this repo, or copy `ATOM.desktop` to your Desktop (edit the path inside if your repo is not under `/home/mike/atom-chat`).
+## What you need
 
-## Git workflow (repo ↔ local)
+- **Node.js 18+** — [nodejs.org](https://nodejs.org)
+- **LM Studio** — [lmstudio.ai](https://lmstudio.ai) (or any OpenAI-compatible server on `localhost:1234`)
 
-- **New to this repo?** See **[docs/PATHS-REPO-AND-LOCAL.md](docs/PATHS-REPO-AND-LOCAL.md)** for the two directions: get latest from GitHub, and save your work to GitHub.
-- Full branch-based workflow: **[docs/GIT-WORKFLOW.md](docs/GIT-WORKFLOW.md)**.
-
-## Build
-
-```bash
-npm run build
-```
-
-Output is in `dist/`. Serve with any static host or open `dist/index.html` locally (conversations are stored in IndexedDB in the browser).
+Optional: Python 3 for voice input, hardware metrics, and model unloading helpers.
 
 ## Features
 
-- Chat with streaming responses
-- Model switching (uses models loaded in your server)
-- **Optimize**: fetch recommended settings from Hugging Face (or Ollama registry); optional AI fallback
-- **Intel panel**: system prompt, parameters (temperature, top_p, top_k, context), load settings, Save to LM Studio
-- Chat history stored in the browser (IndexedDB)
-- Markdown and code highlighting in replies
-- Image attachments for vision-capable models
-- Performance stats (tokens/sec, latency)
+- Streaming chat with Markdown + code highlighting
+- **ATOM Arena** — head-to-head model comparison with automated judging, score matrix, blind review
+- 15+ image generation engines (FLUX, Seedream, Wan, Grok, SDXL)
+- Web search integration (Brave API or DuckDuckGo proxy)
+- Vision support — paste or drop images/PDFs/video
+- Model optimization — fetch recommended settings from Hugging Face
+- Cloud API support — DeepSeek, Grok, Cerebras, DeepInfra
+- Voice input (Whisper via local Python server)
+- Conversation history (IndexedDB + bulk erase)
 - Dark / light / system theme
-- Settings: temperature, max tokens, system prompt
+- 44-key shortcut palette (`Ctrl+K`)
+
+## Scripts
+
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Dev server (no voice/search) |
+| `npm run start` | Full stack — voice server + search proxy + UI |
+| `npm run build` | Production build → `dist/` |
+| `npm run preview` | Serve production build locally |
+| `./setup.sh` | Install deps, build, detect LM Studio |
+
+## Settings
+
+The **Settings panel** (`Ctrl+,`) controls:
+- Model defaults (temperature, max tokens, top-p, top-k, penalties)
+- Cloud API keys (DeepSeek, Grok, Cerebras, DeepInfra)
+- Voice server URL
+- Web search (Brave API key or local proxy)
+- Theme (Studio / Pitch Black / Light)
+
+## Arena
+
+Switch to Arena layout to compare up to 4 models. Load a question set, click **Run All**, and the judge model scores every response. Export results as JSON or CSV.
 
 ## Tech
 
-- **Svelte 5** + **Vite** + **Tailwind CSS**
-- **Dexie.js** for IndexedDB
-- **marked** + **highlight.js** for markdown
+**Svelte 5** + **Vite** + **Tailwind CSS v4** — fully static, no backend. Dexie.js for IndexedDB, marked + highlight.js for rendering.
+
+## Release
+
+Download the latest `atom-chat.zip` from [Releases](https://github.com/anomalyco/atom-chat/releases). Extract and open `dist/index.html`, or serve with `npx serve dist`.

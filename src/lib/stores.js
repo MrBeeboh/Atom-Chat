@@ -84,12 +84,15 @@ export const cockpitIntelOpen = writable(false);
 export const pinnedContent = writable(null);
 
 
-/** Color scheme: studio | sage | obsidian | nova (see themeOptions.js) */
-const VALID_UI_THEMES = ['sage', 'obsidian', 'nova', 'studio'];
+/** Color scheme: studio | sage | clay | fern (see themeOptions.js) */
+const VALID_UI_THEMES = ['sage', 'clay', 'fern', 'studio'];
 function getInitialUiTheme() {
   if (typeof localStorage === 'undefined') return 'studio';
   const raw = localStorage.getItem('uiTheme') || 'studio';
-  const migrated = (raw === 'lavender' || raw === 'forge') ? 'studio' : raw;
+  const migrated = (raw === 'lavender' || raw === 'forge') ? 'studio'
+    : raw === 'obsidian' ? 'clay'
+    : raw === 'nova' ? 'fern'
+    : raw;
   if (VALID_UI_THEMES.includes(migrated)) {
     if (migrated !== raw) localStorage.setItem('uiTheme', migrated);
     return migrated;
@@ -469,13 +472,13 @@ if (typeof localStorage !== 'undefined') {
 /** Clamp Arena stream timeout to 60–900 seconds (local LM Studio: no separate API cap). */
 function normalizeArenaRequestTimeoutSeconds(v) {
   const n = parseInt(String(v), 10);
-  if (Number.isNaN(n)) return 180;
+  if (Number.isNaN(n)) return 360;
   return Math.min(900, Math.max(60, n));
 }
 
 function readArenaRequestTimeoutSeconds() {
-  if (typeof localStorage === 'undefined') return 180;
-  return normalizeArenaRequestTimeoutSeconds(localStorage.getItem('arenaRequestTimeoutSeconds') ?? '180');
+  if (typeof localStorage === 'undefined') return 360;
+  return normalizeArenaRequestTimeoutSeconds(localStorage.getItem('arenaRequestTimeoutSeconds') ?? '360');
 }
 
 /** Arena: max wall-clock time per contestant stream and per automated judge stream (seconds). Persisted. Default 180s for slow “thinking” models. */

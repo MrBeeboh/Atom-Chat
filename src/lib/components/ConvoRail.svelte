@@ -134,16 +134,16 @@
     aria-label={expanded ? 'Collapse rail' : 'Expand rail'}
     onclick={toggleExpanded}>
     {#if expanded}
-      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 19l-7-7 7-7" /></svg>
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 19l-7-7 7-7" /></svg>
     {:else}
-      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7" /></svg>
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7" /></svg>
     {/if}
   </button>
   <!-- Content wrapper: clips to rail width -->
   <div class="flex flex-1 flex-col min-w-0 overflow-hidden">
     {#if !expanded}
       <!-- Collapsed: icon buttons with text labels below each icon -->
-      <div class="rail-icons flex flex-col items-center gap-1.5 pt-4 shrink-0" style="color: var(--ui-text-secondary);">
+      <div class="rail-icons flex flex-col items-center gap-0.5 pt-3 shrink-0" style="color: var(--ui-text-secondary);">
         <button
           type="button"
           class="rail-icon-labeled"
@@ -151,7 +151,7 @@
           onclick={newChat}
           title="New chat"
           aria-label="New chat">
-          <svg class="rail-icon-svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14" /></svg>
+          <svg class="rail-icon-svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14" /></svg>
           <span class="rail-icon-label">New</span>
         </button>
         <button
@@ -162,7 +162,7 @@
           onclick={() => expandTo('search')}
           title="Search chats"
           aria-label="Search">
-          <svg class="rail-icon-svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" /></svg>
+          <svg class="rail-icon-svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8" /><path d="m21 21-4-4" /></svg>
           <span class="rail-icon-label">Search</span>
         </button>
         <button
@@ -173,7 +173,7 @@
           onclick={() => expandTo('pinned')}
           title="Pinned chats"
           aria-label="Pinned">
-          <svg class="rail-icon-svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5" /><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78 9.09A1 1 0 0 1 5 21v-1a1 1 0 0 1 .89-.99l1.81-.18" /><path d="M15 10.76a2 2 0 0 0 1.11 1.79l1.78 9.09A1 1 0 0 0 19 21v-1a1 1 0 0 0-.89-.99l-1.81-.18" /><path d="M20 10.76a2 2 0 0 0-1.11 1.79l-1.78 9.09A1 1 0 0 1 15 21v-1a1 1 0 0 1 .89-.99l1.81-.18" /><path d="M4 10.76a2 2 0 0 1 1.11 1.79l1.78 9.09A1 1 0 0 0 9 21v-1a1 1 0 0 0-.89-.99L6.3 19" /></svg>
+          <svg class="rail-icon-svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m12 2 3 3-1 7 2 3v2H8v-2l2-3-1-7 3-3z" /><circle cx="12" cy="22" r="1.5" fill="currentColor" stroke="none" /></svg>
           <span class="rail-icon-label">Pinned</span>
         </button>
         <button
@@ -184,10 +184,10 @@
           onclick={() => expandTo('history')}
           title="Chat history"
           aria-label="History">
-          <svg class="rail-icon-svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></svg>
+          <svg class="rail-icon-svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
           <span class="rail-icon-label">History</span>
         </button>
-        <div class="w-6 my-1" style="height: 1px; background: var(--ui-border);" aria-hidden="true"></div>
+        <div class="w-5 my-1" style="height: 1px; background: var(--ui-border);" aria-hidden="true"></div>
         <button
           type="button"
           class="rail-icon-labeled"
@@ -195,7 +195,7 @@
           onclick={openSettings}
           title="Settings"
           aria-label="Settings">
-          <svg class="rail-icon-svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" /><circle cx="12" cy="12" r="3" /></svg>
+          <svg class="rail-icon-svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1.08-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1.08 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1.08z" /></svg>
           <span class="rail-icon-label">Settings</span>
         </button>
       </div>
@@ -324,35 +324,39 @@
 
 <style>
   .rail-icon-svg {
-    width: 20px;
-    height: 20px;
+    width: 16px;
+    height: 16px;
   }
   .rail-icon-labeled {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 2px;
-    width: 44px;
-    padding: 4px 0;
-    border-radius: 8px;
+    gap: 1px;
+    width: 40px;
+    padding: 3px 0;
+    border-radius: 6px;
     border: none;
     background: transparent;
     cursor: pointer;
-    transition: background 120ms, color 120ms;
+    transition: background 120ms, color 120ms, transform 120ms;
   }
   .rail-icon-labeled:hover {
     background: color-mix(in srgb, var(--ui-accent) 12%, transparent);
+    transform: scale(1.05);
+  }
+  .rail-icon-labeled:active {
+    transform: scale(0.95);
   }
   .rail-icon-labeled.rail-active {
     background: color-mix(in srgb, var(--ui-accent) 14%, transparent);
-    border-left: 3px solid var(--ui-accent);
-    border-radius: 4px 8px 8px 4px;
+    border-left: 2px solid var(--ui-accent);
+    border-radius: 3px 6px 6px 3px;
   }
   .rail-icon-label {
-    font-size: 11px;
+    font-size: 9px;
     font-weight: 600;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.04em;
     text-transform: uppercase;
     line-height: 1;
     opacity: 0.9;

@@ -81,7 +81,7 @@ const CLOUD_PROVIDERS = {
     name: 'Grok',
     baseUrl: 'https://api.x.ai/v1',
     /** xAI base already has /v1; chat path is /chat/completions */
-    models: ['grok-3-mini', 'grok-3', 'grok-4', 'grok-4-1-fast-reasoning', 'grok-4-1-fast-non-reasoning', 'grok-4-fast-reasoning', 'grok-4-latest'],
+    models: ['grok-3-mini', 'grok-3', 'grok-4', 'grok-4-1-fast-reasoning', 'grok-4-1-fast-non-reasoning', 'grok-4-fast-reasoning', 'grok-4-latest', 'grok-4.3'],
     getKey: () => (typeof localStorage !== 'undefined' ? localStorage.getItem('grokApiKey') : null) ?? '',
   },
   cerebras: {
@@ -125,6 +125,7 @@ const MODEL_TYPE_TAGS = {
   'grok-4-1-fast-non-reasoning': 'Fast Chat',
   'grok-4-fast-reasoning': 'Fast Reasoning',
   'grok-4-latest': 'Reasoning (Latest)',
+  'grok-4.3': 'Reasoning',
   'deepseek-chat': 'Chat',
   'deepseek-reasoner': 'Reasoning',
   'llama3.1-8b': 'Fast Chat',
@@ -298,7 +299,7 @@ function getCloudModels() {
 const LOCAL_MODELS_TIMEOUT_MS = 10000;
 
 /** Timeout for cloud (Grok, DeepSeek) API requests when caller does not override. */
-const CLOUD_REQUEST_TIMEOUT_MS = 120000;
+const CLOUD_REQUEST_TIMEOUT_MS = 300000;
 
 /** Cloud stream fetch timeout from options (e.g. Arena execution setting); clamp 60s–15m. */
 function resolveCloudStreamTimeoutMs(options) {
@@ -461,9 +462,9 @@ export async function loadModel(modelId, loadConfig = {}) {
   body.echo_load_config = true;
 
   const base = getLmStudioBase();
-  // 60s timeout: large models can take a while to load into VRAM
+  // 180s timeout: large models can take a while to load into VRAM
   const ctrl = new AbortController();
-  const to = setTimeout(() => ctrl.abort(), 60000);
+  const to = setTimeout(() => ctrl.abort(), 180000);
   try {
     const res = await fetch(`${base}/api/v1/models/load`, {
       method: 'POST',

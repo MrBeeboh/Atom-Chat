@@ -5,7 +5,8 @@
   import { get } from "svelte/store";
   import PerfStats from "$lib/components/PerfStats.svelte";
   import AuthVideo from "$lib/components/AuthVideo.svelte";
-  import { pinnedContent, deepinfraApiKey } from "$lib/stores.js";
+  import { pinnedContent, deepinfraApiKey, isStreaming } from "$lib/stores.js";
+  import ThinkingAtom from "$lib/components/ThinkingAtom.svelte";
 
   /** DeepInfra key: init from store + env so it's there on first paint; subscribe to stay in sync with Settings. */
   let deepinfraKey = $state(
@@ -154,37 +155,15 @@
           >
         </div>
       {/if}
-      {#if !content}
-        <div class="flex items-center py-1" aria-label="Thinking">
-          <svg
-            class="thinking-atom-icon w-8 h-8"
-            viewBox="0 0 32 32"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <circle cx="16" cy="16" r="3" class="thinking-atom-nucleus" />
-            <ellipse
-              cx="16"
-              cy="16"
-              rx="10"
-              ry="4"
-              class="thinking-atom-orbit"
-            />
-            <ellipse
-              cx="16"
-              cy="16"
-              rx="12"
-              ry="5"
-              class="thinking-atom-orbit-2"
-            />
-            <ellipse
-              cx="16"
-              cy="16"
-              rx="11"
-              ry="4.5"
-              class="thinking-atom-orbit-3"
-            />
-          </svg>
+      {#if !content && $isStreaming}
+        <div class="flex items-center gap-3 py-2" aria-label="Thinking">
+          <ThinkingAtom size={32} />
+          <span class="thinking-label text-xs font-medium" style="color: var(--ui-text-secondary);">Reasoning…</span>
+        </div>
+      {:else if !content}
+        <div class="flex items-center gap-3 py-2" aria-label="Waiting">
+          <ThinkingAtom size={24} />
+          <span class="thinking-label text-xs font-medium" style="color: var(--ui-text-secondary);">Waiting…</span>
         </div>
       {:else if hasThinkingOrAnswer}
         <div class="prose-chat prose dark:prose-invert max-w-none space-y-3">
@@ -394,5 +373,12 @@
   .message-bubble-inner {
     font-size: 14px;
     line-height: 1.5;
+  }
+  .thinking-label {
+    animation: thinking-label-fade 2s ease-in-out infinite;
+  }
+  @keyframes thinking-label-fade {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 1; }
   }
 </style>

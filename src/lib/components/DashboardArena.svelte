@@ -41,6 +41,7 @@
     arenaBuilderInternetEnabled,
     arenaDebugMode,
     arenaSlotAIsJudge,
+    arenaRequestTimeoutSeconds,
     braveApiKey,
   } from "$lib/stores.js";
   import { playClick, playComplete } from "$lib/audio.js";
@@ -60,6 +61,7 @@
     warmUpSearchConnection,
     syncBraveKeyToProxy,
   } from "$lib/duckduckgo.js";
+  import { getModelCapabilities } from "$lib/modelCapabilities.js";
   import ChatInput from "$lib/components/ChatInput.svelte";
   import ThinkingAtom from "$lib/components/ThinkingAtom.svelte";
   import ModelSelectorSlot from "$lib/components/ModelSelectorSlot.svelte";
@@ -799,7 +801,7 @@
   }
 
   // ---------- Stream / send ----------
-  const ARENA_TIMEOUT_MS = 120000; // spec: timeout_seconds_per_model: 120
+  const ARENA_TIMEOUT_MS = 600000; // spec: timeout for judge model (10 min)
 
   /**
    * Send one question to one model in one Arena slot.
@@ -877,6 +879,7 @@
             frequency_penalty: slotOpts.frequency_penalty,
             stop: slotOpts.stop?.length ? slotOpts.stop : undefined,
             ttl: slotOpts.model_ttl_seconds,
+            request_timeout_ms: $arenaRequestTimeoutSeconds * 1000,
           },
           signal: controller.signal,
           onDone() {
@@ -971,6 +974,14 @@
   async function sendUserMessage(text, imageDataUrls = [], questionId = null) {
     if (!text || !String(text).trim() || $isStreaming) return;
     chatError.set(null);
+    if ((imageDataUrls?.length > 0)) {
+      const slotModels = [$dashboardModelA, $dashboardModelB, $dashboardModelC, $dashboardModelD].filter(Boolean);
+      const nonVision = slotModels.find((id) => !getModelCapabilities(id).vision);
+      if (nonVision) {
+        chatError.set(`"${nonVision}" does not support image input. Switch to a vision-capable model.`);
+        return;
+      }
+    }
 
     let effectiveText = String(text).trim();
     const webMode = get(arenaWebSearchMode);
@@ -1552,6 +1563,7 @@
           frequency_penalty: judgeOpts.frequency_penalty,
           stop: judgeOpts.stop?.length ? judgeOpts.stop : undefined,
           ttl: judgeOpts.model_ttl_seconds,
+          request_timeout_ms: $arenaRequestTimeoutSeconds * 1000,
         },
         signal: controller.signal,
         onChunk(chunk) {
@@ -1772,6 +1784,7 @@
           temperature: askJudgeOpts.temperature,
           max_tokens: askJudgeOpts.max_tokens,
           top_p: askJudgeOpts.top_p,
+          request_timeout_ms: $arenaRequestTimeoutSeconds * 1000,
         },
         signal: controller.signal,
         onChunk(chunk) {
@@ -2240,8 +2253,14 @@
       </button>
     </div>
   {:else}
+    <button
+      type="button"
+      class="fixed inset-0 z-40 bg-black/40"
+      aria-label="Close Arena settings"
+      onclick={() => (arenaSettingsCollapsed = true)}
+    ></button>
     <aside
-      class="shrink-0 border-l hidden md:flex flex-col transition-[width] duration-200 relative overflow-visible"
+      class="shrink-0 border-l hidden md:flex flex-col relative z-50 overflow-visible"
       style="width: 320px; background-color: var(--ui-bg-main); border-color: var(--ui-border);"
     >
       <div class="w-full flex flex-col min-h-0 h-full min-w-0 overflow-hidden">
@@ -2407,6 +2426,21 @@
             <input type="checkbox" bind:checked={$arenaDeterministicJudge} class="rounded mt-0.5" style="accent-color: var(--ui-accent);" />
             <span>Deterministic judge (temp 0)</span>
           </label>
+          <div class="flex items-center gap-2 mt-2.5">
+            <label for="arena-timeout" class="text-xs shrink-0" style="color: var(--ui-text-secondary);">Timeout</label>
+            <input
+              id="arena-timeout"
+              type="number"
+              min="60"
+              max="900"
+              step="30"
+              class="w-20 px-2 py-1 rounded border text-right text-xs font-mono"
+              style="border-color: var(--ui-border); background: var(--ui-input-bg); color: var(--ui-text-primary);"
+              value={$arenaRequestTimeoutSeconds}
+              oninput={(e) => { const v = parseInt(e.currentTarget?.value, 10); if (v >= 60 && v <= 900) arenaRequestTimeoutSeconds.set(v); }}
+            />
+            <span class="text-xs" style="color: var(--ui-text-secondary);">seconds</span>
+          </div>
         </section>
         <!-- 6. Judge model -->
         <section>

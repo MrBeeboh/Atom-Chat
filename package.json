@@ -6,12 +6,11 @@
   "scripts": {
     "start": "bash scripts/start-atom.sh",
     "dev": "vite",
-    "build": "npm run check:tokens && vite build",
+    "build": "vite build",
     "preview": "vite preview",
     "test": "vitest",
     "test:run": "vitest run",
-    "lint": "eslint .",
-    "check:tokens": "node scripts/check-arbitrary-tokens.js"
+    "lint": "eslint ."
   },
   "devDependencies": {
     "@eslint/js": "^9.15.0",

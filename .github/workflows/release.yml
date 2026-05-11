@@ -1,0 +1,43 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - run: npm ci
+      - run: npm run build
+
+      - run: |
+          cp setup.sh dist/
+          cp README.md dist/
+          cd dist && zip -r ../atom-chat.zip .
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: atom-chat.zip
+          body: |
+            ## ATOM Chat — ${{ github.ref_name }}
+
+            Extract and open `dist/index.html`, or serve with `npx serve dist`.
+            See [README.md](README.md) for setup details.
+
+            ### Quick start
+            ```bash
+            chmod +x setup.sh && ./setup.sh
+            npm run dev
+            ```
+          generate_release_notes: true

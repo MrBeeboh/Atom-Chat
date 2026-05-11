@@ -565,44 +565,42 @@
       {#if onGenerateImageGrok || onGenerateImageDeepSeek}
         <button
           type="button"
-          class="media-icon-btn {imageGenerating ? 'media-icon-btn-active' : ''}"
+          class="media-btn {imageGenerating ? 'media-btn-active media-btn-image-active' : ''}"
           disabled={$isStreaming || imageGenerating || !text.trim()}
           onclick={handleImageClick}
           title={imageGenerating ? 'Generating image…' : (onGenerateImageGrok ? 'Generate image (Grok)' : 'Generate image (DeepInfra)')}
           aria-label={imageGenerating ? 'Generating image' : 'Generate image'}
         >
-          {#if imageGenerating}
-            <ThinkingAtom size={16} />
-          {:else}
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <rect x="2.5" y="2.5" width="19" height="19" rx="3" stroke="currentColor" stroke-width="1.5"/>
-              <circle cx="8" cy="8" r="2" fill="currentColor" opacity="0.5"/>
-              <path d="M2.5 16l5-5.5 3.5 3.5 3-3L21.5 16v3.5a3 3 0 0 1-3 3h-13a3 3 0 0 1-3-3V16z" fill="currentColor" opacity="0.2"/>
-              <path d="M2.5 16l5-5.5 3.5 3.5 3-3L21.5 16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            <span class="media-icon-label">Image</span>
-          {/if}
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="3"/>
+            <circle cx="8.5" cy="8.5" r="1.5" fill="currentColor" stroke="none" class="{imageGenerating ? 'media-anim-flash-color' : 'media-icon-pulse-dot'}"/>
+            <path d="M3 16l5-5 3 3 4-4 6 6v2a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3v-2z" fill="currentColor" opacity="0.15" stroke="none"/>
+            <path d="M3 16l5-5 3 3 4-4 6 6"/>
+          </svg>
+          <span class="media-btn-label">{imageGenerating ? '…' : 'Image'}</span>
         </button>
       {/if}
       {#if onGenerateVideoDeepSeek}
         <button
           type="button"
-          class="media-icon-btn {videoGenerating ? 'media-icon-btn-active' : ''}"
+          class="media-btn {videoGenerating ? 'media-btn-active media-btn-video-active' : ''}"
           disabled={$isStreaming || videoGenerating || !text.trim()}
           onclick={handleVideoClick}
           title={videoGenerating ? `Generating video… ${videoGenElapsed}` : 'Generate video (DeepInfra)'}
           aria-label={videoGenerating ? 'Generating video' : 'Generate video'}
         >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="4" width="20" height="16" rx="3"/>
+            <circle cx="5" cy="6" r="1.2" fill="currentColor" stroke="none" opacity="0.5"/>
+            <circle cx="12" cy="6" r="1.2" fill="currentColor" stroke="none" opacity="0.5"/>
+            <circle cx="19" cy="6" r="1.2" fill="currentColor" stroke="none" opacity="0.5"/>
+            <polygon points="9,9 9,17 15,13" fill="currentColor" opacity="0.3" stroke="none"/>
+            <polygon points="9,9 9,17 15,13"/>
+          </svg>
           {#if videoGenerating}
-            <span class="media-icon-generating"><ThinkingAtom size={16} /><span class="media-elapsed-dot" aria-hidden="true"></span><span class="media-elapsed">{videoGenElapsed}</span></span>
-          {:else}
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <rect x="2.5" y="3.5" width="19" height="17" rx="3" stroke="currentColor" stroke-width="1.5"/>
-              <path d="M10 8.5v7l5.5-3.5L10 8.5z" fill="currentColor" opacity="0.35"/>
-              <path d="M10 8.5v7l5.5-3.5L10 8.5z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            <span class="media-icon-label">Video</span>
+            <span class="media-elapsed-dot media-elapsed-dot-lg" aria-hidden="true"></span><span class="media-elapsed">{videoGenElapsed}</span>
           {/if}
+          <span class="media-btn-label">{videoGenerating ? '' : 'Video'}</span>
         </button>
       {/if}
     </div>
@@ -741,24 +739,7 @@
     gap: 4px;
     flex-shrink: 0;
   }
-  .chat-input-bar .media-toolbar-inline .media-icon-btn {
-    width: 40px;
-    height: 40px;
-    min-width: 40px;
-    min-height: 40px;
-    padding: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 6px;
-    background: transparent;
-    color: var(--ui-text-secondary, #6b7280);
-  }
-  .chat-input-bar .media-toolbar-inline .media-icon-btn:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--ui-accent) 10%, transparent);
-    color: var(--ui-accent);
-  }
-  .chat-input-bar .media-toolbar-inline .media-icon-btn .media-icon-label {
+  .chat-input-bar .media-toolbar-inline .media-btn .media-btn-label {
     display: none;
   }
   .chat-input-bar-attach .attach-button-wrap {
@@ -932,61 +913,95 @@
     border-top: 1px solid color-mix(in srgb, var(--ui-border, #e5e7eb) 25%, transparent);
   }
 
-  .media-icon-btn {
+  /* ── Media buttons (Image / Video) ── */
+  .media-btn {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
-    height: 28px;
-    border-radius: 6px;
+    gap: 6px;
+    height: 40px;
+    min-height: 40px;
+    min-width: 52px;
+    border-radius: 10px;
     border: none;
-    background: transparent;
-    color: var(--ui-text-secondary, #6b7280);
+    background: color-mix(in srgb, var(--ui-accent) 10%, transparent);
+    color: var(--ui-accent);
     cursor: pointer;
-    transition: background 120ms, color 120ms;
-    padding: 0 8px;
+    transition: all 0.2s ease;
+    padding: 0 10px;
   }
-
-  .media-icon-btn:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--ui-accent, #3b82f6) 10%, transparent);
-    color: var(--ui-accent, #3b82f6);
+  .media-btn:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--ui-accent) 22%, transparent);
+    color: var(--ui-accent);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--ui-accent) 15%, transparent);
   }
-
-  .media-icon-btn:disabled {
-    opacity: 0.3;
+  .media-btn:active:not(:disabled) {
+    transform: translateY(0) scale(0.97);
+  }
+  .media-btn:disabled {
+    opacity: 0.25;
     cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+  }
+  .media-btn-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
   }
 
-  .media-icon-btn-active:disabled {
+  /* ── Active / generating state ── */
+  .media-btn-active:disabled {
     opacity: 1;
     cursor: default;
+  }
+  .media-btn-image-active:disabled {
     color: var(--ui-accent, #3b82f6);
-    background: color-mix(in srgb, var(--ui-accent, #3b82f6) 12%, transparent);
-    animation: media-btn-generating 1.4s ease-in-out infinite;
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--ui-accent, #3b82f6) 25%, transparent);
+    background: color-mix(in srgb, var(--ui-accent, #3b82f6) 18%, transparent);
+    animation: media-btn-img 1.3s ease-in-out infinite;
   }
-  @keyframes media-btn-generating {
-    0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ui-accent) 20%, transparent); }
-    50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--ui-accent) 10%, transparent); }
+  @keyframes media-btn-img {
+    0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ui-accent) 25%, transparent); }
+    50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--ui-accent) 7%, transparent); }
   }
-
-  .media-icon-label {
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.01em;
+  .media-btn-video-active:disabled {
+    color: var(--ui-accent-hot, #dc2626);
+    background: color-mix(in srgb, var(--ui-accent-hot, #dc2626) 16%, transparent);
+    animation: media-btn-vid 1.0s ease-in-out infinite;
   }
-
-  .media-icon-generating {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
+  @keyframes media-btn-vid {
+    0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ui-accent-hot, #dc2626) 30%, transparent); }
+    50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--ui-accent-hot, #dc2626) 8%, transparent); }
   }
 
-  .media-elapsed {
-    font-size: 10px;
-    font-weight: 600;
-    color: var(--ui-accent, #3b82f6);
-    font-variant-numeric: tabular-nums;
+  /* ── Generating SVG animations ── */
+  .media-anim-flash-color {
+    animation: media-flash-color 0.9s ease-in-out infinite;
   }
+  @keyframes media-flash-color {
+    0%, 100% { opacity: 0.5; transform: scale(1); filter: drop-shadow(0 0 2px #f59e0b); }
+    50% { opacity: 1; transform: scale(1.25); transform-origin: 12px 11px; filter: drop-shadow(0 0 6px #f59e0b); }
+  }
+  .media-anim-blink {
+    animation: media-blink 0.5s step-end infinite;
+  }
+  .media-anim-blink:nth-child(2) { animation-delay: 0.17s; }
+  .media-anim-blink:nth-child(3) { animation-delay: 0.34s; }
+  @keyframes media-blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.1; }
+  }
+
+  /* ── Idle subtle animations ── */
+  .media-icon-pulse-dot {
+    animation: icon-dot-pulse 3s ease-in-out infinite;
+  }
+  @keyframes icon-dot-pulse {
+    0%, 100% { opacity: 0.3; }
+    50% { opacity: 0.7; }
+  }
+
   .media-elapsed-dot {
     width: 6px;
     height: 6px;
@@ -994,6 +1009,10 @@
     background: var(--ui-accent-hot, #dc2626);
     animation: media-elapsed-dot-pulse 1s ease-in-out infinite;
     flex-shrink: 0;
+  }
+  .media-elapsed-dot-lg {
+    width: 9px;
+    height: 9px;
   }
   @keyframes media-elapsed-dot-pulse {
     0%, 100% { opacity: 1; transform: scale(1); }

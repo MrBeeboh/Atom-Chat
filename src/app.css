@@ -501,84 +501,84 @@ html { --metrics-axis: #d4d4d4; --metrics-grid: #e5e5e5; }
   --atom-amber: #b8986b;
 }
 
-/* Obsidian — Dark Mode 2.0 (2026). Deep charcoal + navy depth, no pure black. OLED-friendly. */
-[data-ui-theme="obsidian"] {
-  --ui-bg-main: #16181d;
-  --ui-bg-sidebar: #1c1f26;
-  --ui-accent: #5eead4;
-  --ui-accent-hot: #f472b6;
-  --ui-accent-cool: #2dd4bf;
-  --ui-text-primary: #e2e8f0;
-  --ui-text-secondary: #94a3b8;
-  --ui-border: #2d333b;
-  --ui-sidebar-active: #252930;
-  --ui-sidebar-hover: #2a2e36;
-  --ui-input-bg: #1c1f26;
-  --ui-input-border: #334155;
-  --ui-glow: rgba(94, 234, 212, 0.22);
-  --atom-accent: #5eead4;
-  --atom-accent-light: #99f6e4;
-  --atom-teal: #2dd4bf;
-  --atom-amber: #fcd34d;
+/* Clay — Warm terracotta + coral on earthy creams. Sunset hues, no blue. */
+[data-ui-theme="clay"] {
+  --ui-bg-main: #faf7f4;
+  --ui-bg-sidebar: #f0ebe4;
+  --ui-accent: #c2410c;
+  --ui-accent-hot: #e85d26;
+  --ui-accent-cool: #9a3412;
+  --ui-text-primary: #1c1917;
+  --ui-text-secondary: #57534e;
+  --ui-border: #d6d0c8;
+  --ui-sidebar-active: #e8e0d8;
+  --ui-sidebar-hover: #ded6ce;
+  --ui-input-bg: #ffffff;
+  --ui-input-border: #d6d0c8;
+  --ui-glow: rgba(194, 65, 12, 0.18);
+  --atom-accent: #c2410c;
+  --atom-accent-light: #ea580c;
+  --atom-teal: #d97706;
+  --atom-amber: #ea580c;
 }
-.dark[data-ui-theme="obsidian"] {
-  --ui-bg-main: #0f1114;
-  --ui-bg-sidebar: #15181e;
-  --ui-accent: #67e8f9;
-  --ui-accent-hot: #f9a8d4;
-  --ui-accent-cool: #22d3ee;
-  --ui-text-primary: #f1f5f9;
-  --ui-text-secondary: #94a3b8;
-  --ui-border: #1e293b;
-  --ui-sidebar-active: #1a1f28;
-  --ui-sidebar-hover: #1f242d;
-  --ui-input-bg: #15181e;
-  --ui-input-border: #334155;
-  --ui-glow: rgba(103, 232, 249, 0.25);
-  --atom-accent: #67e8f9;
-  --atom-accent-light: #a5f3fc;
-  --atom-teal: #22d3ee;
-  --atom-amber: #fde047;
+.dark[data-ui-theme="clay"] {
+  --ui-bg-main: #1e1815;
+  --ui-bg-sidebar: #28201c;
+  --ui-accent: #fb923c;
+  --ui-accent-hot: #fdba74;
+  --ui-accent-cool: #f97316;
+  --ui-text-primary: #f5f0eb;
+  --ui-text-secondary: #a89e94;
+  --ui-border: #3d322b;
+  --ui-sidebar-active: #322822;
+  --ui-sidebar-hover: #3a2e28;
+  --ui-input-bg: #28201c;
+  --ui-input-border: #3d322b;
+  --ui-glow: rgba(251, 146, 60, 0.22);
+  --atom-accent: #fb923c;
+  --atom-accent-light: #fdba74;
+  --atom-teal: #fbbf24;
+  --atom-amber: #fdba74;
 }
 
-/* Nova — OpenWebUI inspired: deep navy/charcoal, electric blue accents, techy/terminal feel. */
-[data-ui-theme="nova"] {
-  --ui-bg-main: #0f1117;
-  --ui-bg-sidebar: #0d1021;
-  --ui-accent: #3b82f6;
-  --ui-accent-hot: #2563eb;
-  --ui-accent-cool: #3b82f6;
-  --ui-text-primary: #e8eaf6;
-  --ui-text-secondary: #9ea8d0;
-  --ui-border: #2e3352;
-  --ui-sidebar-active: #21253a;
-  --ui-sidebar-hover: #2a2f47;
-  --ui-input-bg: #1a1d27;
-  --ui-input-border: #2e3352;
-  --ui-glow: rgba(59, 130, 246, 0.22);
-  --atom-accent: #3b82f6;
-  --atom-accent-light: #60a5fa;
-  --atom-teal: #3b82f6;
-  --atom-amber: #60a5fa;
+/* Fern — Deep forest green on warm earth. Pine, moss, bark. No blue. */
+[data-ui-theme="fern"] {
+  --ui-bg-main: #f5f8f4;
+  --ui-bg-sidebar: #eaefe6;
+  --ui-accent: #2d6a4f;
+  --ui-accent-hot: #40916c;
+  --ui-accent-cool: #1b4332;
+  --ui-text-primary: #1a1d1a;
+  --ui-text-secondary: #4a5348;
+  --ui-border: #c5cdbf;
+  --ui-sidebar-active: #dfe6d9;
+  --ui-sidebar-hover: #d5dcd0;
+  --ui-input-bg: #ffffff;
+  --ui-input-border: #c5cdbf;
+  --ui-glow: rgba(45, 106, 79, 0.18);
+  --atom-accent: #2d6a4f;
+  --atom-accent-light: #40916c;
+  --atom-teal: #2d6a4f;
+  --atom-amber: #b7b74a;
 }
-.dark[data-ui-theme="nova"] {
-  --ui-bg-main: #0f1117;
-  --ui-bg-sidebar: #0d1021;
-  --ui-accent: #3b82f6;
-  --ui-accent-hot: #2563eb;
-  --ui-accent-cool: #3b82f6;
-  --ui-text-primary: #e8eaf6;
-  --ui-text-secondary: #9ea8d0;
-  --ui-border: #2e3352;
-  --ui-sidebar-active: #21253a;
-  --ui-sidebar-hover: #2a2f47;
-  --ui-input-bg: #1a1d27;
-  --ui-input-border: #2e3352;
-  --ui-glow: rgba(59, 130, 246, 0.22);
-  --atom-accent: #3b82f6;
-  --atom-accent-light: #60a5fa;
-  --atom-teal: #3b82f6;
-  --atom-amber: #60a5fa;
+.dark[data-ui-theme="fern"] {
+  --ui-bg-main: #121a14;
+  --ui-bg-sidebar: #1a231c;
+  --ui-accent: #74c69d;
+  --ui-accent-hot: #95d5b2;
+  --ui-accent-cool: #52b788;
+  --ui-text-primary: #e8f0e9;
+  --ui-text-secondary: #8fa391;
+  --ui-border: #2d392f;
+  --ui-sidebar-active: #1f2a22;
+  --ui-sidebar-hover: #253227;
+  --ui-input-bg: #1a231c;
+  --ui-input-border: #2d392f;
+  --ui-glow: rgba(116, 198, 157, 0.2);
+  --atom-accent: #74c69d;
+  --atom-accent-light: #95d5b2;
+  --atom-teal: #52b788;
+  --atom-amber: #d9d96b;
 }
 
 /* Studio — ChatGPT inspired: pure white / near-white light, soft gray sidebar, dark send, professional. */

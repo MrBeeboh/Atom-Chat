@@ -14,10 +14,10 @@
   type="button"
   class="ui-theme-btn rounded-lg px-2 text-xs font-semibold cursor-pointer border transition-colors focus:outline-none focus:ring-1 truncate inline-flex items-center gap-1.5 {compact ? 'py-1.5' : 'py-2'}"
   style="background: var(--ui-input-bg); color: var(--ui-text-primary); border-color: var(--ui-border); min-width: {compact ? '6rem' : '8rem'}; letter-spacing: 0.02em; text-transform: none;"
-  title="UI palette (Forge, Nova, Studio…)"
+  title="UI palette (Clay, Fern, Studio…)"
   aria-label="UI palette — color theme for the app chrome"
   onclick={() => (pickerOpen = true)}>
-  <span class="ui-theme-swatch" style="background: {currentLabel === 'Forge' ? '#f59e0b' : currentLabel === 'Sage' ? '#6b7280' : currentLabel === 'Obsidian' ? '#1e293b' : currentLabel === 'Nova' ? '#3b82f6' : '#10a37f'};"></span>
+  <span class="ui-theme-swatch" style="background: {currentLabel === 'Clay' ? '#c2410c' : currentLabel === 'Fern' ? '#2d6a4f' : currentLabel === 'Sage' ? '#6b7c5a' : '#10a37f'};"></span>
   {currentLabel}
 </button>
 
