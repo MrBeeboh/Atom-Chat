@@ -14,7 +14,7 @@ That's it. Pick a model, start a chat.
 ## What you need
 
 - **Node.js 18+** — [nodejs.org](https://nodejs.org)
-- **llama.cpp** (recommended on Intel Arc) — `llama-server` on `localhost:8080`
+- **llama.cpp** — `llama-server` on `localhost:8080` (default in Settings). **Intel Arc / Intel GPU:** use a [SYCL-enabled build](https://github.com/ggml-org/llama.cpp/blob/master/docs/backend/SYCL.md) (`GGML_SYCL`); the UI only talks HTTP and does not pick the GPU backend. `./scripts/start-atom.sh` prefers `llama-server-sycl` on your `PATH`, or set `LLAMA_SERVER_BIN`.
 - Any OpenAI-compatible server (LM Studio, Ollama, etc.) also works if you change the URL in Settings.
 
 Optional: Python 3 for voice input, hardware metrics, and model unloading helpers.

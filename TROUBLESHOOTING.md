@@ -7,22 +7,30 @@ Quick checks when something stops working (e.g. after fixing voice or internet).
 If the model dropdown is empty or says "Cannot connect":
 
 1. **Start your backend first**  
-   - **llama.cpp (recommended on Intel Arc)**: `llama-server -m model.gguf --port 8080 --n-gpu-layers 99`
-   - **LM Studio**: Open LM Studio and enable the local server (port 1234).
+   - **llama.cpp (Intel Arc / Intel GPU)**: use a **SYCL** build (`-DGGML_SYCL=ON` per [llama.cpp SYCL docs](https://github.com/ggml-org/llama.cpp/blob/master/docs/backend/SYCL.md)), then e.g.  
+     `source /opt/intel/oneapi/setvars.sh` (Linux) and  
+     `llama-server -m /path/to/model.gguf --port 8080 --n-gpu-layers 99`  
+     A generic `llama-server` from a CUDA-only build will **not** use your Arc GPU; tokens/sec will stay low.  
+   - **`./scripts/start-atom.sh`** picks `llama-server-sycl` if it is on your `PATH`, otherwise `llama-server`. Override with **`LLAMA_SERVER_BIN=/full/path/to/llama-server`**.  
+   - **LM Studio**: enable the local server (often port 1234) and point ATOM there if you prefer.
 
-   The app does *not* start the model server for you. `./scripts/start-atom.sh` only starts the voice server, search proxy, and UI.
+   The UI does not choose CUDA vs SYCL; only the **binary and environment** you run matter. ATOM just sends HTTP to **Settings → Backend URL** (default `http://localhost:8080`).
 
-2. **Settings → Backend URL**  
+2. **Verify GPU path (SYCL)**  
+   - Watch **`llama-server.log`** after starting from our script (first lines often show backend / device).  
+   - Ensure **oneAPI** / Level Zero drivers match your GPU (Arc Pro B-series needs a current stack).  
+   - If something is already listening on 8080, ATOM reuses it: that process might be an **old CPU-only** server — stop it and start your SYCL `llama-server` first.
+
+3. **Settings → Backend URL**  
    - **Leave empty** → uses `localhost:8080` (llama.cpp).  
    - Change to `http://localhost:1234` for LM Studio.  
-   - The URL must point to an **OpenAI-compatible** API (port 8080 or 1234), **not** the voice server (8765) or search proxy (5174).  
-   - If this was set to the wrong URL during other fixes, clear it or set it to `http://localhost:1234`.
+   - The URL must point to an **OpenAI-compatible** API (8080 or 1234), **not** the voice server (8765) or search proxy (5174).
 
-3. **CORS**  
+4. **CORS**  
    If you use a custom URL (e.g. another machine), enable CORS in LM Studio → Developer → Server Settings.
 
-4. **Fallback**  
-   The app now retries the default base (localhost:1234 or dev proxy) if the stored URL fails. So if the list still doesn’t load, LM Studio is likely not running or not on port 1234.
+5. **Still no models**  
+   If the list still does not load, the server at that URL is likely down or not OpenAI-compatible.
 
 ## Voice (mic) not working
 
