@@ -3,6 +3,8 @@
   import { backOut, quintOut } from 'svelte/easing';
   import { globalDefault, updateGlobalDefault, selectedModelId, models, presetDefaultModels, lmStudioBaseUrl, voiceServerUrl, lmStudioUnloadHelperUrl, deepSeekApiKey, grokApiKey, cerebrasApiKey, togetherApiKey, deepinfraApiKey, braveApiKey } from '$lib/stores.js';
   import { syncBraveKeyToProxy } from '$lib/duckduckgo.js';
+  import { modelSelectorPrimaryLine } from '$lib/api.js';
+  import { groupModelsForSelector } from '$lib/modelGroups.js';
 
   let { onclose } = $props();
 
@@ -162,8 +164,12 @@
                 <span class="text-xs min-w-[4rem]" style="color: var(--ui-text-secondary);">{p.name}:</span>
                 <select class="text-xs rounded-lg px-2 py-1 min-w-[140px]" style="border: 1px solid var(--ui-border); background-color: var(--ui-input-bg); color: var(--ui-text-primary);" value={$presetDefaultModels[p.name] ?? ''} onchange={(e) => setPresetDefaultModel(p.name, e.currentTarget.value || null)} aria-label="Default model for {p.name}">
                   <option value="">None</option>
-                  {#each $models as m}
-                    <option value={m.id}>{m.id}</option>
+                  {#each groupModelsForSelector($models) as g}
+                    <optgroup label={g.title}>
+                      {#each g.items as m (m.id)}
+                        <option value={m.id}>{modelSelectorPrimaryLine(m.id)}</option>
+                      {/each}
+                    </optgroup>
                   {/each}
                 </select>
               </div>

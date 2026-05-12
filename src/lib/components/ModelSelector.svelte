@@ -1,24 +1,19 @@
 <script>
   import { tick } from 'svelte';
-  import { models, selectedModelId, presetDefaultModels, lmStudioBaseUrl, modelSelectionNotification } from '$lib/stores.js';
+  import { models, selectedModelId, lmStudioBaseUrl, modelSelectionNotification } from '$lib/stores.js';
   import { getModels, modelDisplayName, getModelTypeTag } from '$lib/api.js';
   import { getModelIcon, getQuantization, ensureModelIcons, modelIconOverrides } from '$lib/modelIcons.js';
   import { findSmallestModel } from '$lib/utils/modelSelection.js';
   import ModelCapabilityBadges from '$lib/components/ModelCapabilityBadges.svelte';
+  import ModelDropdownGroupedList from '$lib/components/ModelDropdownGroupedList.svelte';
   import ThinkingAtom from '$lib/components/ThinkingAtom.svelte';
   import { COCKPIT_LOADING_MODELS, pickWitty } from '$lib/cockpitCopy.js';
 
   let open = $state(false);
   let loading = $state(false);
   let triggerEl = $state(null);
-  let searchEl = $state(null);
-  let searchQuery = $state('');
   let dropdownPlace = $state({ top: 0, left: 0, bottom: 0, width: 200, maxHeight: 420, openUp: false });
   let loadingMessage = $state('');
-
-  const filteredModels = $derived(
-    searchQuery ? $models.filter((m) => modelDisplayName(m.id).toLowerCase().includes(searchQuery.toLowerCase())) : $models,
-  );
 
   $effect(() => {
     if (loading) loadingMessage = pickWitty(COCKPIT_LOADING_MODELS);
@@ -37,7 +32,7 @@
         top: r.bottom + 4,
         bottom: window.innerHeight - r.top + 4,
         left: r.left,
-        width: Math.max(r.width, 280),
+        width: Math.max(r.width, 340),
         maxHeight: Math.max(120, maxHeight),
         openUp,
       };
@@ -45,13 +40,6 @@
     tick().then(update);
     const id = requestAnimationFrame(update);
     return () => cancelAnimationFrame(id);
-  });
-
-  $effect(() => {
-    if (open) {
-      searchQuery = '';
-      tick().then(() => searchEl?.focus());
-    }
   });
 
   async function applyDefaultsForModel(_modelId) {
@@ -118,14 +106,6 @@
     if (willOpen) load();
   }
 
-  function onSearchKeydown(e) {
-    if (e.key === 'Escape') { open = false; return; }
-    if (e.key === 'ArrowDown' || e.key === 'Enter') {
-      e.preventDefault();
-      const first = document.querySelector('#model-listbox .model-row');
-      first?.focus();
-    }
-  }
 </script>
 
 <div class="flex flex-col gap-1 min-w-0">
@@ -155,7 +135,7 @@
   {#if open}
     <div
       id="model-listbox"
-      class="fixed z-[100] rounded-xl shadow-lg py-1 overflow-y-auto overflow-x-visible min-w-[280px]"
+      class="fixed z-[100] rounded-xl shadow-lg py-0 overflow-y-auto overflow-x-visible min-w-[320px]"
       style="border: 1px solid var(--ui-border); background-color: var(--ui-bg-main); left: {dropdownPlace.left}px; width: {dropdownPlace.width}px; max-height: {dropdownPlace.maxHeight}px; {dropdownPlace.openUp ? 'bottom: ' + dropdownPlace.bottom + 'px; top: auto;' : 'top: ' + dropdownPlace.top + 'px;'}"
       role="listbox">
       {#if loading}
@@ -169,42 +149,15 @@
           <button class="underline text-left" onclick={() => { window.open('https://github.com/anomalyco/atom-chat#quick-start'); }}>Launch local server</button>
         </div>
       {:else}
-        <div class="px-3 py-2 border-b" style="border-color: var(--ui-border);">
-          <input
-            bind:this={searchEl}
-            type="text"
-            placeholder="Search models…"
-            bind:value={searchQuery}
-            onkeydown={onSearchKeydown}
-            class="w-full rounded-lg px-3 py-1.5 text-sm outline-none"
-            style="background: color-mix(in srgb, var(--ui-border) 30%, transparent); color: var(--ui-text-primary);"
-            aria-label="Search models"
-          />
-        </div>
-        {#if filteredModels.length === 0}
-          <div class="px-4 py-3 text-sm" style="color: var(--ui-text-secondary);">No models match "{searchQuery}"</div>
-        {:else}
-        {#each filteredModels as m}
-        {@const icon = getModelIcon(m.id, $modelIconOverrides)}
-        <button
-          type="button"
-          class="model-row flex items-center gap-2 w-full px-4 py-2.5 text-left text-sm transition-colors {m.id === $selectedModelId ? 'model-row-selected' : ''}"
-          role="option"
-          aria-selected={m.id === $selectedModelId}
-          onclick={() => select(m.id)}>
-          <img src={icon} alt="" class="w-5 h-5 shrink-0 rounded object-contain" onerror={(e) => (e.currentTarget.style.display = 'none')} />
-          <span class="min-w-0 flex-1 flex items-center gap-1.5">
-            <span class="truncate">{modelDisplayName(m.id)}</span>
-            <span class="model-row-actions shrink-0 flex items-center gap-1.5">
-              {#if getModelTypeTag(m.id)}
-                <span class="text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded" style="background: color-mix(in srgb, var(--ui-accent) 12%, transparent); color: var(--ui-accent);">{getModelTypeTag(m.id)}</span>
-              {/if}
-              <ModelCapabilityBadges modelId={m.id} />
-            </span>
-          </span>
-        </button>
-      {/each}
-      {/if}
+        <ModelDropdownGroupedList
+          models={$models}
+          selectedId={$selectedModelId}
+          onSelect={select}
+          listboxId="model-listbox"
+          panelOpen={open}
+          enableSearch={true}
+          showTypeTags={true}
+        />
     {/if}
     </div>
     <button
@@ -225,19 +178,3 @@
   {/if}
 </div>
 
-<style>
-  .model-row-actions {
-    opacity: 0;
-    transition: opacity 0.15s ease;
-  }
-  .model-row:hover .model-row-actions {
-    opacity: 1;
-  }
-  .model-row:hover {
-    background-color: color-mix(in srgb, var(--ui-border) 35%, transparent);
-  }
-  .model-row.model-row-selected {
-    background-color: color-mix(in srgb, var(--ui-border) 22%, transparent);
-    font-weight: 500;
-  }
-</style>

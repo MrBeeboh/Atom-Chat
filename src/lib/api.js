@@ -230,6 +230,31 @@ export function modelDisplayName(id) {
   return `${label}: ${id.slice(i + 1)}`;
 }
 
+/** Compact primary line in grouped model lists (provider shown in section header). */
+export function modelSelectorPrimaryLine(id) {
+  if (!id || typeof id !== 'string') return '';
+  const i = id.indexOf(':');
+  if (i > 0) {
+    const rest = id.slice(i + 1).trim();
+    return rest || id;
+  }
+  if (id.endsWith('.gguf') && (id.startsWith('/') || /^[A-Za-z]:[\\/]/.test(id))) {
+    return id.replace(/\\/g, '/').split('/').pop() || id;
+  }
+  return id;
+}
+
+/** Optional subtitle (folder path for disk models). */
+export function modelSelectorSecondaryLine(id) {
+  if (!id || typeof id !== 'string') return null;
+  if (id.indexOf(':') > 0) return null;
+  if (!(id.endsWith('.gguf') && (id.startsWith('/') || /^[A-Za-z]:[\\/]/.test(id)))) return null;
+  const norm = id.replace(/\\/g, '/');
+  const base = norm.split('/').pop();
+  if (!base || norm.length <= base.length) return null;
+  return norm.slice(0, norm.length - base.length - 1) || null;
+}
+
 /** Get base URL and headers for a given model id. Local models use LM Studio; "provider:modelId" use cloud. */
 function getBaseAndAuth(modelId) {
   if (!modelId || typeof modelId !== 'string') return { base: getLmStudioBase(), headers: {} };

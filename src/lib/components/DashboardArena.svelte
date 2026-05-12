@@ -54,7 +54,9 @@
     unloadAllLoadedModels,
     unloadAllModelsNative,
     getLoadedModelKeys,
+    modelSelectorPrimaryLine,
   } from "$lib/api.js";
+  import { groupModelsForSelector } from "$lib/modelGroups.js";
   import {
     searchDuckDuckGo,
     formatSearchResultForChat,
@@ -2456,11 +2458,15 @@
             }}
           >
             <option value="__auto__">Auto (largest non-contestant)</option>
-            {#each $models.filter((m) => {
+            {#each groupModelsForSelector($models.filter((m) => {
               const cIds = [$dashboardModelA, $dashboardModelB, $dashboardModelC, $dashboardModelD].map((s) => (s || "").trim().toLowerCase()).filter(Boolean);
               return !cIds.includes((m.id || "").trim().toLowerCase());
-            }) as m (m.id)}
-              <option value={m.id}>{m.id}</option>
+            })) as g}
+              <optgroup label={g.title}>
+                {#each g.items as m (m.id)}
+                  <option value={m.id}>{modelSelectorPrimaryLine(m.id)}</option>
+                {/each}
+              </optgroup>
             {/each}
           </select>
         </section>
