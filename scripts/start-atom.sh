@@ -6,6 +6,20 @@ set -e
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
+# Intel oneAPI on PATH (SYCL runtime). Same shell is inherited by llama-server below.
+if [ -z "${ATOM_SKIP_ONEAPI:-}" ] && [ -z "${ONEAPI_ROOT:-}" ]; then
+  for _setvars in /opt/intel/oneapi/setvars.sh "$HOME/intel/oneapi/setvars.sh"; do
+    if [ -f "$_setvars" ]; then
+      echo "[ATOM] oneAPI: sourcing ${_setvars}"
+      set +e
+      # shellcheck source=/dev/null
+      . "$_setvars" >/dev/null 2>&1
+      set -e
+      break
+    fi
+  done
+fi
+
 # Intel Arc / Data Center GPU: use a llama.cpp build with SYCL (GGML_SYCL), not a CUDA-only binary.
 # Set LLAMA_SERVER_BIN to the full path of your SYCL llama-server if it is not first on PATH.
 resolve_llama_server() {
