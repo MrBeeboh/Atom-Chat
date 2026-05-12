@@ -8,6 +8,40 @@ import { writable, derived, get } from 'svelte/store';
 import { detectHardware } from '$lib/hardware.js';
 import { getRecommendedSettingsForModel } from '$lib/modelDefaults.js';
 
+/**
+ * Read optional secrets from `.env.local` (Vite `VITE_*`). Gitignored; keeps keys in your project folder.
+ * Used only when localStorage has no value for that key yet (new browser profile or different port).
+ * Uses static `import.meta.env.*` so Vite inlines values at build time.
+ */
+function readViteEnv(key) {
+  const map = {
+    VITE_LM_STUDIO_BASE_URL: import.meta.env.VITE_LM_STUDIO_BASE_URL,
+    VITE_DEEPSEEK_API_KEY: import.meta.env.VITE_DEEPSEEK_API_KEY,
+    VITE_GROK_API_KEY: import.meta.env.VITE_GROK_API_KEY,
+    VITE_TOGETHER_API_KEY: import.meta.env.VITE_TOGETHER_API_KEY,
+    VITE_DEEPINFRA_API_KEY: import.meta.env.VITE_DEEPINFRA_API_KEY,
+    VITE_BRAVE_API_KEY: import.meta.env.VITE_BRAVE_API_KEY,
+    VITE_CEREBRAS_API_KEY: import.meta.env.VITE_CEREBRAS_API_KEY,
+    VITE_TOGETHER_IMAGE_ENDPOINT: import.meta.env.VITE_TOGETHER_IMAGE_ENDPOINT,
+  };
+  const v = map[key];
+  return typeof v === 'string' ? v.trim() : '';
+}
+
+function apiKeyFromStorageOrEnv(storageKey, envName) {
+  if (typeof localStorage !== 'undefined') {
+    const fromLs = (localStorage.getItem(storageKey) ?? '').trim();
+    if (fromLs) return fromLs;
+  }
+  return readViteEnv(envName);
+}
+
+/** Persist API key to localStorage; skip null/undefined so a bad bind cannot wipe stored keys. */
+function persistApiKey(storageKey, v) {
+  if (typeof localStorage === 'undefined' || typeof v !== 'string') return;
+  localStorage.setItem(storageKey, v.trim());
+}
+
 /** Currently selected conversation id or null */
 export const activeConversationId = writable(null);
 
@@ -103,10 +137,19 @@ function getInitialUiTheme() {
 export const uiTheme = writable(getInitialUiTheme());
 
 /** LM Studio server base URL (e.g. http://localhost:1234 or http://10.0.0.51:1234). Empty = use default. */
-const getStoredLmStudioUrl = () => (typeof localStorage !== 'undefined' ? localStorage.getItem('lmStudioBaseUrl') : null) || '';
+const getStoredLmStudioUrl = () => {
+  if (typeof localStorage !== 'undefined') {
+    const u = (localStorage.getItem('lmStudioBaseUrl') ?? '').trim();
+    if (u) return u;
+  }
+  return readViteEnv('VITE_LM_STUDIO_BASE_URL');
+};
 export const lmStudioBaseUrl = writable(getStoredLmStudioUrl());
 if (typeof localStorage !== 'undefined') {
-  lmStudioBaseUrl.subscribe((v) => localStorage.setItem('lmStudioBaseUrl', v ?? ''));
+  lmStudioBaseUrl.subscribe((v) => {
+    if (typeof v !== 'string') return;
+    localStorage.setItem('lmStudioBaseUrl', v);
+  });
 }
 
 /** Voice-to-text server URL (e.g. http://localhost:8765). Empty = voice mic disabled. */
@@ -124,52 +167,58 @@ if (typeof localStorage !== 'undefined') {
 }
 
 /** DeepSeek API key (optional). When set, DeepSeek models appear in the model list and can be used for chat. Stored trimmed to avoid copy-paste spaces. */
-const getStoredDeepSeekApiKey = () => (typeof localStorage !== 'undefined' ? (localStorage.getItem('deepSeekApiKey') ?? '').trim() : null) ?? '';
+const getStoredDeepSeekApiKey = () => apiKeyFromStorageOrEnv('deepSeekApiKey', 'VITE_DEEPSEEK_API_KEY');
 export const deepSeekApiKey = writable(getStoredDeepSeekApiKey());
 if (typeof localStorage !== 'undefined') {
-  deepSeekApiKey.subscribe((v) => localStorage.setItem('deepSeekApiKey', (typeof v === 'string' ? v : '').trim()));
+  deepSeekApiKey.subscribe((v) => persistApiKey('deepSeekApiKey', v));
 }
 
 /** Grok (xAI) API key (optional). When set, Grok models appear in the model list and can be used for chat. Stored trimmed to avoid copy-paste spaces. */
-const getStoredGrokApiKey = () => (typeof localStorage !== 'undefined' ? (localStorage.getItem('grokApiKey') ?? '').trim() : null) ?? '';
+const getStoredGrokApiKey = () => apiKeyFromStorageOrEnv('grokApiKey', 'VITE_GROK_API_KEY');
 export const grokApiKey = writable(getStoredGrokApiKey());
 if (typeof localStorage !== 'undefined') {
-  grokApiKey.subscribe((v) => localStorage.setItem('grokApiKey', (typeof v === 'string' ? v : '').trim()));
+  grokApiKey.subscribe((v) => persistApiKey('grokApiKey', v));
 }
 
 /** Together AI API key: used only for image generation when DeepSeek is selected (DeepSeek has no native image API). Separate endpoint from Grok. */
-const getStoredTogetherApiKey = () => (typeof localStorage !== 'undefined' ? (localStorage.getItem('togetherApiKey') ?? '').trim() : null) ?? '';
+const getStoredTogetherApiKey = () => apiKeyFromStorageOrEnv('togetherApiKey', 'VITE_TOGETHER_API_KEY');
 export const togetherApiKey = writable(getStoredTogetherApiKey());
 if (typeof localStorage !== 'undefined') {
-  togetherApiKey.subscribe((v) => localStorage.setItem('togetherApiKey', (typeof v === 'string' ? v : '').trim()));
+  togetherApiKey.subscribe((v) => persistApiKey('togetherApiKey', v));
 }
 
 /** DeepInfra API key: image + video generation when DeepSeek is selected. Single key for both. */
-const getStoredDeepinfraApiKey = () => (typeof localStorage !== 'undefined' ? (localStorage.getItem('deepinfraApiKey') ?? '').trim() : null) ?? '';
+const getStoredDeepinfraApiKey = () => apiKeyFromStorageOrEnv('deepinfraApiKey', 'VITE_DEEPINFRA_API_KEY');
 export const deepinfraApiKey = writable(getStoredDeepinfraApiKey());
 if (typeof localStorage !== 'undefined') {
-  deepinfraApiKey.subscribe((v) => localStorage.setItem('deepinfraApiKey', (typeof v === 'string' ? v : '').trim()));
+  deepinfraApiKey.subscribe((v) => persistApiKey('deepinfraApiKey', v));
 }
 
 /** Brave Search API key: web search (globe). Stored in browser, sent to search proxy. */
-const getStoredBraveApiKey = () => (typeof localStorage !== 'undefined' ? (localStorage.getItem('braveApiKey') ?? '').trim() : null) ?? '';
+const getStoredBraveApiKey = () => apiKeyFromStorageOrEnv('braveApiKey', 'VITE_BRAVE_API_KEY');
 export const braveApiKey = writable(getStoredBraveApiKey());
 if (typeof localStorage !== 'undefined') {
-  braveApiKey.subscribe((v) => localStorage.setItem('braveApiKey', (typeof v === 'string' ? v : '').trim()));
+  braveApiKey.subscribe((v) => persistApiKey('braveApiKey', v));
 }
 
 /** Cerebras API key (optional). When set, Cerebras models appear in the model list and can be used for chat. Stored trimmed to avoid copy-paste spaces. */
-const getStoredCerebrasApiKey = () => (typeof localStorage !== 'undefined' ? (localStorage.getItem('cerebrasApiKey') ?? '').trim() : null) ?? '';
+const getStoredCerebrasApiKey = () => apiKeyFromStorageOrEnv('cerebrasApiKey', 'VITE_CEREBRAS_API_KEY');
 export const cerebrasApiKey = writable(getStoredCerebrasApiKey());
 if (typeof localStorage !== 'undefined') {
-  cerebrasApiKey.subscribe((v) => localStorage.setItem('cerebrasApiKey', (typeof v === 'string' ? v : '').trim()));
+  cerebrasApiKey.subscribe((v) => persistApiKey('cerebrasApiKey', v));
 }
 
 /** Together image endpoint name: required for FLUX.1-schnell-Free (create dedicated endpoint at api.together.ai, then paste the endpoint name here). */
-const getStoredTogetherImageEndpoint = () => (typeof localStorage !== 'undefined' ? (localStorage.getItem('togetherImageEndpoint') ?? '').trim() : null) ?? '';
+const getStoredTogetherImageEndpoint = () => {
+  if (typeof localStorage !== 'undefined') {
+    const e = (localStorage.getItem('togetherImageEndpoint') ?? '').trim();
+    if (e) return e;
+  }
+  return readViteEnv('VITE_TOGETHER_IMAGE_ENDPOINT');
+};
 export const togetherImageEndpoint = writable(getStoredTogetherImageEndpoint());
 if (typeof localStorage !== 'undefined') {
-  togetherImageEndpoint.subscribe((v) => localStorage.setItem('togetherImageEndpoint', (typeof v === 'string' ? v : '').trim()));
+  togetherImageEndpoint.subscribe((v) => persistApiKey('togetherImageEndpoint', v));
 }
 
 /** True when at least one cloud API key (DeepSeek, Grok, or Cerebras) is set. Used for status line when LM Studio is down. */

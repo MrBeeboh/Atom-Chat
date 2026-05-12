@@ -11,6 +11,26 @@
 // LM Studio still works if you change the URL in Settings → Connection.
 const DEFAULT_BASE = typeof import.meta !== 'undefined' && import.meta.env?.DEV ? '/api/llama' : 'http://localhost:8080';
 
+function viteEnvStr(key) {
+  const map = {
+    VITE_LM_STUDIO_BASE_URL: import.meta.env.VITE_LM_STUDIO_BASE_URL,
+    VITE_DEEPSEEK_API_KEY: import.meta.env.VITE_DEEPSEEK_API_KEY,
+    VITE_GROK_API_KEY: import.meta.env.VITE_GROK_API_KEY,
+    VITE_CEREBRAS_API_KEY: import.meta.env.VITE_CEREBRAS_API_KEY,
+    VITE_DEEPINFRA_API_KEY: import.meta.env.VITE_DEEPINFRA_API_KEY,
+  };
+  const v = map[key];
+  return typeof v === 'string' ? v.trim() : '';
+}
+
+function localStorageOrVite(storageKey, viteName) {
+  if (typeof localStorage !== 'undefined') {
+    const fromLs = (localStorage.getItem(storageKey) ?? '').trim();
+    if (fromLs) return fromLs;
+  }
+  return viteEnvStr(viteName);
+}
+
 let lastResolvedLmBase = '';
 /** True when GET /api/v1/models succeeds (LM Studio–style management). llama-server returns 404. */
 let lmsRestModelsListSupported = null;
@@ -25,6 +45,8 @@ function getLmStudioBase() {
       : (() => {
           const v = localStorage.getItem('lmStudioBaseUrl');
           if (v != null && String(v).trim() !== '') return String(v).trim().replace(/\/$/, '');
+          const fromEnv = viteEnvStr('VITE_LM_STUDIO_BASE_URL');
+          if (fromEnv) return fromEnv.replace(/\/$/, '');
           return DEFAULT_BASE;
         })();
   if (resolved !== lastResolvedLmBase) {
@@ -108,21 +130,21 @@ const CLOUD_PROVIDERS = {
     baseUrl: 'https://api.deepseek.com',
     /** No /v1 in base; we append /v1/chat/completions */
     models: ['deepseek-chat', 'deepseek-reasoner'],
-    getKey: () => (typeof localStorage !== 'undefined' ? localStorage.getItem('deepSeekApiKey') : null) ?? '',
+    getKey: () => localStorageOrVite('deepSeekApiKey', 'VITE_DEEPSEEK_API_KEY'),
   },
   grok: {
     name: 'Grok',
     baseUrl: 'https://api.x.ai/v1',
     /** xAI base already has /v1; chat path is /chat/completions */
     models: ['grok-3-mini', 'grok-3', 'grok-4', 'grok-4-1-fast-reasoning', 'grok-4-1-fast-non-reasoning', 'grok-4-fast-reasoning', 'grok-4-latest', 'grok-4.3'],
-    getKey: () => (typeof localStorage !== 'undefined' ? localStorage.getItem('grokApiKey') : null) ?? '',
+    getKey: () => localStorageOrVite('grokApiKey', 'VITE_GROK_API_KEY'),
   },
   cerebras: {
     name: 'Cerebras',
     baseUrl: 'https://api.cerebras.ai/v1',
     /** base already has /v1; chat path is /chat/completions */
     models: ['llama3.1-8b', 'llama3.1-70b', 'llama-3.3-70b', 'llama-4-scout-17b-16e-instruct', 'qwen-3-32b', 'deepseek-r1-distill-llama-70b'],
-    getKey: () => (typeof localStorage !== 'undefined' ? localStorage.getItem('cerebrasApiKey') : null) ?? '',
+    getKey: () => localStorageOrVite('cerebrasApiKey', 'VITE_CEREBRAS_API_KEY'),
   },
   deepinfra: {
     name: 'DeepInfra',
@@ -145,7 +167,7 @@ const CLOUD_PROVIDERS = {
       'google/gemma-2-27b-it',
       'google/gemma-2-9b-it',
     ],
-    getKey: () => (typeof localStorage !== 'undefined' ? localStorage.getItem('deepinfraApiKey') : null) ?? '',
+    getKey: () => localStorageOrVite('deepinfraApiKey', 'VITE_DEEPINFRA_API_KEY'),
   },
 };
 
@@ -715,7 +737,7 @@ function parseGrokResponseOutput(data) {
  * @returns {Promise<{ data: Array<{ url?: string, b64_json?: string }> }>}
  */
 export async function requestGrokImageGeneration({ prompt, n = 1, aspect_ratio = '1:1', resolution = '1k', response_format = 'url', apiKey, modelId }) {
-  const key = (apiKey || '').trim() || (typeof localStorage !== 'undefined' ? localStorage.getItem('grokApiKey') : null)?.trim() || '';
+  const key = (apiKey || '').trim() || localStorageOrVite('grokApiKey', 'VITE_GROK_API_KEY');
   if (!key) throw new Error('Grok API key required. Add it in Settings → Cloud APIs.');
   const body = {
     model: modelId || 'grok-imagine-image',
