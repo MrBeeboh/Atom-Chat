@@ -49,34 +49,63 @@ if ! echo "${LLAMA_BIN}" | grep -qi sycl; then
   echo "[ATOM] Tip: On Intel Arc, use a SYCL-enabled llama.cpp build for GPU speed (see TROUBLESHOOTING.md). Set LLAMA_SERVER_BIN if needed."
 fi
 
+# Pick smallest .gguf under these trees (loads faster; avoids auto-picking a 30B+ first from sort order).
+pick_smallest_gguf() {
+    local line
+    line="$(
+        for _dir in "$HOME/.lmstudio/models" "$HOME/models" "$HOME/.cache/llama.cpp" "$HOME/Downloads"; do
+            [ -d "$_dir" ] || continue
+            find "$_dir" -maxdepth 5 -name '*.gguf' -type f -printf '%s\t%p\n' 2>/dev/null
+        done | sort -n | head -1
+    )"
+    if [ -n "$line" ]; then
+        printf '%s' "$line" | cut -f2-
+    fi
+}
+
+llama_ready() {
+    curl -sS --max-time 3 http://127.0.0.1:8080/v1/models >/dev/null 2>&1
+}
+
 # Check if llama-server is already running on 8080
-if curl -s --max-time 2 http://localhost:8080/v1/models > /dev/null 2>&1; then
+if llama_ready; then
     echo "[ATOM] llama-server already running on port 8080"
 else
     echo "[ATOM] Starting llama-server..."
-    
-    # Try to find a model
-    MODEL=""
-    for dir in "$HOME/.lmstudio/models" "$HOME/models" "$HOME/.cache/llama.cpp" "$HOME/Downloads"; do
-        if [ -d "$dir" ]; then
-            MODEL=$(find "$dir" -maxdepth 4 -name "*.gguf" 2>/dev/null | head -1)
-            [ -n "$MODEL" ] && break
-        fi
-    done
+
+    MODEL="$(pick_smallest_gguf)"
 
     if [ -n "$MODEL" ] && [ -f "$MODEL" ]; then
-        echo "[ATOM] Using model: $MODEL"
-        nohup "$LLAMA_BIN" -m "$MODEL" --port 8080 --n-gpu-layers 99 --host 0.0.0.0 >> llama-server.log 2>&1 &
+        echo "[ATOM] Using model (smallest GGUF found): $MODEL"
+        : >>"$ROOT/llama-server.log"
+        nohup "$LLAMA_BIN" -m "$MODEL" --port 8080 --n-gpu-layers 99 --host 0.0.0.0 >>"$ROOT/llama-server.log" 2>&1 &
+        LLAMA_PID=$!
         disown || true
-        
-        # Wait for server
-        for i in {1..30}; do
-            if curl -s --max-time 1 http://localhost:8080/v1/models > /dev/null 2>&1; then
-                echo "[ATOM] llama-server ready"
+
+        # Large models can take several minutes before /v1/models responds.
+        LM_WAIT_ATTEMPTS="${LM_WAIT_ATTEMPTS:-180}"
+        LM_WAIT_SLEEP="${LM_WAIT_SLEEP:-2}"
+        echo "[ATOM] Waiting up to $((LM_WAIT_ATTEMPTS * LM_WAIT_SLEEP))s for http://127.0.0.1:8080/v1/models ..."
+        llama_ok=0
+        for ((i = 1; i <= LM_WAIT_ATTEMPTS; i++)); do
+            if ! kill -0 "$LLAMA_PID" 2>/dev/null; then
+                echo "[ATOM] ERROR: llama-server process exited (PID $LLAMA_PID). Last lines of llama-server.log:"
+                tail -n 60 "$ROOT/llama-server.log" 2>/dev/null || true
                 break
             fi
-            sleep 1
+            if llama_ready; then
+                echo "[ATOM] llama-server ready (${i}x${LM_WAIT_SLEEP}s)"
+                llama_ok=1
+                break
+            fi
+            sleep "$LM_WAIT_SLEEP"
         done
+        if [ "$llama_ok" != 1 ]; then
+            if kill -0 "$LLAMA_PID" 2>/dev/null; then
+                echo "[ATOM] WARNING: llama-server still loading or stuck — UI will start but proxy to :8080 may fail until /v1/models works."
+                echo "[ATOM] Try a smaller GGUF, set LLAMA_SERVER_BIN to your SYCL build, or start llama-server manually and re-run."
+            fi
+        fi
     else
         echo "[ATOM] No .gguf model found under ~/.lmstudio/models, ~/models, etc."
     fi
