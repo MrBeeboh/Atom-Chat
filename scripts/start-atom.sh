@@ -64,7 +64,8 @@ pick_smallest_gguf() {
 }
 
 llama_ready() {
-    curl -sS --max-time 3 http://127.0.0.1:8080/v1/models >/dev/null 2>&1
+    curl -sS --max-time 3 "http://127.0.0.1:8080/v1/models" >/dev/null 2>&1 \
+        || curl -sS --max-time 3 "http://127.0.0.1:8080/models" >/dev/null 2>&1
 }
 
 # Check if llama-server is already running on 8080
@@ -73,19 +74,46 @@ if llama_ready; then
 else
     echo "[ATOM] Starting llama-server..."
 
-    MODEL="$(pick_smallest_gguf)"
+    ATOM_MODELS_DIR="${ATOM_MODELS_DIR:-$HOME/.lmstudio/models}"
+    # Prefer router mode: no GGUF in VRAM until the app calls /models/load (Arena loads one at a time).
+    ROUTER=0
+    if [ -z "${MODEL:-}" ] && [ -z "${GGUF_PATH:-}" ] && [ -d "$ATOM_MODELS_DIR" ] && "${LLAMA_BIN}" --help 2>&1 | grep -qE 'models-dir'; then
+        ROUTER=1
+    fi
+    ROUTER_EXTRA=()
+    if [ "$ROUTER" = 1 ] && "${LLAMA_BIN}" --help 2>&1 | grep -qE 'no-models-autoload'; then
+        ROUTER_EXTRA=(--no-models-autoload)
+    fi
 
-    if [ -n "$MODEL" ] && [ -f "$MODEL" ]; then
-        echo "[ATOM] Using model (smallest GGUF found): $MODEL"
+    if [ -n "${MODEL:-}" ] || [ -n "${GGUF_PATH:-}" ]; then
+        MODEL="${MODEL:-$GGUF_PATH}"
+    elif [ "$ROUTER" = 1 ]; then
+        MODEL=""
+    else
+        MODEL="$(pick_smallest_gguf)"
+    fi
+
+    if [ "$ROUTER" = 1 ]; then
+        echo "[ATOM] Router: --models-dir $ATOM_MODELS_DIR --models-max 1 --no-models-autoload (nothing preloaded into VRAM)"
+        : >>"$ROOT/llama-server.log"
+        nohup "$LLAMA_BIN" --models-dir "$ATOM_MODELS_DIR" --models-max 1 "${ROUTER_EXTRA[@]}" --n-gpu-layers 99 --port 8080 --host 0.0.0.0 >>"$ROOT/llama-server.log" 2>&1 &
+        LLAMA_PID=$!
+        disown || true
+    elif [ -n "$MODEL" ] && [ -f "$MODEL" ]; then
+        echo "[ATOM] Using model (explicit or smallest GGUF): $MODEL"
         : >>"$ROOT/llama-server.log"
         nohup "$LLAMA_BIN" -m "$MODEL" --port 8080 --n-gpu-layers 99 --host 0.0.0.0 >>"$ROOT/llama-server.log" 2>&1 &
         LLAMA_PID=$!
         disown || true
+    else
+        echo "[ATOM] No .gguf found for legacy -m mode and router unavailable (missing --models-dir in this binary or empty $ATOM_MODELS_DIR)."
+        LLAMA_PID=""
+    fi
 
-        # Large models can take several minutes before /v1/models responds.
-        LM_WAIT_ATTEMPTS="${LM_WAIT_ATTEMPTS:-180}"
-        LM_WAIT_SLEEP="${LM_WAIT_SLEEP:-2}"
-        echo "[ATOM] Waiting up to $((LM_WAIT_ATTEMPTS * LM_WAIT_SLEEP))s for http://127.0.0.1:8080/v1/models ..."
+    if [ -n "${LLAMA_PID:-}" ]; then
+        LM_WAIT_ATTEMPTS="${LM_WAIT_ATTEMPTS:-120}"
+        LM_WAIT_SLEEP="${LM_WAIT_SLEEP:-1}"
+        echo "[ATOM] Waiting up to $((LM_WAIT_ATTEMPTS * LM_WAIT_SLEEP))s for llama HTTP on :8080 ..."
         llama_ok=0
         for ((i = 1; i <= LM_WAIT_ATTEMPTS; i++)); do
             if ! kill -0 "$LLAMA_PID" 2>/dev/null; then
@@ -102,12 +130,9 @@ else
         done
         if [ "$llama_ok" != 1 ]; then
             if kill -0 "$LLAMA_PID" 2>/dev/null; then
-                echo "[ATOM] WARNING: llama-server still loading or stuck — UI will start but proxy to :8080 may fail until /v1/models works."
-                echo "[ATOM] Try a smaller GGUF, set LLAMA_SERVER_BIN to your SYCL build, or start llama-server manually and re-run."
+                echo "[ATOM] WARNING: llama-server not answering on :8080 yet — UI will start; retry when the server is ready."
             fi
         fi
-    else
-        echo "[ATOM] No .gguf model found under ~/.lmstudio/models, ~/models, etc."
     fi
 fi
 

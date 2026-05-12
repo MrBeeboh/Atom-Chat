@@ -67,8 +67,10 @@
         ),
       ]);
       const ids = list.map((m) => m.id);
-      models.set(ids.map((id) => ({ id })));
-      ensureModelIcons(ids);
+      if (ids.length > 0) {
+        models.set(ids.map((id) => ({ id })));
+        ensureModelIcons(ids);
+      }
     } catch (e) {
       loadError = e?.message || 'Could not load models';
       if ($models.length === 0) models.set([]);

@@ -1,10 +1,12 @@
 /**
  * @file api.js
- * @description LM Studio API client: list models, load/unload, chat (streaming and non-streaming).
+ * @description Inference API client: list models, load/unload, chat (streaming and non-streaming).
  *
- * Endpoints: GET /api/v1/models, POST /api/v1/models/load, POST /api/v1/models/unload (per-instance),
- * POST /v1/chat/completions. Bulk eject: unload helper at http://localhost:8766 (POST /unload-all, runs lms unload --all).
- * Base URL: localStorage lmStudioBaseUrl or dev proxy /api/lmstudio or http://localhost:1234.
+ * Backends: LM Studio (GET /api/v1/models, POST load/unload), llama.cpp router (GET /models, POST /models/load|unload),
+ * legacy single-model llama-server (-m), and cloud providers (OpenAI-compatible).
+ *
+ * Bulk eject helper: POST http://localhost:8766/unload-all (optional).
+ * Base URL: localStorage lmStudioBaseUrl or dev proxy /api/llama or http://localhost:8080.
  */
 
 // Default backend changed to llama.cpp (llama-server) on port 8080.
@@ -34,6 +36,8 @@ function localStorageOrVite(storageKey, viteName) {
 let lastResolvedLmBase = '';
 /** True when GET /api/v1/models succeeds (LM Studio–style management). llama-server returns 404. */
 let lmsRestModelsListSupported = null;
+/** True when GET /models (llama.cpp router) succeeds. False = probed and not router. Null = never successfully probed. */
+let llamaRouterModelsSupported = null;
 /** Ids from the last successful local model list fetch (used when the server runs a single loaded model). */
 let lastLocalModelIds = [];
 
@@ -52,6 +56,7 @@ function getLmStudioBase() {
   if (resolved !== lastResolvedLmBase) {
     lastResolvedLmBase = resolved;
     lmsRestModelsListSupported = null;
+    llamaRouterModelsSupported = null;
     lastLocalModelIds = [];
   }
   return resolved;
@@ -94,6 +99,73 @@ function mergeUniqueModelItems(entries) {
   return out;
 }
 
+/** llama.cpp router: GET /models response shapes (experimental). */
+function extractRouterModelRows(data) {
+  if (!data || typeof data !== 'object') return [];
+  if (Array.isArray(data.models)) return data.models;
+  if (Array.isArray(data.data)) return data.data;
+  if (Array.isArray(data)) return data;
+  return [];
+}
+
+function parseLlamaRouterModelsList(data) {
+  const rows = extractRouterModelRows(data);
+  const items = [];
+  for (const m of rows) {
+    const id = m?.id ?? m?.name ?? m?.model ?? m?.path;
+    if (typeof id === 'string' && id.trim()) items.push({ id: id.trim() });
+  }
+  return mergeUniqueModelItems(items);
+}
+
+function getLoadedIdsFromRouterData(data) {
+  const rows = extractRouterModelRows(data);
+  const out = [];
+  for (const m of rows) {
+    const id = m?.id ?? m?.name ?? m?.model ?? m?.path;
+    if (typeof id !== 'string' || !id.trim()) continue;
+    const st = String(m?.state ?? m?.status ?? '').toLowerCase();
+    if (st === 'loaded' || m?.loaded === true || m?.is_active === true || m?.active === true) {
+      out.push(id.trim());
+    }
+  }
+  return out;
+}
+
+/**
+ * True when the backend is llama.cpp in router mode (GET /models, POST /models/load|unload).
+ * Caches true after a successful JSON response; caches false only on definitive 404/non-JSON
+ * so a cold start (connection refused) can succeed on later calls.
+ */
+export async function probeLlamaRouterModelsList() {
+  if (llamaRouterModelsSupported !== null) return llamaRouterModelsSupported;
+  const base = getLmStudioBase();
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 4000);
+  try {
+    const res = await fetch(`${base}/models`, { method: 'GET', signal: ctrl.signal });
+    if (res.status === 404) {
+      llamaRouterModelsSupported = false;
+      return false;
+    }
+    if (!res.ok) {
+      return false;
+    }
+    const ct = res.headers.get('content-type') || '';
+    if (!/json/i.test(ct)) {
+      llamaRouterModelsSupported = false;
+      return false;
+    }
+    await res.json();
+    llamaRouterModelsSupported = true;
+    return true;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 /**
  * Check if LM Studio is reachable (lightweight health check).
  * @returns {Promise<boolean>}
@@ -112,6 +184,9 @@ export async function checkLmStudioConnection() {
   };
   try {
     if (await tryFetch(`${base}/api/v1/models`)) return true;
+  } catch (_) { }
+  try {
+    if (await tryFetch(`${base}/models`)) return true;
   } catch (_) { }
   try {
     return await tryFetch(`${base}/v1/models`);
@@ -496,6 +571,16 @@ async function getLocalModelsFromServer() {
         if (llms.length > 0) return llms;
       }
     }
+    const routerRes = await fetch(`${base}/models`, { signal: ctrl.signal });
+    if (routerRes.ok) {
+      const ct = routerRes.headers.get('content-type') || '';
+      if (/json/i.test(ct)) {
+        const data = await routerRes.json();
+        llamaRouterModelsSupported = true;
+        const fromRouter = parseLlamaRouterModelsList(data);
+        if (fromRouter.length > 0) return fromRouter;
+      }
+    }
     const fallback = await fetch(`${openai}/models`, { signal: ctrl.signal });
     if (!fallback.ok) return [];
     const data = await fallback.json();
@@ -547,11 +632,12 @@ export async function probeLmsRestModelsList() {
 }
 
 /**
- * llama-server loads one GGUF at process start; chat must use that id. When REST management is absent
- * and exactly one local model is listed, map any local (non-cloud) request to it so Arena slots B/C/D work.
+ * llama-server (classic): one GGUF at process start. Router mode: many ids from GET /models; chat uses the selected id.
+ * When REST management is absent and exactly one local model is listed, map any local request to it so legacy Arena works.
  */
 async function resolveEffectiveLocalChatModelId(modelId) {
   if (!modelId || typeof modelId !== 'string' || modelId.includes(':')) return modelId;
+  if (await probeLlamaRouterModelsList()) return modelId;
   const lms = await probeLmsRestModelsList();
   if (lms) return modelId;
   let ids = lastLocalModelIds;
@@ -588,15 +674,21 @@ export async function getModels() {
 }
 
 /**
- * Get model keys that are currently loaded (have at least one instance in memory).
- * Uses GET /api/v1/models and checks loaded_instances. Use to wait until unload is complete.
- * @returns {Promise<string[]>} Model keys (ids) that are loaded
+ * Get model keys that are currently loaded in VRAM.
+ * llama.cpp router: GET /models. LM Studio: GET /api/v1/models + loaded_instances.
+ * @returns {Promise<string[]>}
  */
 export async function getLoadedModelKeys() {
   const base = getLmStudioBase();
   const ctrl = new AbortController();
   const to = setTimeout(() => ctrl.abort(), 15000);
   try {
+    if (await probeLlamaRouterModelsList()) {
+      const res = await fetch(`${base}/models`, { signal: ctrl.signal });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return getLoadedIdsFromRouterData(data);
+    }
     const res = await fetch(`${base}/api/v1/models`, { signal: ctrl.signal });
     if (!res.ok) return [];
     const data = await res.json();
@@ -666,30 +758,47 @@ export async function waitUntilUnloaded(modelIds, opts = {}) {
 }
 
 /**
- * Load a model with the given load config (LM Studio REST API v1).
- * Sends only params LM Studio accepts: context_length, eval_batch_size, flash_attention, offload_kv_cache_to_gpu.
- * GPU, CPU threads, Parallel are stored in our UI but not sent (LM Studio manages them).
- * @param {string} modelId - Model identifier (as in GET /v1/models)
+ * Load a model: llama.cpp router uses POST /models/load; LM Studio uses POST /api/v1/models/load.
+ * @param {string} modelId - Model identifier (as in GET /v1/models or GET /models)
  * @param {Object} loadConfig
  * @param {number} [loadConfig.context_length]
  * @param {number} [loadConfig.eval_batch_size]
  * @param {boolean} [loadConfig.flash_attention]
  * @param {boolean} [loadConfig.offload_kv_cache_to_gpu]
- * @returns {Promise<{ type: string, instance_id: string, load_time_seconds: number, status: string, load_config?: object }>}
+ * @returns {Promise<object>}
  */
 export async function loadModel(modelId, loadConfig = {}) {
-  const body = { model: modelId };
-  if (loadConfig.context_length != null) body.context_length = loadConfig.context_length;
-  if (loadConfig.eval_batch_size != null) body.eval_batch_size = loadConfig.eval_batch_size;
-  if (loadConfig.flash_attention != null) body.flash_attention = loadConfig.flash_attention;
-  if (loadConfig.offload_kv_cache_to_gpu != null) body.offload_kv_cache_to_gpu = loadConfig.offload_kv_cache_to_gpu;
-  body.echo_load_config = true;
-
+  if (!modelId || typeof modelId !== 'string' || !modelId.trim()) {
+    throw new Error('loadModel: model id required');
+  }
   const base = getLmStudioBase();
-  // 180s timeout: large models can take a while to load into VRAM
   const ctrl = new AbortController();
   const to = setTimeout(() => ctrl.abort(), 180000);
   try {
+    if (await probeLlamaRouterModelsList()) {
+      const res = await fetch(`${base}/models/load`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: modelId.trim() }),
+        signal: ctrl.signal,
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`llama-server load: ${res.status} ${text}`);
+      }
+      return res.json().catch(() => ({}));
+    }
+    if (!(await probeLmsRestModelsList())) {
+      throw new Error(
+        'This backend has no model-load API. Use llama.cpp server with router mode (Atom launcher) or LM Studio.',
+      );
+    }
+    const body = { model: modelId };
+    if (loadConfig.context_length != null) body.context_length = loadConfig.context_length;
+    if (loadConfig.eval_batch_size != null) body.eval_batch_size = loadConfig.eval_batch_size;
+    if (loadConfig.flash_attention != null) body.flash_attention = loadConfig.flash_attention;
+    if (loadConfig.offload_kv_cache_to_gpu != null) body.offload_kv_cache_to_gpu = loadConfig.offload_kv_cache_to_gpu;
+    body.echo_load_config = true;
     const res = await fetch(`${base}/api/v1/models/load`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -739,12 +848,30 @@ export async function getLoadedInstanceIdsForModel(modelKey) {
 }
 
 /**
- * Unload a model from memory by model key. Resolves to instance IDs via list API and unloads each.
+ * Unload a model from memory: llama.cpp router POST /models/unload; LM Studio uses instance ids.
  * @param {string} modelId - Model key (e.g. from load or list)
  * @returns {Promise<void>}
  */
 export async function unloadModel(modelId) {
   if (!modelId || typeof modelId !== 'string') return;
+  const base = getLmStudioBase();
+  if (await probeLlamaRouterModelsList()) {
+    const ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), 120000);
+    try {
+      await fetch(`${base}/models/unload`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: modelId.trim() }),
+        signal: ctrl.signal,
+      });
+    } catch (_) {
+      /* ignore */
+    } finally {
+      clearTimeout(to);
+    }
+    return;
+  }
   const instanceIds = await getLoadedInstanceIdsForModel(modelId);
   await Promise.allSettled(instanceIds.map((id) => unloadByInstanceId(id).catch(() => { })));
 }
@@ -776,14 +903,34 @@ export async function unloadAllLoadedModels(helperUrlOrOverride) {
 }
 
 /**
- * Unload ALL currently loaded model instances using the native LM Studio API.
- * Does NOT require any helper server. Finds every loaded instance via
- * GET /api/v1/models and calls POST /api/v1/models/unload for each.
+ * Unload every loaded model: llama.cpp router POST /models/unload per id; LM Studio uses instance unload.
  * @returns {Promise<{ ok: boolean, unloaded: number }>}
  */
 export async function unloadAllModelsNative() {
   try {
     const base = getLmStudioBase();
+    if (await probeLlamaRouterModelsList()) {
+      const loaded = await getLoadedModelKeys();
+      let unloaded = 0;
+      for (const id of loaded) {
+        const ctrl = new AbortController();
+        const to = setTimeout(() => ctrl.abort(), 120000);
+        try {
+          const res = await fetch(`${base}/models/unload`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: id }),
+            signal: ctrl.signal,
+          });
+          if (res.ok) unloaded += 1;
+        } catch (_) {
+          /* continue */
+        } finally {
+          clearTimeout(to);
+        }
+      }
+      return { ok: true, unloaded };
+    }
     const ctrl = new AbortController();
     const to = setTimeout(() => ctrl.abort(), 15000);
     let res;
@@ -1155,9 +1302,9 @@ export async function requestChatCompletion({ model, messages, options = {} }) {
   const isCloud = model && String(model).includes(':');
   let resolvedModel = resolveModelId(model);
   if (!isCloud) {
-    resolvedModel = localModelIdForOpenAIRequest(
-      resolveModelId(await resolveEffectiveLocalChatModelId(model)),
-    );
+    const eff = resolveModelId(await resolveEffectiveLocalChatModelId(model));
+    const router = await probeLlamaRouterModelsList();
+    resolvedModel = router ? eff : localModelIdForOpenAIRequest(eff);
   }
   const lmsHasRestModels = !isCloud && (await probeLmsRestModelsList());
   const url = isDeepinfraModel(model) ? `${base}/chat/completions` : (base.endsWith('/v1') ? `${base}/chat/completions` : `${base}/v1/chat/completions`);
@@ -1412,9 +1559,9 @@ export async function streamChatCompletion({ model, messages, options = {}, onCh
   const isCloud = model && String(model).includes(':');
   let resolvedModel = resolveModelId(model);
   if (!isCloud) {
-    resolvedModel = localModelIdForOpenAIRequest(
-      resolveModelId(await resolveEffectiveLocalChatModelId(model)),
-    );
+    const eff = resolveModelId(await resolveEffectiveLocalChatModelId(model));
+    const router = await probeLlamaRouterModelsList();
+    resolvedModel = router ? eff : localModelIdForOpenAIRequest(eff);
   }
   const lmsHasRestModels = !isCloud && (await probeLmsRestModelsList());
   const streamUrl = isDeepinfraModel(model) ? `${base}/chat/completions` : (base.endsWith('/v1') ? `${base}/chat/completions` : `${base}/v1/chat/completions`);
