@@ -94,7 +94,7 @@
     } catch (e) {
       console.warn('LM Studio models:', e);
       models.set([]);
-      modelSelectionNotification.set('Cannot connect to LM Studio. Please ensure server is running.');
+      modelSelectionNotification.set('Cannot connect. Click "Start local server" below or run ./scripts/start-atom.sh');
     } finally {
       loading = false;
     }
@@ -164,7 +164,10 @@
           {loadingMessage || 'Loading models…'}
         </div>
       {:else if $models.length === 0}
-        <div class="px-4 py-3 text-sm" style="color: var(--ui-text-secondary);">No models found. Is LM Studio running?</div>
+        <div class="px-4 py-3 text-sm flex flex-col gap-2" style="color: var(--ui-text-secondary);">
+          No local models. Run <span class="font-mono">./scripts/start-atom.sh</span> or
+          <button class="underline text-left" onclick={() => { window.open('https://github.com/anomalyco/atom-chat#quick-start'); }}>Launch local server</button>
+        </div>
       {:else}
         <div class="px-3 py-2 border-b" style="border-color: var(--ui-border);">
           <input

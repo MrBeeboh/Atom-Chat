@@ -2,16 +2,20 @@
 
 Quick checks when something stops working (e.g. after fixing voice or internet).
 
-## Models not loading from LM Studio
+## Models not loading (llama.cpp / LM Studio)
 
-If the model dropdown is empty or says "Cannot connect to LM Studio":
+If the model dropdown is empty or says "Cannot connect":
 
-1. **LM Studio must be running**  
-   Start LM Studio (or the headless server on port 1234). The app does *not* start it for you. On Linux, `./scripts/start-atom.sh` starts only the voice server, search proxy, and UI.
+1. **Start your backend first**  
+   - **llama.cpp (recommended on Intel Arc)**: `llama-server -m model.gguf --port 8080 --n-gpu-layers 99`
+   - **LM Studio**: Open LM Studio and enable the local server (port 1234).
 
-2. **Settings → LM Studio server URL**  
-   - **Leave empty** to use the default (`http://localhost:1234` in production, or the dev proxy in dev).  
-   - If you set a custom URL, it must be the **LM Studio** API address (port **1234**), **not** the voice server (8765) or search proxy (5174).  
+   The app does *not* start the model server for you. `./scripts/start-atom.sh` only starts the voice server, search proxy, and UI.
+
+2. **Settings → Backend URL**  
+   - **Leave empty** → uses `localhost:8080` (llama.cpp).  
+   - Change to `http://localhost:1234` for LM Studio.  
+   - The URL must point to an **OpenAI-compatible** API (port 8080 or 1234), **not** the voice server (8765) or search proxy (5174).  
    - If this was set to the wrong URL during other fixes, clear it or set it to `http://localhost:1234`.
 
 3. **CORS**  

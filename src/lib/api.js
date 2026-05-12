@@ -7,14 +7,32 @@
  * Base URL: localStorage lmStudioBaseUrl or dev proxy /api/lmstudio or http://localhost:1234.
  */
 
-const DEFAULT_BASE = typeof import.meta !== 'undefined' && import.meta.env?.DEV ? '/api/lmstudio' : 'http://localhost:1234';
+// Default backend changed to llama.cpp (llama-server) on port 8080.
+// LM Studio still works if you change the URL in Settings → Connection.
+const DEFAULT_BASE = typeof import.meta !== 'undefined' && import.meta.env?.DEV ? '/api/llama' : 'http://localhost:8080';
+
+let lastResolvedLmBase = '';
+/** True when GET /api/v1/models succeeds (LM Studio–style management). llama-server returns 404. */
+let lmsRestModelsListSupported = null;
+/** Ids from the last successful local model list fetch (used when the server runs a single loaded model). */
+let lastLocalModelIds = [];
 
 /** Current LM Studio base URL (no trailing slash). Reads from localStorage so UI settings apply immediately. */
 function getLmStudioBase() {
-  if (typeof localStorage === 'undefined') return DEFAULT_BASE;
-  const v = localStorage.getItem('lmStudioBaseUrl');
-  if (v != null && String(v).trim() !== '') return String(v).trim().replace(/\/$/, '');
-  return DEFAULT_BASE;
+  const resolved =
+    typeof localStorage === 'undefined'
+      ? DEFAULT_BASE
+      : (() => {
+          const v = localStorage.getItem('lmStudioBaseUrl');
+          if (v != null && String(v).trim() !== '') return String(v).trim().replace(/\/$/, '');
+          return DEFAULT_BASE;
+        })();
+  if (resolved !== lastResolvedLmBase) {
+    lastResolvedLmBase = resolved;
+    lmsRestModelsListSupported = null;
+    lastLocalModelIds = [];
+  }
+  return resolved;
 }
 
 /** Unload helper base URL (e.g. http://localhost:8766). Bulk eject uses POST {url}/unload-all. */
@@ -34,9 +52,24 @@ function getUnloadHelperUrl() {
  */
 function toModelItem(m) {
   if (!m || typeof m !== 'object') return null;
-  const id = m.key ?? m.id ?? m.display_name;
+  const id = m.key ?? m.id ?? m.model ?? m.name ?? m.display_name;
   if (typeof id !== 'string' || !id.trim()) return null;
   return { id: id.trim() };
+}
+
+/** Dedupe by lowercase id (llama-server may list the same model under `models` and `data`). */
+function mergeUniqueModelItems(entries) {
+  const seen = new Set();
+  const out = [];
+  for (const m of entries) {
+    const item = toModelItem(m);
+    if (!item) continue;
+    const k = item.id.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(item);
+  }
+  return out;
 }
 
 /**
@@ -324,27 +357,76 @@ async function getLocalModels() {
     const res = await fetch(`${rest}/models`, { signal: ctrl.signal });
     if (res.ok) {
       const data = await res.json();
-      const raw = data.models ?? (Array.isArray(data) ? data : []);
-      if (Array.isArray(raw) && raw.length > 0) {
-        const llms = raw
-          .filter((m) => m && m.type !== 'embedding')
-          .map(toModelItem)
-          .filter(Boolean);
+      const rawModels = Array.isArray(data.models) ? data.models : [];
+      const rawData = Array.isArray(data.data) ? data.data : [];
+      const rawTop = Array.isArray(data) ? data : [];
+      const combined = [...rawModels, ...rawData, ...(rawModels.length || rawData.length ? [] : rawTop)];
+      if (combined.length > 0) {
+        const llms = mergeUniqueModelItems(combined.filter((m) => m && m.type !== 'embedding'));
         if (llms.length > 0) {
           clearTimeout(to);
+          lastLocalModelIds = llms.map((x) => x.id);
           return llms;
         }
       }
     }
     const fallback = await fetch(`${openai}/models`, { signal: ctrl.signal });
-    if (!fallback.ok) throw new Error(`LM Studio models: ${fallback.status}`);
+    if (!fallback.ok) throw new Error(`Local models: ${fallback.status}`);
     const data = await fallback.json();
-    const list = data.data ?? data;
-    const arr = Array.isArray(list) ? list : [];
-    return arr.map(toModelItem).filter(Boolean);
+    const fromData = Array.isArray(data.data) ? data.data : [];
+    const fromModels = Array.isArray(data.models) ? data.models : [];
+    const rawArr = Array.isArray(data) && !fromData.length && !fromModels.length ? data : [];
+    const merged = mergeUniqueModelItems([
+      ...fromData.filter((m) => m && m.type !== 'embedding'),
+      ...fromModels.filter((m) => m && m.type !== 'embedding'),
+      ...rawArr.filter((m) => m && m.type !== 'embedding'),
+    ]);
+    lastLocalModelIds = merged.map((x) => x.id);
+    return merged;
   } finally {
     clearTimeout(to);
   }
+}
+
+/**
+ * True when the backend exposes LM Studio–style GET /api/v1/models (load/unload management).
+ * llama-server (OpenAI route only) returns 404 — Arena should not rely on swapping models via REST.
+ */
+export async function probeLmsRestModelsList() {
+  if (lmsRestModelsListSupported !== null) return lmsRestModelsListSupported;
+  const base = getLmStudioBase();
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 4000);
+  try {
+    const res = await fetch(`${base}/api/v1/models`, { method: 'GET', signal: ctrl.signal });
+    lmsRestModelsListSupported = res.ok;
+    return lmsRestModelsListSupported;
+  } catch {
+    lmsRestModelsListSupported = false;
+    return false;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+/**
+ * llama-server loads one GGUF at process start; chat must use that id. When REST management is absent
+ * and exactly one local model is listed, map any local (non-cloud) request to it so Arena slots B/C/D work.
+ */
+async function resolveEffectiveLocalChatModelId(modelId) {
+  if (!modelId || typeof modelId !== 'string' || modelId.includes(':')) return modelId;
+  const lms = await probeLmsRestModelsList();
+  if (lms) return modelId;
+  let ids = lastLocalModelIds;
+  if (ids.length === 0) {
+    try {
+      ids = (await getLocalModels()).map((m) => m.id);
+    } catch {
+      return modelId;
+    }
+  }
+  if (ids.length === 1) return ids[0];
+  return modelId;
 }
 
 /**
@@ -928,10 +1010,13 @@ export async function requestChatCompletion({ model, messages, options = {} }) {
     }
   }
   const { base, headers: authHeaders } = getBaseAndAuth(model);
-  const resolvedModel = resolveModelId(model);
+  const isCloud = model && String(model).includes(':');
+  let resolvedModel = resolveModelId(model);
+  if (!isCloud) {
+    resolvedModel = resolveModelId(await resolveEffectiveLocalChatModelId(model));
+  }
   const url = isDeepinfraModel(model) ? `${base}/chat/completions` : (base.endsWith('/v1') ? `${base}/chat/completions` : `${base}/v1/chat/completions`);
   const headers = { 'Content-Type': 'application/json', ...authHeaders };
-  const isCloud = model && String(model).includes(':');
   const rawMax = options.max_tokens ?? 1024;
   const maxTokens = isCloud ? Math.max(1, Math.min(8192, Number(rawMax) || 1024)) : rawMax;
   const body = {
@@ -1179,10 +1264,13 @@ export async function streamChatCompletion({ model, messages, options = {}, onCh
     }
   };
   const { base, headers: authHeaders } = getBaseAndAuth(model);
-  const resolvedModel = resolveModelId(model);
+  const isCloud = model && String(model).includes(':');
+  let resolvedModel = resolveModelId(model);
+  if (!isCloud) {
+    resolvedModel = resolveModelId(await resolveEffectiveLocalChatModelId(model));
+  }
   const streamUrl = isDeepinfraModel(model) ? `${base}/chat/completions` : (base.endsWith('/v1') ? `${base}/chat/completions` : `${base}/v1/chat/completions`);
   const headers = { 'Content-Type': 'application/json', ...authHeaders };
-  const isCloud = model && String(model).includes(':');
   const rawMax = options.max_tokens ?? 4096;
   const maxTokens = isCloud ? Math.max(1, Math.min(8192, Number(rawMax) || 4096)) : rawMax;
   const streamBody = {

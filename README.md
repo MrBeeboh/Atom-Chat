@@ -14,7 +14,8 @@ That's it. Pick a model, start a chat.
 ## What you need
 
 - **Node.js 18+** — [nodejs.org](https://nodejs.org)
-- **LM Studio** — [lmstudio.ai](https://lmstudio.ai) (or any OpenAI-compatible server on `localhost:1234`)
+- **llama.cpp** (recommended on Intel Arc) — `llama-server` on `localhost:8080`
+- Any OpenAI-compatible server (LM Studio, Ollama, etc.) also works if you change the URL in Settings.
 
 Optional: Python 3 for voice input, hardware metrics, and model unloading helpers.
 

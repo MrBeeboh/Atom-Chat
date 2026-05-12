@@ -42,31 +42,21 @@ echo -e "${BOLD}3. Building frontend…${RESET}"
 npm run build
 echo "  ✓ Build complete (output in dist/)"
 
-# ── 4. LM Studio check ────────────────────────────────────────────
+# ── 4. llama.cpp / model server check ─────────────────────────────
 echo ""
 echo -e "${BOLD}4. Model server…${RESET}"
-LMS_FOUND=false
-if command -v lms &>/dev/null; then
-  LMS_FOUND=true
-fi
-if curl -s http://localhost:1234/v1/models &>/dev/null 2>&1; then
-  LMS_FOUND=true
-fi
-
-if [ "$LMS_FOUND" = true ]; then
-  echo "  ✓ LM Studio detected"
+if curl -s http://localhost:8080/v1/models &>/dev/null 2>&1; then
+  echo "  ✓ llama-server detected on port 8080 (recommended for Intel Arc)"
+elif curl -s http://localhost:1234/v1/models &>/dev/null 2>&1; then
+  echo "  ✓ OpenAI-compatible server detected on port 1234 (LM Studio, etc.)"
 else
-  echo -e "  ${YELLOW}! LM Studio not detected.${RESET}"
-  echo "  ATOM needs a model server. Install LM Studio:"
-  echo "    ${CYAN}https://lmstudio.ai${RESET}"
+  echo -e "  ${YELLOW}! No local model server detected on 8080 or 1234.${RESET}"
+  echo "  ATOM needs a running llama-server (or LM Studio / Ollama)."
   echo ""
-  echo "  After installing, open LM Studio, download a model, and enable"
-  echo "  the local API server in the Developer tab (port 1234)."
+  echo "  Quick start with llama.cpp (best performance on Intel Arc B70):"
+  echo "    llama-server -m /path/to/model.gguf --port 8080 --n-gpu-layers 99"
   echo ""
-  echo "  Recommended starter models:"
-  echo "    — Qwen2.5-7B-Instruct (fast, good all-rounder)"
-  echo "    — Llama-3.2-3B-Instruct (lightweight)"
-  echo "    — DeepSeek-R1-Distill-Qwen-7B (reasoning)"
+  echo "  Or install LM Studio and enable its local server (port 1234)."
 fi
 
 # ── 5. Optional: voice server ────────────────────────────────────

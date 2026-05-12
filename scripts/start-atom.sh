@@ -1,52 +1,75 @@
 #!/usr/bin/env bash
-# Start ATOM (LM Studio UI): LM Studio server + voice server + search proxy + dev server + open browser.
+# ATOM - llama.cpp launcher (one double-click)
 
 set -e
+
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-# Start LM Studio API server (headless, port 1234)
-if command -v lms &> /dev/null; then
-  echo "[ATOM] Starting LM Studio API server..."
-  lms server start 2>/dev/null || true
-  sleep 2
-  # Verify it came up
-  if curl -s http://localhost:1234/v1/models > /dev/null 2>&1; then
-    echo "[ATOM] LM Studio API server running (http://localhost:1234)"
-  else
-    echo "[ATOM] WARNING: LM Studio API server did not respond on port 1234. Open LM Studio and enable the server in the Developer tab."
-  fi
+echo "[ATOM] Starting..."
+
+# Check if llama-server is already running on 8080
+if curl -s --max-time 2 http://localhost:8080/v1/models > /dev/null 2>&1; then
+    echo "[ATOM] llama-server already running on port 8080"
 else
-  echo "[ATOM] WARNING: 'lms' CLI not found. Open LM Studio manually and start the server in the Developer tab."
+    echo "[ATOM] Starting llama-server..."
+    
+    # Try to find a model
+    MODEL=""
+    for dir in "$HOME/models" "$HOME/.cache/llama.cpp" "$HOME/Downloads"; do
+        if [ -d "$dir" ]; then
+            MODEL=$(find "$dir" -maxdepth 2 -name "*.gguf" 2>/dev/null | head -1)
+            [ -n "$MODEL" ] && break
+        fi
+    done
+
+    if [ -n "$MODEL" ] && [ -f "$MODEL" ]; then
+        echo "[ATOM] Using model: $MODEL"
+        nohup llama-server -m "$MODEL" --port 8080 --n-gpu-layers 99 --host 0.0.0.0 >> llama-server.log 2>&1 &
+        disown || true
+        
+        # Wait for server
+        for i in {1..30}; do
+            if curl -s --max-time 1 http://localhost:8080/v1/models > /dev/null 2>&1; then
+                echo "[ATOM] llama-server ready"
+                break
+            fi
+            sleep 1
+        done
+    else
+        echo "[ATOM] No .gguf model found. Please put one in ~/models/"
+    fi
 fi
 
-# Start voice server in background
-VOICE_DIR="$ROOT/voice-server"
-if [ -d "$VOICE_DIR" ] && [ -f "$VOICE_DIR/app.py" ]; then
-  if [ ! -x "$VOICE_DIR/.venv/bin/uvicorn" ]; then
-    echo "[ATOM] First-time voice server setup (creating venv, installing deps)..."
-    (cd "$VOICE_DIR" && python3 -m venv .venv && .venv/bin/python -m pip install -q -r requirements.txt) || {
-      echo "[ATOM] Voice server setup failed. Run: cd voice-server && python3 -m venv .venv && .venv/bin/python -m pip install -r requirements.txt"
-      echo "[ATOM] See VOICE-SETUP.md"
-    }
-  fi
-  if [ -x "$VOICE_DIR/.venv/bin/uvicorn" ]; then
-    (cd "$VOICE_DIR" && nohup .venv/bin/uvicorn app:app --host 0.0.0.0 --port 8765) >> "$ROOT/voice-server.log" 2>&1 &
-    disown 2>/dev/null || true
-    echo "[ATOM] Voice server starting (http://localhost:8765). Log: $ROOT/voice-server.log"
-  fi
+# Start voice server if present (prefer project venv so deps match setup.sh)
+if [ -f voice-server/app.py ]; then
+    if [ -x voice-server/.venv/bin/python ]; then
+        VOICE_PY="voice-server/.venv/bin/python"
+    else
+        VOICE_PY="python3"
+    fi
+    (cd voice-server && nohup "$VOICE_PY" -m uvicorn app:app --host 0.0.0.0 --port 8765 >> ../voice-server.log 2>&1 &)
 fi
 
-# Start web search proxy in background
-SEARCH_PROXY="$ROOT/scripts/search-proxy.mjs"
-if [ -f "$SEARCH_PROXY" ]; then
-  nohup node "$SEARCH_PROXY" >> "$ROOT/search-proxy.log" 2>&1 &
-  disown 2>/dev/null || true
-  echo "[ATOM] Search proxy starting (http://localhost:5174). Log: $ROOT/search-proxy.log"
+# Start search proxy
+if [ -f scripts/search-proxy.mjs ]; then
+    nohup node scripts/search-proxy.mjs >> search-proxy.log 2>&1 &
 fi
 
-PORT=5175
-# Open browser after the dev server is up
-(sleep 3 && xdg-open "http://localhost:${PORT}") &
+# UI port: keep 5175 for this launcher so localStorage (API keys, backend URL) stays on the same
+# origin as before. Port 5173 vs 5175 are different sites to the browser — keys do not carry over.
+ATOM_UI_PORT="${ATOM_UI_PORT:-5175}"
+npm run dev -- --port "$ATOM_UI_PORT" --strictPort &
+UI_PID=$!
 
-exec npm run dev -- --port "$PORT"
+# Open browser once dev server responds (use localhost, not 127.0.0.1, so origin matches bookmarks)
+for i in $(seq 1 40); do
+    if curl -s --max-time 1 "http://localhost:${ATOM_UI_PORT}/" >/dev/null 2>&1; then
+        (sleep 1; xdg-open "http://localhost:${ATOM_UI_PORT}/" 2>/dev/null) &
+        break
+    fi
+    sleep 0.5
+done
+
+trap 'kill $UI_PID 2>/dev/null; exit 0' INT TERM
+wait $UI_PID

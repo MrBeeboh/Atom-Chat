@@ -49,7 +49,7 @@
     try {
       const list = await Promise.race([
         getModels(),
-        new Promise((_, rej) => setTimeout(() => rej(new Error('Request timed out. Is LM Studio running?')), 12000)),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('Request timed out. Is llama-server (8080) or your backend running?')), 12000)),
       ]);
       const ids = list.map((m) => m.id);
       models.set(ids.map((id) => ({ id })));
@@ -65,7 +65,7 @@
   function toggle() {
     const willOpen = !open;
     open = willOpen;
-    if (willOpen && $models.length === 0) loadModels();
+    if (willOpen) loadModels();
   }
 
   function getStore() {

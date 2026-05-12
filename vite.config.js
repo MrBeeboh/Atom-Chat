@@ -27,10 +27,11 @@ export default defineConfig({
     strictPort: false,
     host: true, // listen on 0.0.0.0 so you can open the UI from other devices (e.g. bedroom mini at http://<this-pc-ip>:5173)
     proxy: {
-      '/api/lmstudio': {
-        target: 'http://localhost:1234',
+      // Proxy for llama.cpp (llama-server) on port 8080
+      '/api/llama': {
+        target: 'http://localhost:8080',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/lmstudio/, ''),
+        rewrite: (path) => path.replace(/^\/api\/llama/, ''),
       },
       '/api/hf': {
         target: 'https://huggingface.co',

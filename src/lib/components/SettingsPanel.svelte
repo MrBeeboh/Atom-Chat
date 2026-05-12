@@ -79,9 +79,10 @@
         <summary class="px-4 py-3 cursor-pointer list-none text-sm font-medium transition-colors" style="background-color: var(--ui-bg-sidebar); border-bottom: 1px solid var(--ui-border); color: var(--ui-text-primary);">Connection</summary>
         <div class="px-4 py-3 space-y-3" style="background-color: var(--ui-bg-main);">
           <div>
-            <label for="settings-lmstudio-url" class="block text-xs font-medium mb-1" style="color: var(--ui-text-secondary);">LM Studio URL</label>
-            <input id="settings-lmstudio-url" type="url" bind:value={$lmStudioBaseUrl} placeholder="http://localhost:1234" class="w-full rounded-lg px-3 py-2 text-sm font-mono" style="border: 1px solid var(--ui-border); background-color: var(--ui-input-bg); color: var(--ui-text-primary);" />
-            <p class="text-xs mt-1" style="color: var(--ui-text-secondary);">Empty = localhost:1234. Enable CORS in LM Studio → Developer.</p>
+            <label for="settings-lmstudio-url" class="block text-xs font-medium mb-1" style="color: var(--ui-text-secondary);">Backend URL (llama.cpp / LM Studio)</label>
+            <input id="settings-lmstudio-url" type="url" bind:value={$lmStudioBaseUrl} placeholder="http://localhost:8080" class="w-full rounded-lg px-3 py-2 text-sm font-mono" style="border: 1px solid var(--ui-border); background-color: var(--ui-input-bg); color: var(--ui-text-primary);" />
+            <p class="text-xs mt-1" style="color: var(--ui-text-secondary);">Empty = localhost:8080 (llama.cpp). Change to 1234 for LM Studio.</p>
+            <p class="text-xs mt-2 rounded-md px-2 py-1.5" style="color: var(--ui-text-secondary); background: color-mix(in srgb, var(--ui-border) 35%, transparent);">API keys and this URL are saved per browser origin (same host and port). Using another port or switching localhost vs 127.0.0.1 looks like empty settings; use one consistent URL or paste keys again.</p>
           </div>
           <div>
             <label for="settings-unload-helper-url" class="block text-xs font-medium mb-1" style="color: var(--ui-text-secondary);">Unload helper URL</label>
