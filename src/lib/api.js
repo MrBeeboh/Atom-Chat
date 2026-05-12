@@ -218,7 +218,13 @@ export function getModelTypeTag(id) {
 export function modelDisplayName(id) {
   if (!id || typeof id !== 'string') return id;
   const i = id.indexOf(':');
-  if (i === -1) return id;
+  if (i === -1) {
+    if (id.endsWith('.gguf') && (id.startsWith('/') || /^[A-Za-z]:[\\/]/.test(id))) {
+      const base = id.replace(/\\/g, '/').split('/').pop();
+      return base ? `${base}  —  ${id}` : id;
+    }
+    return id;
+  }
   const provider = id.slice(0, i);
   const label = CLOUD_PROVIDERS[provider]?.name ?? provider;
   return `${label}: ${id.slice(i + 1)}`;
@@ -243,6 +249,78 @@ function resolveModelId(modelId) {
   if (!modelId || typeof modelId !== 'string') return modelId;
   const colon = modelId.indexOf(':');
   return colon === -1 ? modelId : modelId.slice(colon + 1);
+}
+
+/** Lowercase filename for deduping disk paths vs server-reported model names. */
+function ggufBasenameLower(id) {
+  if (!id || typeof id !== 'string') return '';
+  const s = id.replace(/\\/g, '/');
+  const i = s.lastIndexOf('/');
+  return (i === -1 ? s : s.slice(i + 1)).toLowerCase();
+}
+
+/**
+ * llama-server /v1/chat/completions expects the loaded model id (usually the .gguf basename).
+ * Disk inventory uses absolute paths under ~/.lmstudio/models.
+ */
+function localModelIdForOpenAIRequest(id) {
+  if (!id || typeof id !== 'string') return id;
+  if (id.startsWith('/')) {
+    const base = id.replace(/\\/g, '/').split('/').pop();
+    return base && base.endsWith('.gguf') ? base : id;
+  }
+  if (/^[A-Za-z]:[\\/]/.test(id)) {
+    const base = id.replace(/\\/g, '/').split('/').pop();
+    return base && base.endsWith('.gguf') ? base : id;
+  }
+  return id;
+}
+
+/**
+ * Merge server model list with dev disk scan: server order first; skip disk rows whose basename
+ * duplicates a server id.
+ * @param {{ id: string }[]} fromServer
+ * @param {{ id: string }[]} fromDisk
+ */
+function mergeServerAndDiskModels(fromServer, fromDisk) {
+  const seenFull = new Set();
+  const seenBase = new Set();
+  const out = [];
+  for (const list of [fromServer, fromDisk]) {
+    for (const m of list) {
+      const id = typeof m?.id === 'string' ? m.id.trim() : '';
+      if (!id) continue;
+      const fullKey = id.toLowerCase();
+      const baseKey = ggufBasenameLower(id);
+      if (seenFull.has(fullKey)) continue;
+      if (seenBase.has(baseKey) && baseKey.endsWith('.gguf')) continue;
+      seenFull.add(fullKey);
+      if (baseKey) seenBase.add(baseKey);
+      out.push({ id });
+    }
+  }
+  return out;
+}
+
+/** Dev-only: list .gguf paths from ~/.lmstudio/models and ~/models (Vite middleware). */
+async function fetchDiskModelInventory() {
+  if (!import.meta.env.DEV) return [];
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 5000);
+  try {
+    const res = await fetch('/api/atom-local-disk-models', { signal: ctrl.signal });
+    if (!res.ok) return [];
+    const data = await res.json();
+    const raw = data.models ?? data;
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .map((m) => (typeof m?.id === 'string' ? { id: m.id.trim() } : null))
+      .filter((m) => m && m.id);
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(t);
+  }
 }
 
 /** True when model id is Grok (grok:grok-4, etc.). Used to route to Responses API with tools for real-time search. */
@@ -366,10 +444,10 @@ function resolveCloudStreamTimeoutMs(options) {
 }
 
 /**
- * Fetch list of models from LM Studio (local). Throws if unreachable or timeout.
+ * Models reported by the inference server (LM Studio REST, llama-server /v1/models, etc.).
  * @returns {Promise<{ id: string }[]>}
  */
-async function getLocalModels() {
+async function getLocalModelsFromServer() {
   const base = getLmStudioBase();
   const rest = `${base}/api/v1`;
   const openai = `${base}/v1`;
@@ -385,29 +463,36 @@ async function getLocalModels() {
       const combined = [...rawModels, ...rawData, ...(rawModels.length || rawData.length ? [] : rawTop)];
       if (combined.length > 0) {
         const llms = mergeUniqueModelItems(combined.filter((m) => m && m.type !== 'embedding'));
-        if (llms.length > 0) {
-          clearTimeout(to);
-          lastLocalModelIds = llms.map((x) => x.id);
-          return llms;
-        }
+        if (llms.length > 0) return llms;
       }
     }
     const fallback = await fetch(`${openai}/models`, { signal: ctrl.signal });
-    if (!fallback.ok) throw new Error(`Local models: ${fallback.status}`);
+    if (!fallback.ok) return [];
     const data = await fallback.json();
     const fromData = Array.isArray(data.data) ? data.data : [];
     const fromModels = Array.isArray(data.models) ? data.models : [];
     const rawArr = Array.isArray(data) && !fromData.length && !fromModels.length ? data : [];
-    const merged = mergeUniqueModelItems([
+    return mergeUniqueModelItems([
       ...fromData.filter((m) => m && m.type !== 'embedding'),
       ...fromModels.filter((m) => m && m.type !== 'embedding'),
       ...rawArr.filter((m) => m && m.type !== 'embedding'),
     ]);
-    lastLocalModelIds = merged.map((x) => x.id);
-    return merged;
+  } catch {
+    return [];
   } finally {
     clearTimeout(to);
   }
+}
+
+/**
+ * Local models: inference server list plus dev scan of ~/.lmstudio/models and ~/models (.gguf).
+ * @returns {Promise<{ id: string }[]>}
+ */
+async function getLocalModels() {
+  const [fromDisk, fromServer] = await Promise.all([fetchDiskModelInventory(), getLocalModelsFromServer()]);
+  const merged = mergeServerAndDiskModels(fromServer, fromDisk);
+  lastLocalModelIds = merged.map((x) => x.id);
+  return merged;
 }
 
 /**
@@ -448,6 +533,11 @@ async function resolveEffectiveLocalChatModelId(modelId) {
     }
   }
   if (ids.length === 1) return ids[0];
+  const selBase = ggufBasenameLower(modelId);
+  if (selBase) {
+    const serverOnly = ids.filter((id) => !id.startsWith('/') && !/^[A-Za-z]:[\\/]/.test(id));
+    if (serverOnly.length === 1 && ggufBasenameLower(serverOnly[0]) === selBase) return serverOnly[0];
+  }
   return modelId;
 }
 
@@ -1035,7 +1125,9 @@ export async function requestChatCompletion({ model, messages, options = {} }) {
   const isCloud = model && String(model).includes(':');
   let resolvedModel = resolveModelId(model);
   if (!isCloud) {
-    resolvedModel = resolveModelId(await resolveEffectiveLocalChatModelId(model));
+    resolvedModel = localModelIdForOpenAIRequest(
+      resolveModelId(await resolveEffectiveLocalChatModelId(model)),
+    );
   }
   const url = isDeepinfraModel(model) ? `${base}/chat/completions` : (base.endsWith('/v1') ? `${base}/chat/completions` : `${base}/v1/chat/completions`);
   const headers = { 'Content-Type': 'application/json', ...authHeaders };
@@ -1289,7 +1381,9 @@ export async function streamChatCompletion({ model, messages, options = {}, onCh
   const isCloud = model && String(model).includes(':');
   let resolvedModel = resolveModelId(model);
   if (!isCloud) {
-    resolvedModel = resolveModelId(await resolveEffectiveLocalChatModelId(model));
+    resolvedModel = localModelIdForOpenAIRequest(
+      resolveModelId(await resolveEffectiveLocalChatModelId(model)),
+    );
   }
   const streamUrl = isDeepinfraModel(model) ? `${base}/chat/completions` : (base.endsWith('/v1') ? `${base}/chat/completions` : `${base}/v1/chat/completions`);
   const headers = { 'Content-Type': 'application/json', ...authHeaders };
