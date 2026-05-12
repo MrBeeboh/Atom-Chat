@@ -431,7 +431,12 @@ function parseChatApiError(status, bodyText, modelId) {
     case 500:
     case 502:
     case 503:
-      return apiMessage || 'The API server had an error. Try again later.';
+      if (apiMessage) return apiMessage;
+      if (bodyText && bodyText.trim()) {
+        const t = bodyText.trim().slice(0, 500);
+        return `The API server had an error (${status}). ${t}`;
+      }
+      return `The API server had an error (${status}). Try again later.`;
     case 400:
       if (code === 'model_not_found') return apiMessage || 'Model not found. Check the model name in Settings or try a different model.';
       if (code === 'context_length_exceeded') return apiMessage || 'Message or context too long. Try a shorter conversation or message.';
@@ -1154,6 +1159,7 @@ export async function requestChatCompletion({ model, messages, options = {} }) {
       resolveModelId(await resolveEffectiveLocalChatModelId(model)),
     );
   }
+  const lmsHasRestModels = !isCloud && (await probeLmsRestModelsList());
   const url = isDeepinfraModel(model) ? `${base}/chat/completions` : (base.endsWith('/v1') ? `${base}/chat/completions` : `${base}/v1/chat/completions`);
   const headers = { 'Content-Type': 'application/json', ...authHeaders };
   const rawMax = options.max_tokens ?? 1024;
@@ -1167,8 +1173,8 @@ export async function requestChatCompletion({ model, messages, options = {} }) {
     ...(options.top_p != null && { top_p: options.top_p }),
     ...(!isCloud && options.top_k != null && { top_k: options.top_k }),
     ...(!isCloud && options.repeat_penalty != null && { repeat_penalty: options.repeat_penalty }),
-    ...(!isCloud && options.presence_penalty != null && { presence_penalty: options.presence_penalty }),
-    ...(!isCloud && options.frequency_penalty != null && { frequency_penalty: options.frequency_penalty }),
+    ...(lmsHasRestModels && options.presence_penalty != null && { presence_penalty: options.presence_penalty }),
+    ...(lmsHasRestModels && options.frequency_penalty != null && { frequency_penalty: options.frequency_penalty }),
   };
   const fetchOpts = { method: 'POST', headers, body: JSON.stringify(body) };
   if (isCloud) {
@@ -1410,6 +1416,7 @@ export async function streamChatCompletion({ model, messages, options = {}, onCh
       resolveModelId(await resolveEffectiveLocalChatModelId(model)),
     );
   }
+  const lmsHasRestModels = !isCloud && (await probeLmsRestModelsList());
   const streamUrl = isDeepinfraModel(model) ? `${base}/chat/completions` : (base.endsWith('/v1') ? `${base}/chat/completions` : `${base}/v1/chat/completions`);
   const headers = { 'Content-Type': 'application/json', ...authHeaders };
   const rawMax = options.max_tokens ?? 4096;
@@ -1418,17 +1425,21 @@ export async function streamChatCompletion({ model, messages, options = {}, onCh
     model: resolvedModel,
     messages,
     stream: true,
-    ...(!isCloud && { stream_options: { include_usage: true } }),
     temperature: options.temperature ?? 0.7,
     max_tokens: maxTokens,
     ...(options.top_p != null && { top_p: options.top_p }),
-    ...(!isCloud && options.top_k != null && { top_k: options.top_k }),
-    ...(!isCloud && options.repeat_penalty != null && { repeat_penalty: options.repeat_penalty }),
-    ...(!isCloud && options.presence_penalty != null && { presence_penalty: options.presence_penalty }),
-    ...(!isCloud && options.frequency_penalty != null && { frequency_penalty: options.frequency_penalty }),
     ...(options.stop?.length && { stop: options.stop }),
-    ...(!isCloud && options.ttl != null && Number(options.ttl) > 0 && { ttl: Number(options.ttl) }),
   };
+  if (!isCloud) {
+    if (options.top_k != null) streamBody.top_k = options.top_k;
+    if (options.repeat_penalty != null) streamBody.repeat_penalty = options.repeat_penalty;
+    if (lmsHasRestModels) {
+      streamBody.stream_options = { include_usage: true };
+      if (options.presence_penalty != null) streamBody.presence_penalty = options.presence_penalty;
+      if (options.frequency_penalty != null) streamBody.frequency_penalty = options.frequency_penalty;
+      if (options.ttl != null && Number(options.ttl) > 0) streamBody.ttl = Number(options.ttl);
+    }
+  }
   let effectiveSignal = signal;
   let timeoutId = null;
   if (isCloud) {
