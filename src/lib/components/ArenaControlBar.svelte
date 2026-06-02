@@ -42,14 +42,14 @@
   aria-label="Arena run controls"
 >
   <!-- LEFT: Setup -->
-  <div class="flex items-center gap-2 shrink-0">
+  <div class="flex items-center gap-2 shrink-0 flex-wrap" aria-label="Question setup">
     {#if currentQuestionTotal === 0}
       <button
         type="button"
         class="h-8 px-3.5 rounded-lg text-xs font-bold shrink-0 transition-all hover:opacity-92 active:scale-[0.98] shadow-sm"
         style="background: var(--ui-accent); color: var(--ui-bg-main);"
         onclick={onOpenLoadModal}
-        title="Load or build a question set"
+        title="Import JSON or Q&A text, or generate with AI"
       >Load questions</button>
     {:else}
       <button
@@ -67,7 +67,7 @@
       style="background: var(--ui-input-bg); color: var(--ui-text-primary); border-color: var(--ui-border);"
       disabled={buildArenaInProgress}
       onclick={onBuildArena}
-      title="Generate question set with judge model"
+      title="Generate questions using the judge model (configure in Arena settings)"
     >{buildArenaInProgress ? "Building…" : "Build"}</button>
 
     {#if buildArenaError}
@@ -82,8 +82,8 @@
     {/if}
   </div>
 
-  <!-- CENTER: Question nav + Run actions (pushed to center with flex-1 spacers) -->
-  <div class="flex-1 flex items-center justify-center gap-2 min-w-0">
+  <!-- CENTER: Question nav + Run actions -->
+  <div class="flex-1 flex items-center justify-center gap-2 min-w-0 flex-wrap" aria-label="Run questions">
     <!-- Question nav -->
     <div class="flex items-center gap-1 flex-1 min-w-0">
       <button
@@ -148,7 +148,7 @@
         style="background: var(--ui-accent); color: var(--ui-bg-main);"
         disabled={$isStreaming || currentQuestionTotal === 0}
         onclick={askCurrentQuestion}
-        title="Send current question to all models"
+        title="Send the current question to every active panel"
       >Ask</button>
       <button
         type="button"
@@ -173,8 +173,8 @@
           style="background: var(--ui-input-bg); color: var(--ui-text-primary); border-color: var(--ui-border);"
           disabled={$isStreaming || currentQuestionTotal < 2}
           onclick={runAllQuestions}
-          title="Run all questions sequentially with scoring"
-        >Run All</button>
+          title="Run every question in order; judge scores after each"
+        >Run all</button>
       {/if}
     </div>
   </div>

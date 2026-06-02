@@ -476,7 +476,7 @@ export const liveTokPerSec = writable(null);
 const arenaPanelCountStored = () => {
   const v = typeof localStorage !== 'undefined' ? localStorage.getItem('arenaPanelCount') : null;
   const n = Number(v);
-  return n >= 1 && n <= 4 ? n : 1;
+  return n >= 1 && n <= 4 ? n : 2;
 };
 export const arenaPanelCount = writable(arenaPanelCountStored());
 if (typeof localStorage !== 'undefined') {

@@ -70,6 +70,8 @@
   import ArenaPanel from "$lib/components/ArenaPanel.svelte";
   import ArenaScoreMatrix from "$lib/components/ArenaScoreMatrix.svelte";
   import ArenaControlBar from "$lib/components/ArenaControlBar.svelte";
+  import ArenaGuide from "$lib/components/ArenaGuide.svelte";
+  import ArenaLoadQuestionsModal from "$lib/components/ArenaLoadQuestionsModal.svelte";
   import {
     generateId,
     resizeImageDataUrlsForVision,
@@ -83,6 +85,7 @@
     buildJudgePromptBlind,
     buildArenaQuestionGenerationPrompt,
     parseGeneratedQuestionSet,
+    parseQuestionsAndAnswers,
     normalizeGeneratedQuestionSet,
     makeSeededRandom,
     pickJudgeModel,
@@ -187,6 +190,46 @@
   const parsedAnswers = $derived(parsedQuestions.map((q) => (q.correct_answer != null ? String(q.correct_answer) : "")));
   let buildArenaInProgress = $state(false);
   let buildArenaError = $state("");
+  let loadQuestionsOpen = $state(false);
+  let manualImportText = $state("");
+  let manualImportError = $state("");
+
+  const arenaModelsReady = $derived.by(() => {
+    const n = $arenaPanelCount;
+    const slots = [$dashboardModelA, $dashboardModelB, $dashboardModelC, $dashboardModelD].slice(0, n);
+    return slots.every((id) => (id || "").trim().length > 0);
+  });
+
+  function openArenaSettings() {
+    arenaSettingsCollapsed = false;
+  }
+
+  function applyManualImport() {
+    manualImportError = "";
+    let parsed = parseGeneratedQuestionSet(manualImportText);
+    if (!parsed?.questions?.length) {
+      const qa = parseQuestionsAndAnswers(manualImportText);
+      if (qa.questions.length) parsed = qa;
+    }
+    if (!parsed?.questions?.length) {
+      manualImportError =
+        'Could not parse questions. Use JSON like [{"question":"…","answer":"…"}] or numbered Q&A text.';
+      return;
+    }
+    const normalized = normalizeGeneratedQuestionSet(parsed);
+    if (!normalized.questions.length) {
+      manualImportError = "No valid questions found.";
+      return;
+    }
+    builtQuestionSet = { questions: normalized.questions };
+    builtQuestionSetMeta = null;
+    arenaRunMetadata = null;
+    questionIndex = 0;
+    buildArenaError = "";
+    loadQuestionsOpen = false;
+    playClick();
+  }
+
   async function buildArena() {
     buildArenaError = "";
     const contestantIds = [
@@ -1993,11 +2036,14 @@
     parsedQuestions={parsedQuestions}
     builtQuestionCount={builtQuestionSet ? builtQuestionSet.questions.length : 0}
     buildArenaInProgress={buildArenaInProgress}
+    buildArenaError={buildArenaError}
     onBuildArena={buildArena}
+    onOpenLoadModal={() => { loadQuestionsOpen = true; }}
     runAllActive={runAllActive}
     runAllProgress={runAllProgress}
     arenaWebWarmingUp={arenaWebWarmingUp}
     arenaWebWarmUpAttempted={arenaWebWarmUpAttempted}
+    resetWebWarmUpAttempted={() => { arenaWebWarmUpAttempted = false; }}
     prevQuestion={prevQuestion}
     jumpToQuestion={jumpToQuestion}
     advanceQuestionIndex={advanceQuestionIndex}
@@ -2007,6 +2053,15 @@
     stopRunAll={stopRunAll}
     runArenaWarmUp={runArenaWarmUp}
     startOver={startOver}
+  />
+  <ArenaLoadQuestionsModal
+    bind:open={loadQuestionsOpen}
+    bind:manualImportText
+    {manualImportError}
+    {buildArenaInProgress}
+    onApplyImport={applyManualImport}
+    onBuildArena={() => { openArenaSettings(); buildArena(); }}
+    onOpenSettings={openArenaSettings}
   />
   {#if runAllActive}
     <div class="arena-runall-progress shrink-0" role="progressbar" aria-valuenow={runAllProgress.current} aria-valuemin={0} aria-valuemax={runAllProgress.total} aria-label="Run All progress">
@@ -2018,6 +2073,19 @@
   <div class="flex-1 min-h-0 flex relative">
   <!-- Main content column -->
   <div class="flex-1 min-w-0 flex flex-col min-h-0">
+
+  {#if currentQuestionTotal === 0}
+    <div class="shrink-0 px-3 sm:px-4 py-3">
+      <ArenaGuide
+        questionCount={0}
+        panelCount={$arenaPanelCount}
+        modelsReady={arenaModelsReady}
+        onLoadQuestions={() => { loadQuestionsOpen = true; }}
+        onBuildQuestions={() => { openArenaSettings(); buildArena(); }}
+        onOpenSettings={openArenaSettings}
+      />
+    </div>
+  {/if}
 
   <!-- === Sticky question text bar (always visible above panels) === -->
   {#if currentQuestionTotal > 0 && currentQuestionText}

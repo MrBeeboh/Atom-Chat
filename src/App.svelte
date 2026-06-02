@@ -265,7 +265,7 @@
               <button type="button" class="w-8 h-7 rounded-md text-xs font-medium transition-opacity {$arenaPanelCount === n ? '' : 'opacity-60'}" style="{$arenaPanelCount === n ? 'background: color-mix(in srgb, var(--ui-accent) 14%, transparent); color: var(--ui-accent);' : 'color: var(--ui-text-secondary);'}" onclick={() => arenaPanelCount.set(n)} aria-label="{n} panel{n === 1 ? '' : 's'} (Alt+{n})" aria-pressed={$arenaPanelCount === n} title="{n} panel{n === 1 ? '' : 's'} — Alt+{n}">{n}</button>
             {/each}
           </div>
-          <span class="text-[11px]" style="color: var(--ui-text-secondary);">Chat → A</span>
+          <span class="hidden lg:inline text-[11px] max-w-[10rem] truncate" style="color: var(--ui-text-secondary);" title="Free-form messages from the footer go to panel A only">Footer chat → panel A</span>
         </div>
         <div class="shrink-0" style="{HEADER_PRESET_MIN}" title="Global system prompt preset. Arena slots can override via Options."><PresetSelect compact={true} /></div>
         <div class="flex items-center shrink-0 pl-3" style="{HEADER_GROUP_GAP} {HEADER_THEME_MIN}" role="group" aria-label="Appearance">

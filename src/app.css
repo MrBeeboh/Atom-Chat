@@ -916,6 +916,19 @@ body {
   .atom-gradient-bg::before { animation: none; }
 }
 
+/* Arena toolbar: wrap on narrow screens */
+@media (max-width: 767px) {
+  .arena-command-toolbar {
+    flex-wrap: wrap;
+    row-gap: 0.5rem;
+    justify-content: flex-start;
+  }
+  .arena-command-toolbar > .flex-1 {
+    flex: 1 1 100%;
+    justify-content: flex-start;
+  }
+}
+
 /* Arena Run All progress bar */
 .arena-runall-progress {
   height: 3px;
