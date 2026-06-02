@@ -392,6 +392,174 @@ export function parseJudgeScoresAndExplanations(text) {
   return { scores, explanations };
 }
 
+/**
+ * Extract the first balanced JSON array substring (respects brackets inside strings).
+ * @param {string} text
+ * @returns {string | null}
+ */
+export function extractJsonArraySubstring(text) {
+  if (!text || typeof text !== 'string') return null;
+  const start = text.indexOf('[');
+  if (start < 0) return null;
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escape) {
+        escape = false;
+        continue;
+      }
+      if (ch === '\\') {
+        escape = true;
+        continue;
+      }
+      if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === '[') depth++;
+    else if (ch === ']') {
+      depth--;
+      if (depth === 0) return text.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+
+/**
+ * Lenient judge score parser for alternate line formats.
+ * @param {string} text
+ * @returns {Record<string, number>}
+ */
+export function parseJudgeScoresLenient(text) {
+  if (!text || typeof text !== 'string') return {};
+  const cleaned = stripThinkBlocks(text);
+  const out = {};
+  const patterns = [
+    /Model\s+([A-D])\s*[-:]\s*(\d+)(?:\s*\/\s*10)?/gi,
+    /Slot\s+([A-D])\s*:\s*(\d+)/gi,
+  ];
+  for (const re of patterns) {
+    let m;
+    while ((m = re.exec(cleaned)) !== null) {
+      const slot = m[1].toUpperCase();
+      const n = parseInt(m[2], 10);
+      if (slot >= 'A' && slot <= 'D' && n >= 0 && n <= 10) out[slot] = n;
+    }
+  }
+  return out;
+}
+
+/**
+ * Merge strict and lenient judge parsers; strict wins on conflict.
+ * @param {string} text
+ * @returns {{ scores: Record<string, number>, parseSource: 'strict' | 'lenient' | 'none' }}
+ */
+export function parseJudgeScoresMerged(text) {
+  const strict = parseJudgeScores(text);
+  const lenient = parseJudgeScoresLenient(text);
+  if (Object.keys(strict).length > 0) {
+    return { scores: { ...lenient, ...strict }, parseSource: 'strict' };
+  }
+  if (Object.keys(lenient).length > 0) {
+    return { scores: lenient, parseSource: 'lenient' };
+  }
+  return { scores: {}, parseSource: 'none' };
+}
+
+/**
+ * Lenient blind judge parser (Response #1, Response 2, etc.).
+ * @param {string} text
+ * @param {string[]} responseOrder
+ * @returns {{ scores: Record<string, number>, explanations: Record<string, string> }}
+ */
+export function parseBlindJudgeScoresLenient(text, responseOrder) {
+  if (!text || typeof text !== 'string' || !Array.isArray(responseOrder)) {
+    return { scores: {}, explanations: {} };
+  }
+  const cleaned = stripThinkBlocks(text);
+  const scores = {};
+  const explanations = {};
+  const re = /Response\s*#?\s*(\d+)\s*:\s*(\d+)(?:\s*\/\s*10)?\s*(?:-\s*)?([\s\S]*?)(?=Response\s*#?\s*\d+\s*:|$)/gi;
+  let m;
+  while ((m = re.exec(cleaned)) !== null) {
+    const oneBased = parseInt(m[1], 10);
+    const n = parseInt(m[2], 10);
+    const reason = (m[3] || '').trim();
+    const slot = responseOrder[oneBased - 1];
+    if (slot && n >= 0 && n <= 10) {
+      scores[slot] = n;
+      explanations[slot] = reason;
+    }
+  }
+  return { scores, explanations };
+}
+
+/**
+ * Merge strict and lenient blind parsers; strict wins on conflict.
+ * @param {string} text
+ * @param {string[]} responseOrder
+ * @returns {{ scores: Record<string, number>, parseSource: 'strict' | 'lenient' | 'none' }}
+ */
+export function parseBlindJudgeScoresMerged(text, responseOrder) {
+  const strict = parseBlindJudgeScores(text, responseOrder);
+  const lenient = parseBlindJudgeScoresLenient(text, responseOrder);
+  if (Object.keys(strict.scores).length > 0) {
+    return { scores: { ...lenient.scores, ...strict.scores }, parseSource: 'strict' };
+  }
+  if (Object.keys(lenient.scores).length > 0) {
+    return { scores: lenient.scores, parseSource: 'lenient' };
+  }
+  return { scores: {}, parseSource: 'none' };
+}
+
+/**
+ * Prompt to repair malformed Arena question-set JSON.
+ * @param {string} brokenJson
+ * @returns {Array<{ role: string, content: string }>}
+ */
+export function buildArenaJsonRepairPrompt(brokenJson) {
+  return [
+    {
+      role: 'system',
+      content:
+        'Fix the following broken JSON so it is a single valid JSON array. Each element must have "question" and may have "answer". Output only the JSON array, no markdown or explanation.',
+    },
+    { role: 'user', content: String(brokenJson ?? '') },
+  ];
+}
+
+/**
+ * Second-pass prompt to extract scores when judge output is unstructured.
+ * @param {string} rawOutput
+ * @param {boolean} blind
+ * @param {string[]} [responseOrder]
+ * @returns {Array<{ role: string, content: string }>}
+ */
+export function buildJudgeScoreExtractionPrompt(rawOutput, blind, responseOrder = []) {
+  let mapping = '';
+  if (blind && Array.isArray(responseOrder) && responseOrder.length) {
+    mapping = responseOrder
+      .map((slot, i) => `Response ${i + 1} = Model ${slot}`)
+      .join('\n');
+    mapping += '\n\n';
+  }
+  return [
+    {
+      role: 'system',
+      content: blind
+        ? 'Extract numeric scores 0-10 per model from the judge text. Reply with one line per model: Model X: N/10 - brief reason.'
+        : 'Extract numeric scores 0-10 per model. Reply with one line per model: Model X: N/10 - brief reason.',
+    },
+    { role: 'user', content: mapping + String(rawOutput ?? '') },
+  ];
+}
+
 // ---------- Loop detection ----------
 
 /**
@@ -764,28 +932,41 @@ export function buildArenaQuestionGenerationPrompt({ categories = [], questionCo
  * @param {string} rawContent
  * @returns {{ questions: string[], answers: string[] } | null}
  */
+function parseQuestionSetArray(arr) {
+  if (!Array.isArray(arr) || arr.length === 0) return null;
+  const questions = [];
+  const answers = [];
+  for (const item of arr) {
+    const q = item?.question != null ? String(item.question).trim() : '';
+    const a = item?.answer != null ? String(item.answer).trim() : '';
+    if (q) {
+      questions.push(q);
+      answers.push(a);
+    }
+  }
+  return questions.length > 0 ? { questions, answers } : null;
+}
+
 export function parseGeneratedQuestionSet(rawContent) {
   if (!rawContent || typeof rawContent !== 'string') return null;
   let jsonStr = rawContent.trim();
   const codeBlock = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (codeBlock) jsonStr = codeBlock[1].trim();
-  try {
-    const arr = JSON.parse(jsonStr);
-    if (!Array.isArray(arr) || arr.length === 0) return null;
-    const questions = [];
-    const answers = [];
-    for (const item of arr) {
-      const q = item?.question != null ? String(item.question).trim() : '';
-      const a = item?.answer != null ? String(item.answer).trim() : '';
-      if (q) {
-        questions.push(q);
-        answers.push(a);
-      }
+  const candidates = [jsonStr, extractJsonArraySubstring(rawContent), extractJsonArraySubstring(jsonStr)].filter(
+    Boolean,
+  );
+  const seen = new Set();
+  for (const candidate of candidates) {
+    if (!candidate || seen.has(candidate)) continue;
+    seen.add(candidate);
+    try {
+      const parsed = parseQuestionSetArray(JSON.parse(candidate));
+      if (parsed) return parsed;
+    } catch {
+      /* try next candidate */
     }
-    return questions.length > 0 ? { questions, answers } : null;
-  } catch {
-    return null;
   }
+  return null;
 }
 
 // ---------- Question objects (id-based, for filtering and audit) ----------

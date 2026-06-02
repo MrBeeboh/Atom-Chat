@@ -80,7 +80,11 @@
   import {
     parseJudgeScores,
     parseJudgeScoresAndExplanations,
+    parseJudgeScoresMerged,
     parseBlindJudgeScores,
+    parseBlindJudgeScoresLenient,
+    parseBlindJudgeScoresMerged,
+    buildArenaJsonRepairPrompt,
     buildJudgePrompt,
     buildJudgePromptBlind,
     buildArenaQuestionGenerationPrompt,
@@ -301,7 +305,16 @@
         options: { temperature: 0.1, max_tokens: 8192 },
       });
       timestamps.generation_end = Date.now();
-      const parsed = parseGeneratedQuestionSet(content);
+      let parsed = parseGeneratedQuestionSet(content);
+      if (!parsed || parsed.questions.length === 0) {
+        const repairMessages = buildArenaJsonRepairPrompt(content);
+        const { content: repaired } = await requestChatCompletion({
+          model: judgeId,
+          messages: repairMessages,
+          options: { temperature: 0.2, max_tokens: 8192 },
+        });
+        parsed = parseGeneratedQuestionSet(repaired);
+      }
       if (!parsed || parsed.questions.length === 0) {
         buildArenaError = "Judge did not return valid JSON. Try again or check the model.";
         return;
@@ -1630,15 +1643,17 @@
       let displayExplanation = fullContent;
       let popupExplanations = /** @type {Record<string, string> | undefined} */ (undefined);
       if (useBlindReview && responseOrder) {
+        const blindMerged = parseBlindJudgeScoresMerged(fullContent, responseOrder);
         const blind = parseBlindJudgeScores(fullContent, responseOrder);
-        roundScores = blind.scores;
-        popupExplanations = blind.explanations;
+        const blindLenient = parseBlindJudgeScoresLenient(fullContent, responseOrder);
+        roundScores = blindMerged.scores;
+        popupExplanations = { ...blindLenient.explanations, ...blind.explanations };
         const lines = ["A", "B", "C", "D"]
           .filter((slot) => roundScores[slot] !== undefined)
           .map((slot) => `Model ${slot}: ${roundScores[slot]}/10 - ${(blind.explanations[slot] || "").trim() || "—"}`);
         displayExplanation = lines.join("\n");
       } else {
-        roundScores = parseJudgeScores(fullContent);
+        roundScores = parseJudgeScoresMerged(fullContent).scores;
       }
       const qIdx = questionIndex % Math.max(1, parsedQuestions.length);
       const parsedOk = Object.keys(roundScores).length > 0;
