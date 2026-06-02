@@ -1,6 +1,8 @@
 <script>
   import { get } from 'svelte/store';
-  import { activeConversationId, activeMessages, conversations, settings, effectiveModelId, isStreaming, chatError, chatCommand, pendingDroppedFiles, webSearchForNextMessage, webSearchInProgress, webSearchConnected, grokApiKey, deepinfraApiKey } from '$lib/stores.js';
+  import { activeConversationId, activeMessages, conversations, settings, effectiveModelId, isStreaming, chatError, chatCommand, insertChatPrompt, pendingDroppedFiles, webSearchForNextMessage, webSearchInProgress, webSearchConnected, grokApiKey, deepinfraApiKey } from '$lib/stores.js';
+  import SetupGuide from '$lib/components/SetupGuide.svelte';
+  import { deriveSetupStatus } from '$lib/connectionSetup.js';
   import { getMessages, addMessage, clearMessages, deleteMessage, getMessageCount } from '$lib/db.js';
   import { streamChatCompletion, requestGrokImageGeneration, requestDeepInfraImageGeneration, requestDeepInfraVideoGeneration, isGrokModel, isDeepSeekModel } from '$lib/api.js';
   import { searchDuckDuckGo, formatSearchResultForChat } from '$lib/duckduckgo.js';
@@ -22,6 +24,17 @@
     "What would you like to explore?",
     "I'm here to help — just ask.",
   ];
+
+  const STARTER_PROMPTS = [
+    'Explain this in simple terms:',
+    'Help me debug this error:',
+    'Summarize the key points of:',
+    'Write a short, professional email about:',
+  ];
+
+  function useStarterPrompt(prompt) {
+    insertChatPrompt.set({ text: prompt, ts: Date.now() });
+  }
   let welcomeLine = $state(null);
   $effect(() => {
     if ($activeMessages?.length > 0) {
@@ -220,7 +233,14 @@
     if (!convId || (!hasText && !hasImages && !hasVideos)) return;
     chatError.set(null);
     if (!$effectiveModelId) {
-      chatError.set('Please select a model from the dropdown above.');
+      const st = deriveSetupStatus();
+      if (st === 'disconnected' || st === 'cloud_only') {
+        chatError.set('Connect LM Studio or add a cloud API key (Settings), then click Retry in the setup guide.');
+      } else if (st === 'no_models') {
+        chatError.set('Load a model in LM Studio, or add an API key in Settings → API keys.');
+      } else {
+        chatError.set('Choose a model from the Model menu in the header.');
+      }
       return;
     }
     if ((hasImages || hasVideos) && !getModelCapabilities($effectiveModelId).vision) {
@@ -756,6 +776,20 @@
             {#if welcomeLine}
               <p class="ui-greeting-welcome text-sm text-center animate-fade-in" style="color: var(--ui-text-secondary); opacity: 0.7;">{welcomeLine}</p>
             {/if}
+          </div>
+          <SetupGuide />
+          <div class="w-full flex flex-wrap justify-center gap-2" role="list" aria-label="Example prompts">
+            {#each STARTER_PROMPTS as prompt}
+              <button
+                type="button"
+                role="listitem"
+                class="starter-chip px-3 py-1.5 rounded-full text-xs font-medium transition-all"
+                style="border: 1px solid var(--ui-border); color: var(--ui-text-secondary); background: var(--ui-bg-sidebar);"
+                onclick={() => useStarterPrompt(prompt)}
+              >
+                {prompt}
+              </button>
+            {/each}
           </div>
           {#if $chatError}
             <div class="w-full px-4 py-2.5 rounded-lg text-sm flex items-center justify-between gap-2" style="background: color-mix(in srgb, var(--ui-accent-hot, #dc2626) 10%, transparent); color: var(--ui-text-primary);">

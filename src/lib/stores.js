@@ -221,11 +221,15 @@ if (typeof localStorage !== 'undefined') {
   togetherImageEndpoint.subscribe((v) => persistApiKey('togetherImageEndpoint', v));
 }
 
-/** True when at least one cloud API key (DeepSeek, Grok, or Cerebras) is set. Used for status line when LM Studio is down. */
+/** True when at least one cloud chat API key is set. Used when LM Studio is down. */
 export const cloudApisAvailable = derived(
-  [deepSeekApiKey, grokApiKey, cerebrasApiKey],
-  ([a, b, c]) => !!(typeof a === 'string' && a.trim()) || !!(typeof b === 'string' && b.trim()) || !!(typeof c === 'string' && c.trim())
+  [deepSeekApiKey, grokApiKey, cerebrasApiKey, deepinfraApiKey],
+  ([a, b, c, d]) =>
+    [a, b, c, d].some((k) => typeof k === 'string' && k.trim().length > 0)
 );
+
+/** Focus a Settings section when opened: 'connection' | 'api-keys'. Cleared after open. */
+export const settingsFocus = writable(null);
 
 /** Layout: cockpit | arena only (restore point). Old layouts migrate to cockpit. */
 const OLD_TO_NEW_LAYOUT = {
@@ -448,6 +452,9 @@ export const themeMetrics = writable({
 export const chatError = writable(null);
 /** One-shot chat command (regen/export/clear). ChatView subscribes and handles. */
 export const chatCommand = writable(null);
+
+/** One-shot prompt insert for ChatInput (starter chips, etc.). { text, ts }. */
+export const insertChatPrompt = writable(null);
 
 /** When true, the next Send will run a web search (DuckDuckGo) with the message text, then send. Toggle via globe button. */
 export const webSearchForNextMessage = writable(false);

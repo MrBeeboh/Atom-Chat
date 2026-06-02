@@ -1,9 +1,10 @@
 <script>
   import { tick } from 'svelte';
-  import { models, selectedModelId, lmStudioBaseUrl, modelSelectionNotification } from '$lib/stores.js';
-  import { getModels, modelDisplayName, getModelTypeTag } from '$lib/api.js';
-  import { getModelIcon, getQuantization, ensureModelIcons, modelIconOverrides } from '$lib/modelIcons.js';
-  import { findSmallestModel } from '$lib/utils/modelSelection.js';
+  import { get } from 'svelte/store';
+  import { models, selectedModelId, lmStudioBaseUrl, modelSelectionNotification, settingsOpen, settingsFocus } from '$lib/stores.js';
+  import { modelDisplayName, getModelTypeTag } from '$lib/api.js';
+  import { refreshConnectionAndModels } from '$lib/connectionSetup.js';
+  import { getModelIcon, getQuantization, modelIconOverrides } from '$lib/modelIcons.js';
   import ModelCapabilityBadges from '$lib/components/ModelCapabilityBadges.svelte';
   import ModelDropdownGroupedList from '$lib/components/ModelDropdownGroupedList.svelte';
   import ThinkingAtom from '$lib/components/ThinkingAtom.svelte';
@@ -50,42 +51,23 @@
   async function load() {
     loading = true;
     try {
-      const list = await getModels();
-      const ids = list.map((m) => m.id);
-      models.set(ids.map((id) => ({ id })));
-      ensureModelIcons(ids);
-
-      if (list.length === 0) {
-        modelSelectionNotification.set('No models available. Please load a model in LM Studio.');
-        return;
-      }
-      modelSelectionNotification.set(null);
-
-      const stored = typeof localStorage !== 'undefined' ? (localStorage.getItem('selectedModel') || '') : '';
-      const storedValid = typeof stored === 'string' && stored.trim() && ids.includes(stored.trim());
-
-      if (storedValid) {
-        selectedModelId.set(stored.trim());
-        await applyDefaultsForModel(stored.trim());
-        return;
-      }
-
-      const smallest = findSmallestModel(ids);
-      if (smallest) {
-        selectedModelId.set(smallest);
-        await applyDefaultsForModel(smallest);
-        if (stored.trim()) {
-          modelSelectionNotification.set(`Previous model unavailable, selected ${smallest}`);
-          setTimeout(() => modelSelectionNotification.set(null), 5000);
-        }
+      const { modelCount } = await refreshConnectionAndModels();
+      const sid = get(selectedModelId);
+      if (modelCount > 0 && sid) {
+        await applyDefaultsForModel(sid);
       }
     } catch (e) {
-      console.warn('LM Studio models:', e);
-      models.set([]);
-      modelSelectionNotification.set('Cannot connect. Click "Start local server" below or run ./scripts/start-atom.sh');
+      console.warn('Model list refresh:', e);
+      modelSelectionNotification.set('Cannot connect. Run ./scripts/start-atom.sh or check Settings → Connection.');
     } finally {
       loading = false;
     }
+  }
+
+  function openSetupSettings() {
+    settingsFocus.set('connection');
+    settingsOpen.set(true);
+    open = false;
   }
 
   $effect(() => {
@@ -145,8 +127,24 @@
         </div>
       {:else if $models.length === 0}
         <div class="px-4 py-3 text-sm flex flex-col gap-2" style="color: var(--ui-text-secondary);">
-          No local models. Run <span class="font-mono">./scripts/start-atom.sh</span> or
-          <button class="underline text-left" onclick={() => { window.open('https://github.com/anomalyco/atom-chat#quick-start'); }}>Launch local server</button>
+          <p>
+            No models found. Run <span class="font-mono">./scripts/start-atom.sh</span> (llama-server on :8080),
+            use LM Studio on :1234, or add a cloud API key in Settings.
+          </p>
+          <div class="flex flex-wrap gap-2">
+            <button
+              type="button"
+              class="px-2.5 py-1 rounded-md text-xs font-medium"
+              style="background: var(--ui-accent); color: var(--ui-bg-main);"
+              onclick={() => { load(); }}
+            >Retry</button>
+            <button
+              type="button"
+              class="px-2.5 py-1 rounded-md text-xs font-medium"
+              style="border: 1px solid var(--ui-border); color: var(--ui-text-primary);"
+              onclick={openSetupSettings}
+            >Settings</button>
+          </div>
         </div>
       {:else}
         <ModelDropdownGroupedList

@@ -1,7 +1,8 @@
 <script>
   import { fly } from 'svelte/transition';
   import { backOut, quintOut } from 'svelte/easing';
-  import { globalDefault, updateGlobalDefault, selectedModelId, models, presetDefaultModels, lmStudioBaseUrl, voiceServerUrl, lmStudioUnloadHelperUrl, deepSeekApiKey, grokApiKey, cerebrasApiKey, togetherApiKey, deepinfraApiKey, braveApiKey } from '$lib/stores.js';
+  import { globalDefault, updateGlobalDefault, selectedModelId, models, presetDefaultModels, lmStudioBaseUrl, voiceServerUrl, lmStudioUnloadHelperUrl, deepSeekApiKey, grokApiKey, cerebrasApiKey, togetherApiKey, deepinfraApiKey, braveApiKey, settingsFocus } from '$lib/stores.js';
+  import { refreshConnectionAndModels } from '$lib/connectionSetup.js';
   import { syncBraveKeyToProxy } from '$lib/duckduckgo.js';
   import { modelSelectorPrimaryLine } from '$lib/api.js';
   import { groupModelsForSelector } from '$lib/modelGroups.js';
@@ -56,6 +57,31 @@
     audioClicks = DEFAULTS.audio_clicks;
     audioVolume = DEFAULTS.audio_volume;
   }
+
+  let connectionDetailsEl = $state(/** @type {HTMLDetailsElement | null} */ (null));
+  let apiDetailsEl = $state(/** @type {HTMLDetailsElement | null} */ (null));
+
+  $effect(() => {
+    const focus = $settingsFocus;
+    if (!focus) return;
+    if (focus === 'connection' && connectionDetailsEl) {
+      connectionDetailsEl.open = true;
+      connectionDetailsEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      const input = connectionDetailsEl.querySelector('#settings-lmstudio-url');
+      if (input instanceof HTMLInputElement) input.focus();
+    }
+    if (focus === 'api-keys' && apiDetailsEl) {
+      apiDetailsEl.open = true;
+      apiDetailsEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      const input = apiDetailsEl.querySelector('#settings-deepseek-key');
+      if (input instanceof HTMLInputElement) input.focus();
+    }
+    settingsFocus.set(null);
+  });
+
+  async function onApiKeyBlur() {
+    await refreshConnectionAndModels();
+  }
 </script>
 
 <div
@@ -77,13 +103,13 @@
     </div>
     <div class="flex-1 overflow-y-auto px-6 py-4 space-y-3">
 
-      <details class="rounded-lg overflow-hidden group" style="border: 1px solid var(--ui-border);" open>
+      <details bind:this={connectionDetailsEl} class="rounded-lg overflow-hidden group" style="border: 1px solid var(--ui-border);" open>
         <summary class="px-4 py-3 cursor-pointer list-none text-sm font-medium transition-colors" style="background-color: var(--ui-bg-sidebar); border-bottom: 1px solid var(--ui-border); color: var(--ui-text-primary);">Connection</summary>
         <div class="px-4 py-3 space-y-3" style="background-color: var(--ui-bg-main);">
           <div>
             <label for="settings-lmstudio-url" class="block text-xs font-medium mb-1" style="color: var(--ui-text-secondary);">Backend URL (llama.cpp / LM Studio)</label>
-            <input id="settings-lmstudio-url" type="url" bind:value={$lmStudioBaseUrl} placeholder="http://localhost:8080" class="w-full rounded-lg px-3 py-2 text-sm font-mono" style="border: 1px solid var(--ui-border); background-color: var(--ui-input-bg); color: var(--ui-text-primary);" />
-            <p class="text-xs mt-1" style="color: var(--ui-text-secondary);">Empty = localhost:8080 (llama.cpp). Change to 1234 for LM Studio.</p>
+            <input id="settings-lmstudio-url" type="url" bind:value={$lmStudioBaseUrl} onblur={onApiKeyBlur} placeholder="http://localhost:8080" class="w-full rounded-lg px-3 py-2 text-sm font-mono" style="border: 1px solid var(--ui-border); background-color: var(--ui-input-bg); color: var(--ui-text-primary);" />
+            <p class="text-xs mt-1" style="color: var(--ui-text-secondary);">Empty = localhost:8080 (llama.cpp). Use http://localhost:1234 for LM Studio. Enable CORS in LM Studio → Developer.</p>
             <p class="text-xs mt-2 rounded-md px-2 py-1.5" style="color: var(--ui-text-secondary); background: color-mix(in srgb, var(--ui-border) 35%, transparent);">API keys and this URL are saved per browser origin (same host and port). Using another port or switching localhost vs 127.0.0.1 looks like empty settings; use one consistent URL or paste keys again.</p>
           </div>
           <div>
@@ -99,23 +125,23 @@
         </div>
       </details>
 
-      <details class="rounded-lg overflow-hidden group" style="border: 1px solid var(--ui-border);">
+      <details bind:this={apiDetailsEl} class="rounded-lg overflow-hidden group" style="border: 1px solid var(--ui-border);">
         <summary class="px-4 py-3 cursor-pointer list-none text-sm font-medium transition-colors" style="background-color: var(--ui-bg-sidebar); border-bottom: 1px solid var(--ui-border); color: var(--ui-text-primary);">API keys</summary>
         <div class="px-4 py-3 space-y-4" style="background-color: var(--ui-bg-main);">
           <p class="text-xs" style="color: var(--ui-text-secondary);">Keys live in the browser for this site (host + port). You can also put them in <code style="background: color-mix(in srgb, var(--ui-border) 40%, transparent); padding: 0 4px; border-radius: 3px;">.env.local</code> as <code style="background: color-mix(in srgb, var(--ui-border) 40%, transparent); padding: 0 4px; border-radius: 3px;">VITE_*</code> (see <code style="background: color-mix(in srgb, var(--ui-border) 40%, transparent); padding: 0 4px; border-radius: 3px;">.env.example</code>); they apply when storage is empty and copy into the browser on load. Restart <code style="background: color-mix(in srgb, var(--ui-border) 40%, transparent); padding: 0 4px; border-radius: 3px;">npm run dev</code> after editing env.</p>
           <div>
             <label for="settings-deepseek-key" class="block text-xs font-medium mb-1" style="color: var(--ui-text-secondary);">DeepSeek API key</label>
-            <input id="settings-deepseek-key" type="password" autocomplete="off" bind:value={$deepSeekApiKey} placeholder="API key (paste without extra spaces)" class="w-full rounded-lg px-3 py-2 text-sm font-mono" style="border: 1px solid var(--ui-border); background-color: var(--ui-input-bg); color: var(--ui-text-primary);" />
+            <input id="settings-deepseek-key" type="password" autocomplete="off" bind:value={$deepSeekApiKey} onblur={onApiKeyBlur} placeholder="API key (paste without extra spaces)" class="w-full rounded-lg px-3 py-2 text-sm font-mono" style="border: 1px solid var(--ui-border); background-color: var(--ui-input-bg); color: var(--ui-text-primary);" />
             <p class="text-xs mt-1" style="color: var(--ui-text-secondary);"><a href="https://platform.deepseek.com" target="_blank" rel="noopener noreferrer" style="color: var(--ui-accent);">platform.deepseek.com</a></p>
           </div>
           <div>
             <label for="settings-grok-key" class="block text-xs font-medium mb-1" style="color: var(--ui-text-secondary);">Grok (xAI) API key</label>
-            <input id="settings-grok-key" type="password" autocomplete="off" bind:value={$grokApiKey} placeholder="xai-…" class="w-full rounded-lg px-3 py-2 text-sm font-mono" style="border: 1px solid var(--ui-border); background-color: var(--ui-input-bg); color: var(--ui-text-primary);" />
+            <input id="settings-grok-key" type="password" autocomplete="off" bind:value={$grokApiKey} onblur={onApiKeyBlur} placeholder="xai-…" class="w-full rounded-lg px-3 py-2 text-sm font-mono" style="border: 1px solid var(--ui-border); background-color: var(--ui-input-bg); color: var(--ui-text-primary);" />
             <p class="text-xs mt-1" style="color: var(--ui-text-secondary);"><a href="https://console.x.ai" target="_blank" rel="noopener noreferrer" style="color: var(--ui-accent);">console.x.ai</a></p>
           </div>
           <div>
             <label for="settings-cerebras-key" class="block text-xs font-medium mb-1" style="color: var(--ui-text-secondary);">Cerebras API key</label>
-            <input id="settings-cerebras-key" type="password" autocomplete="off" bind:value={$cerebrasApiKey} placeholder="csk-…" class="w-full rounded-lg px-3 py-2 text-sm font-mono" style="border: 1px solid var(--ui-border); background-color: var(--ui-input-bg); color: var(--ui-text-primary);" />
+            <input id="settings-cerebras-key" type="password" autocomplete="off" bind:value={$cerebrasApiKey} onblur={onApiKeyBlur} placeholder="csk-…" class="w-full rounded-lg px-3 py-2 text-sm font-mono" style="border: 1px solid var(--ui-border); background-color: var(--ui-input-bg); color: var(--ui-text-primary);" />
             <p class="text-xs mt-1" style="color: var(--ui-text-secondary);"><a href="https://cloud.cerebras.ai" target="_blank" rel="noopener noreferrer" style="color: var(--ui-accent);">cloud.cerebras.ai</a></p>
           </div>
           <div>

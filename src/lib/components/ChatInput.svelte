@@ -1,6 +1,7 @@
 <script>
   import { get } from 'svelte/store';
-  import { isStreaming, voiceServerUrl, pendingDroppedFiles, webSearchForNextMessage, webSearchInProgress, webSearchConnected, layout, braveApiKey } from '$lib/stores.js';
+  import { tick } from 'svelte';
+  import { isStreaming, voiceServerUrl, pendingDroppedFiles, insertChatPrompt, webSearchForNextMessage, webSearchInProgress, webSearchConnected, layout, braveApiKey } from '$lib/stores.js';
   import ThinkingAtom from '$lib/components/ThinkingAtom.svelte';
   import { COCKPIT_SENDING, COCKPIT_SEARCHING, pickWitty } from '$lib/cockpitCopy.js';
   import { warmUpSearchConnection, syncBraveKeyToProxy } from '$lib/duckduckgo.js';
@@ -348,6 +349,19 @@
         pendingDroppedFiles.set(null);
         processFiles(files);
       }
+    });
+    return () => { unsub(); };
+  });
+
+  $effect(() => {
+    const unsub = insertChatPrompt.subscribe((req) => {
+      if (!req?.text) return;
+      text = req.text;
+      insertChatPrompt.set(null);
+      tick().then(() => {
+        textareaEl?.focus();
+        autoResize();
+      });
     });
     return () => { unsub(); };
   });

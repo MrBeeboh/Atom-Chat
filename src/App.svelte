@@ -4,9 +4,14 @@
   import { get } from 'svelte/store';
   import { fly } from 'svelte/transition';
   import { backOut, quintOut } from 'svelte/easing';
-  import { theme, sidebarOpen, settingsOpen, layout, dashboardModelA, dashboardModelB, dashboardModelC, dashboardModelD, activeConversationId, conversations, selectedModelId, uiTheme, sidebarCollapsed, cockpitIntelOpen, arenaPanelCount, models, lmStudioConnected, cloudApisAvailable } from '$lib/stores.js';
+  import { theme, sidebarOpen, settingsOpen, settingsFocus, layout, dashboardModelA, dashboardModelB, dashboardModelC, dashboardModelD, activeConversationId, conversations, selectedModelId, uiTheme, sidebarCollapsed, cockpitIntelOpen, arenaPanelCount, lmStudioConnected, cloudApisAvailable } from '$lib/stores.js';
   import { createConversation, listConversations, getMessageCount, getMessages } from '$lib/db.js';
-  import { getModels } from '$lib/api.js';
+
+  function openSettingsFromStatus() {
+    settingsFocus.set('connection');
+    settingsOpen.set(true);
+  }
+
   import Sidebar from '$lib/components/Sidebar.svelte';
   import ChatView from '$lib/components/ChatView.svelte';
   import ThemeToggle from '$lib/components/ThemeToggle.svelte';
@@ -22,11 +27,11 @@
   import ConfirmModal from '$lib/components/ConfirmModal.svelte';
   import ShortcutsModal from '$lib/components/ShortcutsModal.svelte';
   import AtomLogo from '$lib/components/AtomLogo.svelte';
-  import { checkLmStudioConnection } from '$lib/api.js';
+  import { refreshConnectionAndModels } from '$lib/connectionSetup.js';
   import { COCKPIT_LM_CHECKING, COCKPIT_LM_CONNECTED, COCKPIT_LM_UNREACHABLE, COCKPIT_CLOUD_APIS_AVAILABLE, pickWitty } from '$lib/cockpitCopy.js';
 
   const LAYOUT_OPTS = [
-    { value: 'cockpit', label: 'Cockpit' },
+    { value: 'cockpit', label: 'Chat' },
     { value: 'arena', label: 'Arena' },
   ];
   // Ensure layout is always cockpit or arena (guard against bad storage)
@@ -81,7 +86,7 @@
     const POLL_MS = 30000; // 30s when visible – avoid pinging LM Studio too often so idle unload can run
     const POLL_MS_HIDDEN = 60000; // 60s when tab hidden
     async function pollConnection() {
-      lmStudioConnected.set(await checkLmStudioConnection());
+      await refreshConnectionAndModels();
       const interval = typeof document !== 'undefined' && document.visibilityState === 'hidden' ? POLL_MS_HIDDEN : POLL_MS;
       pollId = setTimeout(pollConnection, interval);
     }
@@ -110,12 +115,7 @@
     conversations.set(list);
     if (!get(activeConversationId) && list.length > 0) activeConversationId.set(list[0].id);
 
-    try {
-      const modelList = await getModels();
-      models.set(modelList.map((m) => ({ id: m.id })));
-    } catch (_) {
-      // LM Studio may not be running; selectors will refetch when opened
-    }
+    await refreshConnectionAndModels();
   });
 
   async function refreshConversations() {
@@ -178,10 +178,17 @@
             <UiThemeSelect compact={true} />
             <ThemeToggle />
           </div>
-          <span class="flex items-center gap-1.5 shrink-0 text-xs font-medium" style="color: var(--ui-text-primary);" title={lmStatusMessage} aria-label={lmStatusMessage}>
+          <button
+            type="button"
+            class="flex items-center gap-1.5 shrink-0 text-xs font-medium rounded-md px-1.5 py-1 -mr-1.5 transition-opacity hover:opacity-80"
+            style="color: var(--ui-text-primary);"
+            title="{lmStatusMessage} — open Settings"
+            aria-label="{lmStatusMessage}. Open connection settings."
+            onclick={openSettingsFromStatus}
+          >
             <span class="w-2 h-2 rounded-full shrink-0" style="background-color: {$lmStudioConnected === true ? '#22c55e' : $lmStudioConnected === false ? ($cloudApisAvailable ? '#3b82f6' : '#ef4444') : '#94a3b8'};" aria-hidden="true"></span>
             <span class="hidden sm:inline">{lmStatusMessage}</span>
-          </span>
+          </button>
         </div>
       </header>
       <div class="flex flex-1 min-h-0 min-w-0 relative gap-0">
@@ -257,10 +264,17 @@
         </div>
         <div class="flex-1 min-w-4 shrink" aria-hidden="true"></div>
         <div class="flex items-center shrink-0" style="{HEADER_GROUP_GAP} {HEADER_RIGHT_GROUP}" role="group" aria-label="Status">
-          <span class="flex items-center gap-1.5 shrink-0 text-xs" style="color: var(--ui-text-secondary);" title={lmStatusMessage} aria-label={lmStatusMessage}>
-            <span class="w-2 h-2 rounded-full shrink-0" style="background-color: {$lmStudioConnected === true ? '#22c55e' : $lmStudioConnected === false ? '#ef4444' : '#94a3b8'};" aria-hidden="true"></span>
+          <button
+            type="button"
+            class="flex items-center gap-1.5 shrink-0 text-xs rounded-md px-1.5 py-1 transition-opacity hover:opacity-80"
+            style="color: var(--ui-text-secondary);"
+            title="{lmStatusMessage} — open Settings"
+            aria-label="{lmStatusMessage}. Open connection settings."
+            onclick={openSettingsFromStatus}
+          >
+            <span class="w-2 h-2 rounded-full shrink-0" style="background-color: {$lmStudioConnected === true ? '#22c55e' : $lmStudioConnected === false ? ($cloudApisAvailable ? '#3b82f6' : '#ef4444') : '#94a3b8'};" aria-hidden="true"></span>
             <span class="hidden sm:inline">{lmStatusMessage}</span>
-          </span>
+          </button>
         </div>
       </header>
       <div class="flex flex-1 min-h-0 relative">

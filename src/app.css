@@ -39,6 +39,12 @@ body {
   animation: greeting-fade-in 0.5s ease-out forwards;
 }
 
+.starter-chip:hover {
+  border-color: color-mix(in srgb, var(--ui-accent) 40%, var(--ui-border));
+  color: var(--ui-text-primary);
+  background: color-mix(in srgb, var(--ui-accent) 6%, var(--ui-bg-sidebar));
+}
+
 /* Metrics graph axes/grid (light gray in light mode, subtle light in dark) */
 html { --metrics-axis: #d4d4d4; --metrics-grid: #e5e5e5; }
 .dark { --metrics-axis: rgba(255,255,255,0.18); --metrics-grid: rgba(255,255,255,0.08); }
