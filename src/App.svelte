@@ -155,9 +155,9 @@
   {#if $layout === 'cockpit'}
     <div class="flex h-full flex-col">
       <!-- Cockpit header: 3-zone layout — left (brand+layout), center (model+preset), right (theme+status) -->
-      <header class="cockpit-header shrink-0 flex items-center px-4 py-2.5" style="background-color: var(--ui-bg-sidebar); border-bottom: 1px solid var(--ui-border);">
+      <header class="cockpit-header shrink-0 flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2 sm:px-4 sm:py-2.5" style="background-color: var(--ui-bg-sidebar); border-bottom: 1px solid var(--ui-border);">
         <!-- Left: brand + layout pill -->
-        <div class="flex items-center gap-3 shrink-0" role="group" aria-label="Brand and layout">
+        <div class="cockpit-header-brand flex items-center gap-2 sm:gap-3 shrink-0" role="group" aria-label="Brand and layout">
           <span class="cockpit-brand flex items-center gap-1.5 shrink-0 text-lg font-bold" style="color: var(--ui-accent);"><AtomLogo size={22} />ATOM</span>
           <span class="font-mono text-[9px] px-1.5 py-0.5 rounded shrink-0 select-none" style="background: color-mix(in srgb, var(--ui-accent) 12%, transparent); color: var(--ui-accent); opacity: 0.65;" title="Build revision">{__GIT_REV__}</span>
           <nav class="layout-pill flex rounded-full p-0.5 shrink-0 text-xs font-medium" style="background: color-mix(in srgb, var(--ui-border) 60%, transparent);" aria-label="Layout: Cockpit or Arena">
@@ -167,13 +167,23 @@
           </nav>
         </div>
         <!-- Center: model selector + preset -->
-        <div class="flex-1 flex items-center justify-center gap-3 min-w-0 px-4" role="group" aria-label="Model and preset">
-          <span class="text-xs font-semibold uppercase tracking-wider shrink-0" style="color: var(--ui-text-secondary);">Model</span>
-          <div class="min-w-0" style="{HEADER_MODEL_MIN}"><ModelSelector /></div>
-          <div class="shrink-0" style="{HEADER_PRESET_MIN}"><PresetSelect compact={true} /></div>
+        <div class="cockpit-header-model flex-1 flex items-center justify-center gap-2 sm:gap-3 min-w-0 basis-full sm:basis-auto order-3 sm:order-none px-0 sm:px-4" role="group" aria-label="Model and preset">
+          <span class="hidden sm:inline text-xs font-semibold uppercase tracking-wider shrink-0" style="color: var(--ui-text-secondary);">Model</span>
+          <div class="min-w-0 flex-1 sm:flex-none" style="{HEADER_MODEL_MIN}"><ModelSelector /></div>
+          <div class="shrink-0 hidden md:block" style="{HEADER_PRESET_MIN}"><PresetSelect compact={true} /></div>
         </div>
         <!-- Right: theme + status -->
-        <div class="flex items-center gap-4 shrink-0" role="group" aria-label="Appearance and status">
+        <div class="cockpit-header-actions flex items-center gap-2 sm:gap-4 shrink-0 ml-auto order-2 sm:order-none" role="group" aria-label="Appearance and status">
+          <button
+            type="button"
+            class="sm:hidden p-2 rounded-lg min-h-[40px] min-w-[40px] flex items-center justify-center"
+            style="color: var(--ui-text-secondary); border: 1px solid var(--ui-border);"
+            title="Settings"
+            aria-label="Open settings"
+            onclick={() => { settingsFocus.set('connection'); settingsOpen.set(true); }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          </button>
           <div class="flex items-center gap-2 shrink-0" style="min-width: 8.5rem;">
             <UiThemeSelect compact={true} />
             <ThemeToggle />

@@ -6,7 +6,12 @@
   import PerfStats from "$lib/components/PerfStats.svelte";
   import AuthVideo from "$lib/components/AuthVideo.svelte";
   import { pinnedContent, deepinfraApiKey, isStreaming } from "$lib/stores.js";
+  import { modelDisplayName } from "$lib/api.js";
   import ThinkingAtom from "$lib/components/ThinkingAtom.svelte";
+
+  const modelLabel = $derived(
+    message.modelId ? modelDisplayName(message.modelId) : "",
+  );
 
   /** DeepInfra key: init from store + env so it's there on first paint; subscribe to stay in sync with Settings. */
   let deepinfraKey = $state(
@@ -143,15 +148,15 @@
         </div>
       {/if}
     {:else if isAssistant}
-      {#if message.modelId}
+      {#if modelLabel}
         <div
           class="flex items-center gap-1.5 mb-2 pb-2"
           style="border-bottom: 1px solid var(--ui-border);"
         >
           <span
-            class="text-[10px] font-semibold uppercase tracking-wider truncate"
+            class="text-[10px] font-semibold tracking-wide truncate"
             style="color: var(--ui-accent); opacity: 0.85;"
-            title={message.modelId}>{message.modelId}</span
+            title={message.modelId}>{modelLabel}</span
           >
         </div>
       {/if}
@@ -270,7 +275,7 @@
     <!-- Copy/Pin buttons for ALL messages (User or Assistant) -->
     {#if (isUser && (content || contentArray.length)) || (isAssistant && (content || hasThinkingOrAnswer))}
       <div
-        class="flex items-center gap-1 mt-2 pt-2 opacity-0 group-hover:opacity-100 transition-opacity duration-150 {isUser ? 'justify-end' : ''}"
+        class="message-actions flex items-center gap-1 mt-2 pt-2 opacity-0 group-hover:opacity-100 transition-opacity duration-150 {isUser ? 'justify-end' : ''}"
       >
         <!-- Copy button with clipboard icon -->
         <button

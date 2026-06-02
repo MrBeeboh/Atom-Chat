@@ -792,7 +792,7 @@
             {/each}
           </div>
           {#if $chatError}
-            <div class="w-full px-4 py-2.5 rounded-lg text-sm flex items-center justify-between gap-2" style="background: color-mix(in srgb, var(--ui-accent-hot, #dc2626) 10%, transparent); color: var(--ui-text-primary);">
+            <div class="chat-error-banner w-full px-4 py-2.5 rounded-lg text-sm flex items-center justify-between gap-2" role="alert" style="background: color-mix(in srgb, var(--ui-accent-hot, #dc2626) 10%, transparent); color: var(--ui-text-primary);">
               <span>{$chatError}</span>
               <button type="button" class="shrink-0 p-1 rounded transition-opacity hover:opacity-80" style="color: var(--ui-text-secondary);" onclick={() => chatError.set(null)} aria-label="Dismiss">×</button>
             </div>
@@ -807,20 +807,20 @@
               imageGenerating={imageGenerating}
               videoGenerating={videoGenerating}
               videoGenElapsed={videoGenElapsed}
-              placeholder="Ask anything… (Ctrl+Enter to send)"
+              placeholder="Ask anything…"
             />
           </div>
         </div>
       </div>
     {:else}
       <!-- After first message: messages above, input fixed at bottom -->
-      <div class="flex-1 overflow-y-auto min-h-0">
+      <div class="chat-messages-scroll flex-1 overflow-y-auto min-h-0">
         <MessageList />
       </div>
-      <div class="shrink-0 p-4 chat-input-dock" style="background-color: var(--ui-bg-main); border-top: 1px solid var(--ui-border);">
+      <div class="chat-input-dock shrink-0 px-2 py-2 sm:p-4">
         <div class="max-w-[min(52rem,92%)] mx-auto w-full">
           {#if $chatError}
-            <div class="mb-3 px-4 py-3 rounded-xl text-sm flex items-center justify-between gap-2" style="background: color-mix(in srgb, var(--ui-accent-hot, #dc2626) 10%, transparent); color: var(--ui-text-primary);">
+            <div class="chat-error-banner mb-3 px-4 py-3 rounded-xl text-sm flex items-center justify-between gap-2" role="alert" style="background: color-mix(in srgb, var(--ui-accent-hot, #dc2626) 10%, transparent); color: var(--ui-text-primary);">
               <span>{$chatError}</span>
               <button type="button" class="shrink-0 p-1.5 rounded-lg transition-opacity hover:opacity-80" style="color: var(--ui-text-secondary);" onclick={() => chatError.set(null)} aria-label="Dismiss">×</button>
             </div>

@@ -9,7 +9,14 @@
   import { videoToFrames } from '$lib/videoToFrames.js';
 
   let { onSend, onStop, onGenerateImageGrok, onGenerateImageDeepSeek, onGenerateVideoDeepSeek, imageGenerating = false, videoGenerating = false, videoGenElapsed = '', placeholder: placeholderOverride = undefined } = $props();
-  const placeholderText = $derived(placeholderOverride ?? 'Type your message or drop/paste images, video, or PDFs... (Ctrl+Enter to send)');
+  const placeholderText = $derived(
+    placeholderOverride ?? 'Message ATOM… drop files or paste images',
+  );
+  const sendHint = $derived(
+    typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
+      ? '↵ send · ⇧↵ new line'
+      : 'Enter send · Shift+Enter new line',
+  );
   let text = $state('');
   let textareaEl = $state(null);
   let fileInputEl = $state(/** @type {HTMLInputElement | null} */ (null));
@@ -367,10 +374,15 @@
   });
 
   function handleKeydown(e) {
-    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+    if (e.key !== 'Enter') return;
+    if (e.shiftKey) return;
+    if (e.ctrlKey || e.metaKey) {
       e.preventDefault();
       handleSubmit();
+      return;
     }
+    e.preventDefault();
+    handleSubmit();
   }
 
   /** Perplexity-style: stable height when empty, grow only with content up to max. */
@@ -710,6 +722,7 @@
   {#if attachError}
     <p class="attach-error" role="alert">{attachError}</p>
   {/if}
+  <p class="chat-input-hint" aria-hidden="true">{sendHint}</p>
 </div>
 
 <style>
@@ -718,7 +731,22 @@
     display: flex;
     flex-direction: column;
     gap: 0;
-    padding: 16px;
+    padding: 12px 12px 8px;
+  }
+
+  @media (min-width: 640px) {
+    .chat-input-container {
+      padding: 16px 16px 10px;
+    }
+  }
+
+  .chat-input-hint {
+    margin: 6px 4px 0;
+    font-size: 10px;
+    text-align: right;
+    color: var(--ui-text-secondary);
+    opacity: 0.65;
+    user-select: none;
   }
 
   .chat-input-bar {
