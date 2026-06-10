@@ -267,8 +267,15 @@
       buildLoadingMessageIndex = Math.floor(Math.random() * ARENA_BUILD_LOADING_LINES.length);
       arenaTransitionPhase = "loading_judge";
       if (!isCloudModel(judgeId)) {
-        await loadModel(judgeId);
-        await new Promise((r) => setTimeout(r, 800));
+        try {
+          await loadModel(judgeId);
+          await new Promise((r) => setTimeout(r, 800));
+        } catch (loadErr) {
+          // Legacy llama-server (single model, no /models/load) or busy backend:
+          // continue anyway — the completion below talks to whatever is serving /v1,
+          // and a real failure will surface there with a meaningful message.
+          console.warn("[Arena Builder] judge load skipped:", loadErr?.message || loadErr);
+        }
       } else {
         await new Promise((r) => setTimeout(r, 300));
       }
@@ -2292,6 +2299,27 @@
           >{ARENA_LOADING_MODEL_LINES[loadingModelMessageIndex].sub}</span
         >
       {/if}
+    </div>
+  {/if}
+
+  <!-- Build error: shown where the loading banner was, so a failed Build is never silent -->
+  {#if buildArenaError && !arenaTransitionPhase}
+    <div
+      class="shrink-0 flex items-start justify-between gap-3 py-2.5 px-4 rounded-xl mx-3 mb-2"
+      role="alert"
+      style="background: color-mix(in srgb, var(--ui-accent-hot, #dc2626) 10%, var(--ui-bg-main)); border: 1px solid color-mix(in srgb, var(--ui-accent-hot, #dc2626) 35%, transparent); color: var(--ui-text-primary);"
+    >
+      <div class="text-sm min-w-0">
+        <span class="font-semibold" style="color: var(--ui-accent-hot, #dc2626);">Build failed:</span>
+        <span class="break-words"> {buildArenaError}</span>
+      </div>
+      <button
+        type="button"
+        class="shrink-0 p-1 rounded transition-opacity hover:opacity-80"
+        style="color: var(--ui-text-secondary);"
+        onclick={() => (buildArenaError = "")}
+        aria-label="Dismiss build error"
+      >×</button>
     </div>
   {/if}
 
