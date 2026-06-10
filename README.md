@@ -45,6 +45,16 @@ Optional: Python 3 for voice input, hardware metrics, and model unloading helper
 | `npm run preview` | Serve production build locally |
 | `./setup.sh` | Install deps, build, detect LM Studio |
 
+## Staying up to date
+
+The launchers (`npm run start`, `./start-atom.sh`, desktop icon) auto-sync from
+GitHub on every start: they fast-forward to the latest `origin/main` and re-run
+`npm install` only when dependencies changed. Sync is skipped safely when you
+are offline, have local edits, or are on a different branch.
+
+- `ATOM_SKIP_SYNC=1` — disable auto-sync for one launch (or export it permanently)
+- `ATOM_SYNC_BRANCH=mybranch` — track a branch other than `main`
+
 ## Settings
 
 The **Settings panel** (`Ctrl+,`) controls:

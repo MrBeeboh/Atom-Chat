@@ -6,6 +6,43 @@ set -e
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
+# --- Auto-sync from GitHub on launch (set ATOM_SKIP_SYNC=1 to disable) -------
+# Pulls the latest release branch before starting so the desktop app never
+# drifts behind the repo. Never blocks launch: offline, local edits, or a
+# diverged branch all fall through to starting the current version.
+if [ -z "${ATOM_SKIP_SYNC:-}" ] && [ -d .git ] && command -v git >/dev/null 2>&1; then
+    SYNC_BRANCH="${ATOM_SYNC_BRANCH:-main}"
+    echo "[ATOM] Checking GitHub for updates (origin/$SYNC_BRANCH)..."
+    if git fetch --quiet origin "$SYNC_BRANCH" 2>/dev/null; then
+        LOCAL_REF="$(git rev-parse HEAD 2>/dev/null || true)"
+        REMOTE_REF="$(git rev-parse "origin/$SYNC_BRANCH" 2>/dev/null || true)"
+        CUR_BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+        if [ -z "$REMOTE_REF" ] || [ "$LOCAL_REF" = "$REMOTE_REF" ]; then
+            echo "[ATOM] Already up to date."
+        elif [ "$CUR_BRANCH" != "$SYNC_BRANCH" ]; then
+            echo "[ATOM] On branch '$CUR_BRANCH' (not '$SYNC_BRANCH') — skipping auto-sync."
+        elif [ -n "$(git status --porcelain 2>/dev/null)" ]; then
+            echo "[ATOM] Local changes detected — skipping auto-sync so nothing is overwritten."
+            echo "[ATOM] (commit or stash them, or set ATOM_SKIP_SYNC=1 to silence this check)"
+        else
+            OLD_LOCK="$(git rev-parse HEAD:package-lock.json 2>/dev/null || true)"
+            if git merge --ff-only "origin/$SYNC_BRANCH" >/dev/null 2>&1; then
+                echo "[ATOM] Updated to $(git rev-parse --short HEAD)."
+                NEW_LOCK="$(git rev-parse HEAD:package-lock.json 2>/dev/null || true)"
+                if [ "$OLD_LOCK" != "$NEW_LOCK" ]; then
+                    echo "[ATOM] Dependencies changed — running npm install..."
+                    npm install --no-audit --no-fund --legacy-peer-deps \
+                        || echo "[ATOM] WARNING: npm install failed; continuing with existing node_modules."
+                fi
+            else
+                echo "[ATOM] Local history differs from origin/$SYNC_BRANCH — skipping auto-sync (fast-forward not possible)."
+            fi
+        fi
+    else
+        echo "[ATOM] Offline or GitHub unreachable — starting with current version."
+    fi
+fi
+
 # Intel oneAPI on PATH (SYCL runtime). Same shell is inherited by llama-server below.
 if [ -z "${ATOM_SKIP_ONEAPI:-}" ] && [ -z "${ONEAPI_ROOT:-}" ]; then
   for _setvars in /opt/intel/oneapi/setvars.sh "$HOME/intel/oneapi/setvars.sh"; do
