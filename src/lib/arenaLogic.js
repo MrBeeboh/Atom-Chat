@@ -432,6 +432,76 @@ export function extractJsonArraySubstring(text) {
 }
 
 /**
+ * All balanced top-level JSON array substrings in text, scanning from every '[' (bounded).
+ * Unlike extractJsonArraySubstring (first '[' only), this survives prose/thinking text that
+ * contains stray brackets before the real JSON array.
+ * @param {string} text
+ * @param {number} [maxCandidates]
+ * @returns {string[]}
+ */
+export function extractAllJsonArraySubstrings(text, maxCandidates = 8) {
+  if (!text || typeof text !== 'string') return [];
+  const out = [];
+  let from = 0;
+  while (out.length < maxCandidates) {
+    const start = text.indexOf('[', from);
+    if (start < 0) break;
+    const candidate = extractJsonArraySubstring(text.slice(start));
+    if (candidate) {
+      out.push(candidate);
+      from = start + candidate.length;
+    } else {
+      from = start + 1;
+    }
+  }
+  return out;
+}
+
+/**
+ * Salvage a truncated JSON array (e.g. generation hit max_tokens mid-object):
+ * keep everything up to the last complete top-level object and close the array.
+ * Returns null when the array is already balanced or nothing can be salvaged.
+ * @param {string} text
+ * @returns {string|null}
+ */
+export function repairTruncatedJsonArray(text) {
+  if (!text || typeof text !== 'string') return null;
+  const start = text.indexOf('[');
+  if (start < 0) return null;
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  let lastObjEnd = -1;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escape) {
+        escape = false;
+        continue;
+      }
+      if (ch === '\\') {
+        escape = true;
+        continue;
+      }
+      if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === '[' || ch === '{') depth++;
+    else if (ch === ']' || ch === '}') {
+      depth--;
+      if (ch === '}' && depth === 1) lastObjEnd = i;
+      if (ch === ']' && depth === 0) return null; // balanced — not truncated
+    }
+  }
+  if (lastObjEnd > start) return text.slice(start, lastObjEnd + 1) + ']';
+  return null;
+}
+
+/**
  * Lenient judge score parser for alternate line formats.
  * @param {string} text
  * @returns {Record<string, number>}
@@ -524,13 +594,16 @@ export function parseBlindJudgeScoresMerged(text, responseOrder) {
  * @returns {Array<{ role: string, content: string }>}
  */
 export function buildArenaJsonRepairPrompt(brokenJson) {
+  const raw = String(brokenJson ?? '');
+  // Strip thinking blocks so the repair model sees only the broken JSON, not the judge's reasoning.
+  const cleaned = stripThinkBlocks(raw) || raw;
   return [
     {
       role: 'system',
       content:
         'Fix the following broken JSON so it is a single valid JSON array. Each element must have "question" and may have "answer". Output only the JSON array, no markdown or explanation.',
     },
-    { role: 'user', content: String(brokenJson ?? '') },
+    { role: 'user', content: cleaned },
   ];
 }
 
@@ -937,8 +1010,11 @@ function parseQuestionSetArray(arr) {
   const questions = [];
   const answers = [];
   for (const item of arr) {
-    const q = item?.question != null ? String(item.question).trim() : '';
-    const a = item?.answer != null ? String(item.answer).trim() : '';
+    // Accept {question, answer} plus common variants the judge may emit despite instructions.
+    const qRaw = typeof item === 'string' ? item : item?.question ?? item?.q ?? item?.text;
+    const aRaw = typeof item === 'string' ? '' : item?.answer ?? item?.a ?? item?.correct_answer;
+    const q = qRaw != null ? String(qRaw).trim() : '';
+    const a = aRaw != null ? String(aRaw).trim() : '';
     if (q) {
       questions.push(q);
       answers.push(a);
@@ -947,20 +1023,40 @@ function parseQuestionSetArray(arr) {
   return questions.length > 0 ? { questions, answers } : null;
 }
 
+/** Accept a parsed JSON value: array of items, or an object wrapping one ({ questions: [...] }). */
+function parseQuestionSetValue(value) {
+  if (Array.isArray(value)) return parseQuestionSetArray(value);
+  if (value && typeof value === 'object' && Array.isArray(value.questions)) {
+    return parseQuestionSetArray(value.questions);
+  }
+  return null;
+}
+
 export function parseGeneratedQuestionSet(rawContent) {
   if (!rawContent || typeof rawContent !== 'string') return null;
-  let jsonStr = rawContent.trim();
+  // Reasoning judges wrap output in <think> blocks despite instructions; strip them first
+  // so stray brackets in the thinking text cannot shadow the real JSON array.
+  const cleaned = stripThinkBlocks(rawContent) || rawContent.trim();
+  let jsonStr = cleaned;
   const codeBlock = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (codeBlock) jsonStr = codeBlock[1].trim();
-  const candidates = [jsonStr, extractJsonArraySubstring(rawContent), extractJsonArraySubstring(jsonStr)].filter(
-    Boolean,
-  );
+  // Prefer balanced arrays that actually contain "question" over prose brackets.
+  const arrays = extractAllJsonArraySubstrings(cleaned);
+  arrays.sort((a, b) => Number(b.includes('"question"')) - Number(a.includes('"question"')));
+  const candidates = [
+    jsonStr,
+    ...arrays,
+    extractJsonArraySubstring(jsonStr),
+    // Last resort: salvage output truncated at the token limit.
+    repairTruncatedJsonArray(jsonStr),
+    repairTruncatedJsonArray(cleaned),
+  ].filter(Boolean);
   const seen = new Set();
   for (const candidate of candidates) {
     if (!candidate || seen.has(candidate)) continue;
     seen.add(candidate);
     try {
-      const parsed = parseQuestionSetArray(JSON.parse(candidate));
+      const parsed = parseQuestionSetValue(JSON.parse(candidate));
       if (parsed) return parsed;
     } catch {
       /* try next candidate */

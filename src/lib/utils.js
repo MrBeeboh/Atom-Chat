@@ -78,6 +78,40 @@ export function shouldSkipImageResizeForVision(modelId) {
   return /qwen.*vl.*(4b|8b)|(4b|8b).*qwen.*vl/.test(lower);
 }
 
+/**
+ * Extract plain text from a message content value (string or OpenAI-style parts array).
+ * @param {string|Array} content
+ * @returns {string}
+ */
+export function messageContentToText(content) {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((p) => (p?.type === 'text' && typeof p.text === 'string' ? p.text : ''))
+      .filter(Boolean)
+      .join('\n');
+  }
+  return '';
+}
+
+/**
+ * Build a short one-line snippet around the first case-insensitive match of query in text.
+ * @param {string} text
+ * @param {string} query
+ * @param {number} [radius] characters of context kept on each side of the match
+ * @returns {string} '' when text does not contain query
+ */
+export function makeSearchSnippet(text, query, radius = 40) {
+  if (!text || !query) return '';
+  const idx = text.toLowerCase().indexOf(query.toLowerCase());
+  if (idx === -1) return '';
+  const start = Math.max(0, idx - radius);
+  const end = Math.min(text.length, idx + query.length + radius);
+  const prefix = start > 0 ? '…' : '';
+  const suffix = end < text.length ? '…' : '';
+  return prefix + text.slice(start, end).replace(/\s+/g, ' ').trim() + suffix;
+}
+
 /** Format date for sidebar list */
 export function formatTime(date) {
   const d = typeof date === 'number' ? new Date(date) : date;

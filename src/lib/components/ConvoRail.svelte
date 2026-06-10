@@ -5,7 +5,7 @@
 <script>
   import { onMount } from 'svelte';
   import { activeConversationId, conversations, layout, confirm, settingsOpen } from '$lib/stores.js';
-  import { listConversations, createConversation, deleteConversation, getMessageCount, toggleConversationPin } from '$lib/db.js';
+  import { listConversations, createConversation, deleteConversation, getMessageCount, toggleConversationPin, updateConversation, searchMessagesByText } from '$lib/db.js';
   import { bulkEraseChats } from '$lib/bulkEraseChats.js';
   import { groupByDate } from '$lib/utils.js';
 
@@ -17,12 +17,29 @@
   let activeId = $state(null);
   let layoutVal = $state('flow');
   let searchQuery = $state('');
+  /** conversationId → { snippet } for message-content matches (deep search). */
+  let contentMatches = $state(new Map());
+  let searchToken = 0;
+  $effect(() => {
+    const q = searchQuery.trim();
+    if (q.length < 2) {
+      contentMatches = new Map();
+      return;
+    }
+    const token = ++searchToken;
+    const t = setTimeout(async () => {
+      const res = await searchMessagesByText(q);
+      if (token === searchToken) contentMatches = res;
+    }, 200);
+    return () => clearTimeout(t);
+  });
   const filteredList = $derived(
     searchQuery.trim() === ''
       ? convosList
       : convosList.filter(
           (c) =>
-            (c.title || '').toLowerCase().includes(searchQuery.trim().toLowerCase())
+            (c.title || '').toLowerCase().includes(searchQuery.trim().toLowerCase()) ||
+            contentMatches.has(c.id)
         )
   );
   const filteredGroups = $derived(groupByDate(filteredList));
@@ -119,6 +136,33 @@
     ev.stopPropagation();
     await toggleConversationPin(convId);
     await loadConversations();
+  }
+
+  /** Inline rename: which conversation is being renamed, and its draft title. */
+  let renamingId = $state(null);
+  let renameText = $state('');
+  function startRename(ev, conv) {
+    ev.stopPropagation();
+    renamingId = conv.id;
+    renameText = conv.title || '';
+  }
+  function cancelRename() {
+    renamingId = null;
+  }
+  async function commitRename() {
+    const id = renamingId;
+    if (!id) return;
+    renamingId = null;
+    const t = renameText.trim();
+    const current = convosList.find((c) => c.id === id);
+    if (!t || t === current?.title) return;
+    await updateConversation(id, { title: t });
+    await loadConversations();
+  }
+  /** Svelte action: focus the rename input and select its text. */
+  function autofocus(node) {
+    node.focus();
+    node.select();
   }
 </script>
 
@@ -249,7 +293,12 @@
                     style:color={isActive ? 'var(--ui-text-primary)' : 'var(--ui-text-secondary)'}
                     onclick={() => select(conv.id)}
                     onkeydown={(e) => e.key === 'Enter' && select(conv.id)}>
-                    <span class="truncate flex-1 text-xs min-w-0">{conv.title}</span>
+                    <span class="flex-1 min-w-0 flex flex-col">
+                      <span class="truncate text-xs">{conv.title}</span>
+                      {#if contentMatches.get(conv.id)?.snippet}
+                        <span class="truncate text-[10px]" style="opacity: 0.65;">{contentMatches.get(conv.id).snippet}</span>
+                      {/if}
+                    </span>
                     <button type="button" class="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 p-0.5 rounded shrink-0 text-[10px] hover:bg-black/10" style="color: var(--ui-text-secondary);" onclick={(e) => { e.stopPropagation(); remove(e, conv.id); }} aria-label="Delete">×</button>
                   </div>
                 </li>
@@ -280,7 +329,22 @@
                       <button type="button" class="p-0.5 rounded shrink-0 hover:bg-black/10" style="color: var(--ui-accent);" onclick={(e) => onTogglePin(e, conv.id)} aria-label="Unpin" title="Unpin">
                         <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 17v5M9 10.76a2 2 0 0 1-1.11 1.79l-1.78 9.09A1 1 0 0 1 5 21v-1a1 1 0 0 1 .89-.99l1.81-.18L9 10.76zM15 10.76l1.11 8.07 1.81.18A1 1 0 0 0 19 21v-1a1 1 0 0 0-.89-1l-1.78-9.09A2 2 0 0 1 15 10.76zM20 10.76a2 2 0 0 0-1.11 1.79l-1.78 9.09A1 1 0 0 1 15 21v-1a1 1 0 0 1 .89-.99l1.81-.18M4 10.76a2 2 0 0 1 1.11 1.79l1.78 9.09A1 1 0 0 0 9 21v-1a1 1 0 0 0-.89-.99L6.3 19" /></svg>
                       </button>
-                      <span class="truncate flex-1 text-xs min-w-0">{conv.title}</span>
+                      {#if renamingId === conv.id}
+                        <input
+                          class="flex-1 min-w-0 text-xs px-1 py-0.5 rounded"
+                          style="background: var(--ui-bg-main); color: var(--ui-text-primary); border: 1px solid var(--ui-accent);"
+                          bind:value={renameText}
+                          use:autofocus
+                          onclick={(e) => e.stopPropagation()}
+                          onkeydown={(e) => { e.stopPropagation(); if (e.key === 'Enter') commitRename(); else if (e.key === 'Escape') cancelRename(); }}
+                          onblur={commitRename}
+                          aria-label="Rename conversation" />
+                      {:else}
+                        <span class="truncate flex-1 text-xs min-w-0">{conv.title}</span>
+                        <button type="button" class="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 p-0.5 rounded shrink-0 hover:bg-black/10" style="color: var(--ui-text-secondary);" onclick={(e) => startRename(e, conv)} aria-label="Rename" title="Rename">
+                          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /></svg>
+                        </button>
+                      {/if}
                       <button type="button" class="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 p-0.5 rounded shrink-0 text-[10px] hover:bg-black/10" style="color: var(--ui-text-secondary);" onclick={(e) => { e.stopPropagation(); remove(e, conv.id); }} aria-label="Delete">×</button>
                     </div>
                   </li>
@@ -309,7 +373,22 @@
                     <button type="button" class="p-0.5 rounded shrink-0 hover:bg-black/10 {conv.pinned ? '' : 'opacity-50'}" style:color={conv.pinned ? 'var(--ui-accent)' : 'var(--ui-text-secondary)'} onclick={(e) => onTogglePin(e, conv.id)} aria-label={conv.pinned ? 'Unpin' : 'Pin'} title={conv.pinned ? 'Unpin' : 'Pin'}>
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M12 17v5M9 10.76a2 2 0 0 1-1.11 1.79l-1.78 9.09A1 1 0 0 1 5 21v-1a1 1 0 0 1 .89-.99l1.81-.18" /><path d="M15 10.76a2 2 0 0 0 1.11 1.79l1.78 9.09A1 1 0 0 0 19 21v-1a1 1 0 0 0-.89-.99l-1.81-.18" /><path d="M20 10.76a2 2 0 0 0-1.11 1.79l-1.78 9.09A1 1 0 0 1 15 21v-1a1 1 0 0 1 .89-.99l1.81-.18" /><path d="M4 10.76a2 2 0 0 1 1.11 1.79l1.78 9.09A1 1 0 0 0 9 21v-1a1 1 0 0 0-.89-.99L6.3 19" /></svg>
                     </button>
-                    <span class="truncate flex-1 text-xs min-w-0">{conv.title}</span>
+                    {#if renamingId === conv.id}
+                      <input
+                        class="flex-1 min-w-0 text-xs px-1 py-0.5 rounded"
+                        style="background: var(--ui-bg-main); color: var(--ui-text-primary); border: 1px solid var(--ui-accent);"
+                        bind:value={renameText}
+                        use:autofocus
+                        onclick={(e) => e.stopPropagation()}
+                        onkeydown={(e) => { e.stopPropagation(); if (e.key === 'Enter') commitRename(); else if (e.key === 'Escape') cancelRename(); }}
+                        onblur={commitRename}
+                        aria-label="Rename conversation" />
+                    {:else}
+                      <span class="truncate flex-1 text-xs min-w-0">{conv.title}</span>
+                      <button type="button" class="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 p-0.5 rounded shrink-0 hover:bg-black/10" style="color: var(--ui-text-secondary);" onclick={(e) => startRename(e, conv)} aria-label="Rename" title="Rename">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /></svg>
+                      </button>
+                    {/if}
                     <button type="button" class="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 p-0.5 rounded shrink-0 text-[10px] hover:bg-black/10" style="color: var(--ui-text-secondary);" onclick={(e) => { e.stopPropagation(); remove(e, conv.id); }} aria-label="Delete">×</button>
                   </div>
                 </li>

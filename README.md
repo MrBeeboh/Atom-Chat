@@ -29,7 +29,9 @@ Optional: Python 3 for voice input, hardware metrics, and model unloading helper
 - Model optimization — fetch recommended settings from Hugging Face
 - Cloud API support — DeepSeek, Grok, Cerebras, DeepInfra
 - Voice input (Whisper via local Python server)
-- Conversation history (IndexedDB + bulk erase)
+- Message tools — regenerate, edit & resend, copy, pin, per-message delete
+- Conversation history (IndexedDB + pin, inline rename, bulk erase)
+- Deep search — find chats by message content, with snippet previews
 - Dark / light / system theme
 - 44-key shortcut palette (`Ctrl+K`)
 
@@ -42,6 +44,16 @@ Optional: Python 3 for voice input, hardware metrics, and model unloading helper
 | `npm run build` | Production build → `dist/` |
 | `npm run preview` | Serve production build locally |
 | `./setup.sh` | Install deps, build, detect LM Studio |
+
+## Staying up to date
+
+The launchers (`npm run start`, `./start-atom.sh`, desktop icon) auto-sync from
+GitHub on every start: they fast-forward to the latest `origin/main` and re-run
+`npm install` only when dependencies changed. Sync is skipped safely when you
+are offline, have local edits, or are on a different branch.
+
+- `ATOM_SKIP_SYNC=1` — disable auto-sync for one launch (or export it permanently)
+- `ATOM_SYNC_BRANCH=mybranch` — track a branch other than `main`
 
 ## Settings
 

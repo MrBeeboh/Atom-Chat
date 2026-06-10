@@ -72,6 +72,7 @@
     const actions = [
       { id: 'new-chat', label: 'New Chat', shortcut: 'Ctrl+N', category: 'Actions', run: () => runNewChat() },
       { id: 'search-web', label: 'Include web search for next message', shortcut: '', category: 'Actions', run: () => webSearchForNextMessage.set(true) },
+      { id: 'regenerate', label: 'Regenerate Last Response', shortcut: '', category: 'Actions', run: () => chatCommand.set({ type: 'regenerate', ts: Date.now() }) },
       { id: 'export-chat', label: 'Export Chat', shortcut: 'Ctrl+Shift+E', category: 'Actions', run: () => chatCommand.set({ type: 'export', ts: Date.now() }) },
       { id: 'clear-chat', label: 'Clear Chat', shortcut: 'Ctrl+Shift+L', category: 'Actions', run: () => chatCommand.set({ type: 'clear', ts: Date.now() }) },
       { id: 'bulk-erase', label: 'Bulk erase all chats', shortcut: '', category: 'Actions', run: () => runBulkErase() },

@@ -6,6 +6,8 @@
   import MessageBubble from '$lib/components/MessageBubble.svelte';
   import ScrollToBottomButton from '$lib/components/ScrollToBottomButton.svelte';
 
+  let { onRegenerate = null, onEditResend = null, onDelete = null } = $props();
+
   let listEl = $state(/** @type {HTMLDivElement | null} */ (null));
   let scrollRoot = $state(/** @type {HTMLElement | null} */ (null));
 
@@ -36,9 +38,9 @@
 <ScrollToBottomButton {scrollRoot} />
 <div class="chat-message-list max-w-[min(52rem,92%)] mx-auto py-4 md:py-5 px-3 md:px-4 w-full" bind:this={listEl}>
   <div class="space-y-4 md:space-y-5">
-    {#each msgs as msg (msg.id)}
+    {#each msgs as msg, i (msg.id)}
       <div class="message-entrance" in:fly={{ y: 16, duration: 400, easing: quintOut }}>
-        <MessageBubble message={msg} />
+        <MessageBubble message={msg} isLast={i === msgs.length - 1} {onRegenerate} {onEditResend} {onDelete} />
       </div>
     {/each}
   </div>
