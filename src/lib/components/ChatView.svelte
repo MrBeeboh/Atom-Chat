@@ -1,9 +1,9 @@
 <script>
   import { get } from 'svelte/store';
-  import { activeConversationId, activeMessages, conversations, settings, effectiveModelId, isStreaming, chatError, chatCommand, insertChatPrompt, pendingDroppedFiles, webSearchForNextMessage, webSearchInProgress, webSearchConnected, grokApiKey, deepinfraApiKey } from '$lib/stores.js';
+  import { activeConversationId, activeMessages, conversations, settings, effectiveModelId, isStreaming, chatError, chatCommand, insertChatPrompt, pendingDroppedFiles, webSearchForNextMessage, webSearchInProgress, webSearchConnected, grokApiKey, deepinfraApiKey, confirm } from '$lib/stores.js';
   import SetupGuide from '$lib/components/SetupGuide.svelte';
   import { deriveSetupStatus } from '$lib/connectionSetup.js';
-  import { getMessages, addMessage, clearMessages, deleteMessage, getMessageCount } from '$lib/db.js';
+  import { getMessages, addMessage, clearMessages, deleteMessage, getMessageCount, updateConversation, listConversations } from '$lib/db.js';
   import { streamChatCompletion, requestGrokImageGeneration, requestDeepInfraImageGeneration, requestDeepInfraVideoGeneration, isGrokModel, isDeepSeekModel } from '$lib/api.js';
   import { searchDuckDuckGo, formatSearchResultForChat } from '$lib/duckduckgo.js';
   import MessageList from '$lib/components/MessageList.svelte';
@@ -184,6 +184,8 @@
       clearChat();
     } else if (cmd.type === 'export') {
       exportChat();
+    } else if (cmd.type === 'regenerate') {
+      regenerateLast();
     }
     chatCommand.set(null);
   });
@@ -226,23 +228,27 @@
     return out;
   }
 
+  /** True when a model is ready; otherwise sets a setup-aware chat error and returns false. */
+  function ensureModelSelected() {
+    if ($effectiveModelId) return true;
+    const st = deriveSetupStatus();
+    if (st === 'disconnected' || st === 'cloud_only') {
+      chatError.set('Connect LM Studio or add a cloud API key (Settings), then click Retry in the setup guide.');
+    } else if (st === 'no_models') {
+      chatError.set('Load a model in LM Studio, or add an API key in Settings → API keys.');
+    } else {
+      chatError.set('Choose a model from the Model menu in the header.');
+    }
+    return false;
+  }
+
   async function sendUserMessage(text, imageDataUrls = [], videoDataUrls = []) {
     const hasText = (text || '').trim().length > 0;
     const hasImages = imageDataUrls?.length > 0;
     const hasVideos = videoDataUrls?.length > 0;
     if (!convId || (!hasText && !hasImages && !hasVideos)) return;
     chatError.set(null);
-    if (!$effectiveModelId) {
-      const st = deriveSetupStatus();
-      if (st === 'disconnected' || st === 'cloud_only') {
-        chatError.set('Connect LM Studio or add a cloud API key (Settings), then click Retry in the setup guide.');
-      } else if (st === 'no_models') {
-        chatError.set('Load a model in LM Studio, or add an API key in Settings → API keys.');
-      } else {
-        chatError.set('Choose a model from the Model menu in the header.');
-      }
-      return;
-    }
+    if (!ensureModelSelected()) return;
     if ((hasImages || hasVideos) && !getModelCapabilities($effectiveModelId).vision) {
       chatError.set(`"${$effectiveModelId}" does not support image input. Switch to a vision-capable model to send images or video.`);
       return;
@@ -282,15 +288,20 @@
         ]
       : effectiveText;
 
-    const history = await getMessages(convId);
     await addMessage(convId, {
       role: 'user',
       content: userContent,
       videoUrls: hasVideos ? [...videoDataUrls] : undefined,
     });
     await loadMessages();
-    const msgsForApi = [...history, { role: 'user', content: userContent }];
-    const apiMessages = buildApiMessages(msgsForApi, $settings.system_prompt);
+    await streamAssistantReply();
+  }
+
+  /** Stream a new assistant reply from the conversation's current DB history. */
+  async function streamAssistantReply() {
+    if (!convId) return;
+    const history = await getMessages(convId);
+    const apiMessages = buildApiMessages(history, $settings.system_prompt);
 
     const assistantMsgId = generateId();
     const assistantPlaceholder = {
@@ -384,9 +395,7 @@
     const conv = $conversations.find((c) => c.id === convId);
     if (conv && conv.title === 'New chat' && fullContent) {
       const title = fullContent.slice(0, 50).replace(/\n/g, ' ').trim() || 'Chat';
-      const { updateConversation } = await import('$lib/db.js');
       await updateConversation(convId, { title });
-      const { listConversations } = await import('$lib/db.js');
       const list = await listConversations();
       const withCount = await Promise.all(list.map(async (c) => ({ ...c, messageCount: await getMessageCount(c.id) })));
       conversations.set(withCount);
@@ -396,6 +405,65 @@
   async function clearChat() {
     if (!convId) return;
     await clearMessages(convId);
+    await loadMessages();
+  }
+
+  /**
+   * Regenerate from a message: for an assistant message, drop it (and anything after) and
+   * re-stream; for a trailing user message (e.g. after an error), just stream a reply.
+   */
+  async function regenerateFromMessage(message) {
+    if (!convId || $isStreaming || !message?.id) return;
+    if (!ensureModelSelected()) return;
+    chatError.set(null);
+    const msgs = await getMessages(convId);
+    const idx = msgs.findIndex((m) => m.id === message.id);
+    if (idx === -1) return;
+    if (message.role === 'assistant') {
+      for (const m of msgs.slice(idx)) await deleteMessage(m.id);
+      await loadMessages();
+    }
+    await streamAssistantReply();
+  }
+
+  /** Regenerate the latest reply (command palette / chatCommand). */
+  async function regenerateLast() {
+    if (!convId || $isStreaming) return;
+    const msgs = await getMessages(convId);
+    const last = msgs[msgs.length - 1];
+    if (last) await regenerateFromMessage(last);
+  }
+
+  /** Replace a user message with edited text: truncate the thread there and resend. */
+  async function editAndResendMessage(message, newText) {
+    if (!convId || $isStreaming || !message?.id) return;
+    const text = (newText || '').trim();
+    if (!text) return;
+    const msgs = await getMessages(convId);
+    const idx = msgs.findIndex((m) => m.id === message.id);
+    if (idx === -1) return;
+    for (const m of msgs.slice(idx)) await deleteMessage(m.id);
+    await loadMessages();
+    try {
+      await sendUserMessage(text);
+    } catch {
+      // Send aborted (e.g. web search failed) after the thread was truncated:
+      // chatError is already set; put the edited text back in the input so it isn't lost.
+      insertChatPrompt.set({ text, ts: Date.now() });
+    }
+  }
+
+  /** Delete a single message (with confirmation). */
+  async function removeMessage(message) {
+    if (!convId || !message?.id) return;
+    if (!(await confirm({
+      title: 'Delete message',
+      message: 'Delete this message from the conversation? This cannot be undone.',
+      confirmLabel: 'Delete',
+      cancelLabel: 'Cancel',
+      danger: true,
+    }))) return;
+    await deleteMessage(message.id);
     await loadMessages();
   }
 
@@ -815,7 +883,7 @@
     {:else}
       <!-- After first message: messages above, input fixed at bottom -->
       <div class="chat-messages-scroll flex-1 overflow-y-auto min-h-0">
-        <MessageList />
+        <MessageList onRegenerate={regenerateFromMessage} onEditResend={editAndResendMessage} onDelete={removeMessage} />
       </div>
       <div class="chat-input-dock shrink-0 px-2 py-2 sm:p-4">
         <div class="max-w-[min(52rem,92%)] mx-auto w-full">

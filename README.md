@@ -29,7 +29,9 @@ Optional: Python 3 for voice input, hardware metrics, and model unloading helper
 - Model optimization — fetch recommended settings from Hugging Face
 - Cloud API support — DeepSeek, Grok, Cerebras, DeepInfra
 - Voice input (Whisper via local Python server)
-- Conversation history (IndexedDB + bulk erase)
+- Message tools — regenerate, edit & resend, copy, pin, per-message delete
+- Conversation history (IndexedDB + pin, inline rename, bulk erase)
+- Deep search — find chats by message content, with snippet previews
 - Dark / light / system theme
 - 44-key shortcut palette (`Ctrl+K`)
 
