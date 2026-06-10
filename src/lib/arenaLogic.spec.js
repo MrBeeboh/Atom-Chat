@@ -8,6 +8,8 @@ import {
   parseJudgeScoresMerged,
   parseBlindJudgeScoresMerged,
   extractJsonArraySubstring,
+  extractAllJsonArraySubstrings,
+  repairTruncatedJsonArray,
   parseGeneratedQuestionSet,
   buildArenaJsonRepairPrompt,
   buildJudgeScoreExtractionPrompt,
@@ -776,6 +778,71 @@ describe('parseGeneratedQuestionSet', () => {
     expect(r?.questions).toEqual(['Q']);
     expect(r?.answers).toEqual(['A']);
   });
+  it('parses output from reasoning judges that prepend <think> blocks', () => {
+    const raw = '<think>\nLet me plan [easy, medium] questions about science.\n</think>\n[{"question":"Q1","answer":"A1"},{"question":"Q2","answer":"A2"}]';
+    const r = parseGeneratedQuestionSet(raw);
+    expect(r?.questions).toEqual(['Q1', 'Q2']);
+    expect(r?.answers).toEqual(['A1', 'A2']);
+  });
+  it('skips prose brackets before the real array', () => {
+    const raw = 'Here is the set [as requested]:\n[{"question":"Q","answer":"A"}]';
+    const r = parseGeneratedQuestionSet(raw);
+    expect(r?.questions).toEqual(['Q']);
+    expect(r?.answers).toEqual(['A']);
+  });
+  it('accepts an object wrapping the array ({ questions: [...] })', () => {
+    const raw = '{"questions":[{"question":"Q","answer":"A"}]}';
+    const r = parseGeneratedQuestionSet(raw);
+    expect(r?.questions).toEqual(['Q']);
+    expect(r?.answers).toEqual(['A']);
+  });
+  it('accepts alternate keys (q/a, text/correct_answer) and plain string items', () => {
+    const r1 = parseGeneratedQuestionSet('[{"q":"Q1","a":"A1"}]');
+    expect(r1?.questions).toEqual(['Q1']);
+    expect(r1?.answers).toEqual(['A1']);
+    const r2 = parseGeneratedQuestionSet('[{"text":"Q2","correct_answer":"A2"}]');
+    expect(r2?.questions).toEqual(['Q2']);
+    expect(r2?.answers).toEqual(['A2']);
+    const r3 = parseGeneratedQuestionSet('["What is 2+2?"]');
+    expect(r3?.questions).toEqual(['What is 2+2?']);
+    expect(r3?.answers).toEqual(['']);
+  });
+  it('salvages an array truncated at the token limit', () => {
+    const raw = '[{"question":"Q1","answer":"A1"},{"question":"Q2","answer":"A2"},{"question":"Q3","ans';
+    const r = parseGeneratedQuestionSet(raw);
+    expect(r?.questions).toEqual(['Q1', 'Q2']);
+    expect(r?.answers).toEqual(['A1', 'A2']);
+  });
+  it('returns null when no questions can be recovered', () => {
+    expect(parseGeneratedQuestionSet('No JSON here, sorry.')).toBeNull();
+    expect(parseGeneratedQuestionSet('')).toBeNull();
+    expect(parseGeneratedQuestionSet(null)).toBeNull();
+  });
+});
+
+describe('extractAllJsonArraySubstrings', () => {
+  it('finds arrays beyond the first bracket', () => {
+    const text = 'note [unbalanced... then [1,2] and ["x"]';
+    const arrays = extractAllJsonArraySubstrings(text);
+    expect(arrays.some((a) => a.includes('[1,2]') || a === '[1,2]')).toBe(true);
+  });
+  it('returns empty array for no input', () => {
+    expect(extractAllJsonArraySubstrings('')).toEqual([]);
+    expect(extractAllJsonArraySubstrings(null)).toEqual([]);
+  });
+});
+
+describe('repairTruncatedJsonArray', () => {
+  it('closes a truncated array after the last complete object', () => {
+    const out = repairTruncatedJsonArray('[{"question":"Q1"},{"question":"Q2","an');
+    expect(out).toBe('[{"question":"Q1"}]');
+    expect(() => JSON.parse(out)).not.toThrow();
+  });
+  it('returns null for balanced arrays and unsalvageable input', () => {
+    expect(repairTruncatedJsonArray('[{"a":1}]')).toBeNull();
+    expect(repairTruncatedJsonArray('no array')).toBeNull();
+    expect(repairTruncatedJsonArray('[{"never_closed')).toBeNull();
+  });
 });
 
 describe('parseJudgeScoresLenient', () => {
@@ -817,6 +884,11 @@ describe('buildArenaJsonRepairPrompt', () => {
     expect(m).toHaveLength(2);
     expect(m[0].role).toBe('system');
     expect(m[1].content).toContain('[broken');
+  });
+  it('strips <think> blocks so the repair model sees only the broken JSON', () => {
+    const m = buildArenaJsonRepairPrompt('<think>my [reasoning]</think>[{"question":"Q"');
+    expect(m[1].content).not.toContain('reasoning');
+    expect(m[1].content).toContain('[{"question":"Q"');
   });
 });
 
