@@ -737,9 +737,9 @@
       <div class="flex items-center gap-2">
         <label for="intel-batch" class="text-xs shrink-0 w-20 flex items-center gap-0.5">Batch<InfoTooltip text="Eval batch size. Larger = faster inference but more VRAM."><span class="w-3 h-3 rounded-full border inline-flex items-center justify-center text-[8px] cursor-help opacity-60 hover:opacity-100" style="border-color: var(--ui-border);">i</span></InfoTooltip></label>
         <div class="flex flex-1 gap-0.5">
-          <button type="button" class="px-1.5 py-0.5 rounded-l border text-xs hover:opacity-90" style="border-color: var(--ui-border);" onclick={stepBatchDown} title="Half">▼</button>
+          <button type="button" class="px-1.5 py-0.5 rounded-l border text-xs hover:opacity-90" style="border-color: var(--ui-border);" onclick={stepBatchDown} aria-label="Decrease batch size" title="Half">▼</button>
           <input id="intel-batch" type="number" min={BATCH_SIZE_MIN} max={BATCH_SIZE_MAX} bind:value={evalBatchSize} class="flex-1 px-1.5 py-1 border text-xs min-w-0" style="border-color: var(--ui-border); background: var(--ui-input-bg); color: var(--ui-text-primary);" />
-          <button type="button" class="px-1.5 py-0.5 rounded-r border text-xs hover:opacity-90" style="border-color: var(--ui-border);" onclick={stepBatchUp} title="Double">▲</button>
+          <button type="button" class="px-1.5 py-0.5 rounded-r border text-xs hover:opacity-90" style="border-color: var(--ui-border);" onclick={stepBatchUp} aria-label="Increase batch size" title="Double">▲</button>
         </div>
       </div>
       <div class="flex items-center gap-2">

@@ -1,20 +1,74 @@
 /**
  * @file api.js
- * @description LM Studio API client: list models, load/unload, chat (streaming and non-streaming).
+ * @description Inference API client: list models, load/unload, chat (streaming and non-streaming).
  *
- * Endpoints: GET /api/v1/models, POST /api/v1/models/load, POST /api/v1/models/unload (per-instance),
- * POST /v1/chat/completions. Bulk eject: unload helper at http://localhost:8766 (POST /unload-all, runs lms unload --all).
- * Base URL: localStorage lmStudioBaseUrl or dev proxy /api/lmstudio or http://localhost:1234.
+ * Backends: LM Studio (GET /api/v1/models, POST load/unload), llama.cpp router (GET /models, POST /models/load|unload),
+ * legacy single-model llama-server (-m), and cloud providers (OpenAI-compatible).
+ *
+ * Bulk eject helper: POST http://localhost:8766/unload-all (optional).
+ * Base URL: localStorage lmStudioBaseUrl or dev proxy /api/llama or http://localhost:8080.
  */
 
-const DEFAULT_BASE = typeof import.meta !== 'undefined' && import.meta.env?.DEV ? '/api/lmstudio' : 'http://localhost:1234';
+import {
+  CLOUD_PROVIDERS,
+  fetchCloudModels,
+  getModelTypeTag,
+  invalidateCloudModelCache,
+} from '$lib/cloudCatalog.js';
+
+export { CLOUD_PROVIDERS, getModelTypeTag, invalidateCloudModelCache };
+
+// Default backend changed to llama.cpp (llama-server) on port 8080.
+// LM Studio still works if you change the URL in Settings → Connection.
+const DEFAULT_BASE = typeof import.meta !== 'undefined' && import.meta.env?.DEV ? '/api/llama' : 'http://localhost:8080';
+
+function viteEnvStr(key) {
+  const map = {
+    VITE_LM_STUDIO_BASE_URL: import.meta.env.VITE_LM_STUDIO_BASE_URL,
+    VITE_DEEPSEEK_API_KEY: import.meta.env.VITE_DEEPSEEK_API_KEY,
+    VITE_GROK_API_KEY: import.meta.env.VITE_GROK_API_KEY,
+    VITE_CEREBRAS_API_KEY: import.meta.env.VITE_CEREBRAS_API_KEY,
+    VITE_DEEPINFRA_API_KEY: import.meta.env.VITE_DEEPINFRA_API_KEY,
+  };
+  const v = map[key];
+  return typeof v === 'string' ? v.trim() : '';
+}
+
+function localStorageOrVite(storageKey, viteName) {
+  if (typeof localStorage !== 'undefined') {
+    const fromLs = (localStorage.getItem(storageKey) ?? '').trim();
+    if (fromLs) return fromLs;
+  }
+  return viteEnvStr(viteName);
+}
+
+let lastResolvedLmBase = '';
+/** True when GET /api/v1/models succeeds (LM Studio–style management). llama-server returns 404. */
+let lmsRestModelsListSupported = null;
+/** True when GET /models (llama.cpp router) succeeds. False = probed and not router. Null = never successfully probed. */
+let llamaRouterModelsSupported = null;
+/** Ids from the last successful local model list fetch (used when the server runs a single loaded model). */
+let lastLocalModelIds = [];
 
 /** Current LM Studio base URL (no trailing slash). Reads from localStorage so UI settings apply immediately. */
 function getLmStudioBase() {
-  if (typeof localStorage === 'undefined') return DEFAULT_BASE;
-  const v = localStorage.getItem('lmStudioBaseUrl');
-  if (v != null && String(v).trim() !== '') return String(v).trim().replace(/\/$/, '');
-  return DEFAULT_BASE;
+  const resolved =
+    typeof localStorage === 'undefined'
+      ? DEFAULT_BASE
+      : (() => {
+          const v = localStorage.getItem('lmStudioBaseUrl');
+          if (v != null && String(v).trim() !== '') return String(v).trim().replace(/\/$/, '');
+          const fromEnv = viteEnvStr('VITE_LM_STUDIO_BASE_URL');
+          if (fromEnv) return fromEnv.replace(/\/$/, '');
+          return DEFAULT_BASE;
+        })();
+  if (resolved !== lastResolvedLmBase) {
+    lastResolvedLmBase = resolved;
+    lmsRestModelsListSupported = null;
+    llamaRouterModelsSupported = null;
+    lastLocalModelIds = [];
+  }
+  return resolved;
 }
 
 /** Unload helper base URL (e.g. http://localhost:8766). Bulk eject uses POST {url}/unload-all. */
@@ -34,9 +88,91 @@ function getUnloadHelperUrl() {
  */
 function toModelItem(m) {
   if (!m || typeof m !== 'object') return null;
-  const id = m.key ?? m.id ?? m.display_name;
+  const id = m.key ?? m.id ?? m.model ?? m.name ?? m.display_name;
   if (typeof id !== 'string' || !id.trim()) return null;
   return { id: id.trim() };
+}
+
+/** Dedupe by lowercase id (llama-server may list the same model under `models` and `data`). */
+function mergeUniqueModelItems(entries) {
+  const seen = new Set();
+  const out = [];
+  for (const m of entries) {
+    const item = toModelItem(m);
+    if (!item) continue;
+    const k = item.id.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(item);
+  }
+  return out;
+}
+
+/** llama.cpp router: GET /models response shapes (experimental). */
+function extractRouterModelRows(data) {
+  if (!data || typeof data !== 'object') return [];
+  if (Array.isArray(data.models)) return data.models;
+  if (Array.isArray(data.data)) return data.data;
+  if (Array.isArray(data)) return data;
+  return [];
+}
+
+function parseLlamaRouterModelsList(data) {
+  const rows = extractRouterModelRows(data);
+  const items = [];
+  for (const m of rows) {
+    const id = m?.id ?? m?.name ?? m?.model ?? m?.path;
+    if (typeof id === 'string' && id.trim()) items.push({ id: id.trim() });
+  }
+  return mergeUniqueModelItems(items);
+}
+
+function getLoadedIdsFromRouterData(data) {
+  const rows = extractRouterModelRows(data);
+  const out = [];
+  for (const m of rows) {
+    const id = m?.id ?? m?.name ?? m?.model ?? m?.path;
+    if (typeof id !== 'string' || !id.trim()) continue;
+    const st = String(m?.state ?? m?.status ?? '').toLowerCase();
+    if (st === 'loaded' || m?.loaded === true || m?.is_active === true || m?.active === true) {
+      out.push(id.trim());
+    }
+  }
+  return out;
+}
+
+/**
+ * True when the backend is llama.cpp in router mode (GET /models, POST /models/load|unload).
+ * Caches true after a successful JSON response; caches false only on definitive 404/non-JSON
+ * so a cold start (connection refused) can succeed on later calls.
+ */
+export async function probeLlamaRouterModelsList() {
+  if (llamaRouterModelsSupported !== null) return llamaRouterModelsSupported;
+  const base = getLmStudioBase();
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 4000);
+  try {
+    const res = await fetch(`${base}/models`, { method: 'GET', signal: ctrl.signal });
+    if (res.status === 404) {
+      llamaRouterModelsSupported = false;
+      return false;
+    }
+    if (!res.ok) {
+      return false;
+    }
+    const ct = res.headers.get('content-type') || '';
+    if (!/json/i.test(ct)) {
+      llamaRouterModelsSupported = false;
+      return false;
+    }
+    await res.json();
+    llamaRouterModelsSupported = true;
+    return true;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(t);
+  }
 }
 
 /**
@@ -59,62 +195,54 @@ export async function checkLmStudioConnection() {
     if (await tryFetch(`${base}/api/v1/models`)) return true;
   } catch (_) { }
   try {
+    if (await tryFetch(`${base}/models`)) return true;
+  } catch (_) { }
+  try {
     return await tryFetch(`${base}/v1/models`);
   } catch {
     return false;
   }
 }
 
-/**
- * Cloud API providers (OpenAI-compatible). When API key is set in localStorage, their models are included in getModels().
- * Model id format: "provider:modelId" so we know which base URL and auth to use.
- */
-const CLOUD_PROVIDERS = {
-  deepseek: {
-    name: 'DeepSeek',
-    baseUrl: 'https://api.deepseek.com',
-    /** No /v1 in base; we append /v1/chat/completions */
-    models: ['deepseek-chat', 'deepseek-reasoner'],
-    getKey: () => (typeof localStorage !== 'undefined' ? localStorage.getItem('deepSeekApiKey') : null) ?? '',
-  },
-  grok: {
-    name: 'Grok',
-    baseUrl: 'https://api.x.ai/v1',
-    /** xAI base already has /v1; chat path is /chat/completions */
-    models: ['grok-3-mini', 'grok-3', 'grok-4', 'grok-4-1-fast-reasoning', 'grok-4-1-fast-non-reasoning', 'grok-4-fast-reasoning', 'grok-4-latest'],
-    getKey: () => (typeof localStorage !== 'undefined' ? localStorage.getItem('grokApiKey') : null) ?? '',
-  },
-};
-
-/** Short descriptive tag for cloud models (shown next to name in selector). */
-const MODEL_TYPE_TAGS = {
-  'grok-3-mini': 'Mini Chat',
-  'grok-3': 'General Chat',
-  'grok-4': 'Reasoning',
-  'grok-4-1-fast-reasoning': 'Fast Reasoning',
-  'grok-4-1-fast-non-reasoning': 'Fast Chat',
-  'grok-4-fast-reasoning': 'Fast Reasoning',
-  'grok-4-latest': 'Reasoning (Latest)',
-  'deepseek-chat': 'Chat',
-  'deepseek-reasoner': 'Reasoning',
-};
-
-/** Get short model type tag (e.g. "Reasoning", "Fast Chat"). Returns null if no tag. */
-export function getModelTypeTag(id) {
-  if (!id || typeof id !== 'string') return null;
-  const colon = id.indexOf(':');
-  const modelPart = colon === -1 ? id : id.slice(colon + 1);
-  return MODEL_TYPE_TAGS[modelPart] ?? null;
-}
-
 /** Human-readable label for the model dropdown. "deepseek:deepseek-chat" → "DeepSeek: deepseek-chat". */
 export function modelDisplayName(id) {
   if (!id || typeof id !== 'string') return id;
   const i = id.indexOf(':');
-  if (i === -1) return id;
+  if (i === -1) {
+    if (id.endsWith('.gguf') && (id.startsWith('/') || /^[A-Za-z]:[\\/]/.test(id))) {
+      const base = id.replace(/\\/g, '/').split('/').pop();
+      return base ? `${base}  —  ${id}` : id;
+    }
+    return id;
+  }
   const provider = id.slice(0, i);
   const label = CLOUD_PROVIDERS[provider]?.name ?? provider;
   return `${label}: ${id.slice(i + 1)}`;
+}
+
+/** Compact primary line in grouped model lists (provider shown in section header). */
+export function modelSelectorPrimaryLine(id) {
+  if (!id || typeof id !== 'string') return '';
+  const i = id.indexOf(':');
+  if (i > 0) {
+    const rest = id.slice(i + 1).trim();
+    return rest || id;
+  }
+  if (id.endsWith('.gguf') && (id.startsWith('/') || /^[A-Za-z]:[\\/]/.test(id))) {
+    return id.replace(/\\/g, '/').split('/').pop() || id;
+  }
+  return id;
+}
+
+/** Optional subtitle (folder path for disk models). */
+export function modelSelectorSecondaryLine(id) {
+  if (!id || typeof id !== 'string') return null;
+  if (id.indexOf(':') > 0) return null;
+  if (!(id.endsWith('.gguf') && (id.startsWith('/') || /^[A-Za-z]:[\\/]/.test(id)))) return null;
+  const norm = id.replace(/\\/g, '/');
+  const base = norm.split('/').pop();
+  if (!base || norm.length <= base.length) return null;
+  return norm.slice(0, norm.length - base.length - 1) || null;
 }
 
 /** Get base URL and headers for a given model id. Local models use LM Studio; "provider:modelId" use cloud. */
@@ -138,6 +266,102 @@ function resolveModelId(modelId) {
   return colon === -1 ? modelId : modelId.slice(colon + 1);
 }
 
+/** Lowercase filename for deduping disk paths vs server-reported model names. */
+function ggufBasenameLower(id) {
+  if (!id || typeof id !== 'string') return '';
+  const s = id.replace(/\\/g, '/');
+  const i = s.lastIndexOf('/');
+  return (i === -1 ? s : s.slice(i + 1)).toLowerCase();
+}
+
+/**
+ * llama-server /v1/chat/completions expects the loaded model id (usually the .gguf basename).
+ * Disk inventory uses absolute paths under ~/.lmstudio/models.
+ */
+function localModelIdForOpenAIRequest(id) {
+  if (!id || typeof id !== 'string') return id;
+  if (id.startsWith('/')) {
+    const base = id.replace(/\\/g, '/').split('/').pop();
+    return base && base.endsWith('.gguf') ? base : id;
+  }
+  if (/^[A-Za-z]:[\\/]/.test(id)) {
+    const base = id.replace(/\\/g, '/').split('/').pop();
+    return base && base.endsWith('.gguf') ? base : id;
+  }
+  return id;
+}
+
+/**
+ * Merge server model list with disk scan: server order first.
+ * Disk rows whose basename already appears on the server are skipped.
+ * Two disk copies with the same filename in different folders both stay visible.
+ * @param {{ id: string }[]} fromServer
+ * @param {{ id: string }[]} fromDisk
+ */
+export function mergeServerAndDiskModels(fromServer, fromDisk) {
+  const seenFull = new Set();
+  const serverBases = new Set();
+  const out = [];
+  for (const m of fromServer || []) {
+    const id = typeof m?.id === 'string' ? m.id.trim() : '';
+    if (!id) continue;
+    const fullKey = id.toLowerCase();
+    if (seenFull.has(fullKey)) continue;
+    seenFull.add(fullKey);
+    const baseKey = ggufBasenameLower(id);
+    if (baseKey.endsWith('.gguf')) serverBases.add(baseKey);
+    out.push({ id });
+  }
+  for (const m of fromDisk || []) {
+    const id = typeof m?.id === 'string' ? m.id.trim() : '';
+    if (!id) continue;
+    const fullKey = id.toLowerCase();
+    if (seenFull.has(fullKey)) continue;
+    const baseKey = ggufBasenameLower(id);
+    if (baseKey.endsWith('.gguf') && serverBases.has(baseKey)) continue;
+    seenFull.add(fullKey);
+    out.push({ id });
+  }
+  return out;
+}
+
+function extraLocalModelDirsFromStorage() {
+  if (typeof localStorage === 'undefined') return [];
+  try {
+    const raw = (localStorage.getItem('localModelDirs') ?? '').trim();
+    if (!raw) return [];
+    return raw
+      .split(/[\n,]/)
+      .map((s) => s.trim())
+      .filter((s) => s.startsWith('/') || /^[A-Za-z]:[\\/]/.test(s));
+  } catch {
+    return [];
+  }
+}
+
+/** Dev: list .gguf paths from LM Studio, ~/models, llama.cpp cache, Downloads, and extra folders. */
+async function fetchDiskModelInventory() {
+  if (!import.meta.env.DEV) return [];
+  const extra = extraLocalModelDirsFromStorage();
+  const q = extra.length ? `?extra=${encodeURIComponent(extra.join('\n'))}` : '';
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 8000);
+  try {
+    const res = await fetch(`/api/atom-local-disk-models${q}`, { signal: ctrl.signal });
+    if (!res.ok) return [];
+    const data = await res.json();
+    const raw = data.models ?? data;
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .map((m) => (typeof m?.id === 'string' ? { id: m.id.trim() } : null))
+      .filter((m) => m && m.id);
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 /** True when model id is Grok (grok:grok-4, etc.). Used to route to Responses API with tools for real-time search. */
 export function isGrokModel(modelId) {
   return typeof modelId === 'string' && modelId.startsWith('grok:');
@@ -146,6 +370,11 @@ export function isGrokModel(modelId) {
 /** True when model id is DeepSeek (deepseek:deepseek-chat, etc.). Used to route image generation. */
 export function isDeepSeekModel(modelId) {
   return typeof modelId === 'string' && modelId.startsWith('deepseek:');
+}
+
+/** True when model id is DeepInfra. Used to route to DeepInfra's OpenAI-compatible endpoint. */
+function isDeepinfraModel(modelId) {
+  return typeof modelId === 'string' && modelId.startsWith('deepinfra:');
 }
 
 /** DeepSeek does NOT have a native image generation API (they only analyze images). Endpoint below does not exist; kept for possible future proxy (e.g. Together AI). */
@@ -179,7 +408,7 @@ function parseChatApiError(status, bodyText, modelId) {
   let code = '';
   const isCloud = modelId && String(modelId).includes(':');
   const cloudHint = isCloud
-    ? ' Check Settings → Cloud APIs (DeepSeek & Grok): confirm the key is correct, has no extra spaces, and is valid for the selected provider.'
+    ? ' Check Settings → Cloud APIs (DeepSeek, Grok, Cerebras, DeepInfra): confirm the key is correct, has no extra spaces, and is valid for the selected provider.'
     : '';
 
   if (bodyText && bodyText.trim()) {
@@ -216,7 +445,12 @@ function parseChatApiError(status, bodyText, modelId) {
     case 500:
     case 502:
     case 503:
-      return apiMessage || 'The API server had an error. Try again later.';
+      if (apiMessage) return apiMessage;
+      if (bodyText && bodyText.trim()) {
+        const t = bodyText.trim().slice(0, 500);
+        return `The API server had an error (${status}). ${t}`;
+      }
+      return `The API server had an error (${status}). Try again later.`;
     case 400:
       if (code === 'model_not_found') return apiMessage || 'Model not found. Check the model name in Settings or try a different model.';
       if (code === 'context_length_exceeded') return apiMessage || 'Message or context too long. Try a shorter conversation or message.';
@@ -227,28 +461,34 @@ function parseChatApiError(status, bodyText, modelId) {
 }
 
 /** Return cloud provider models when API key is set. Ids are "provider:modelId". */
-function getCloudModels() {
-  const out = [];
-  for (const [providerId, p] of Object.entries(CLOUD_PROVIDERS)) {
-    if (!p.getKey()?.trim()) continue;
-    for (const modelId of p.models) {
-      out.push({ id: `${providerId}:${modelId}` });
-    }
+async function getCloudModels() {
+  try {
+    return await fetchCloudModels();
+  } catch {
+    return [];
   }
-  return out;
 }
 
 /** Timeout for LM Studio model list fetch so we don't hang when server is down; then cloud-only list can still load. */
 const LOCAL_MODELS_TIMEOUT_MS = 10000;
 
-/** Timeout for cloud (Grok, DeepSeek) API requests. 120s per DeepSeek guidance for reasoning models. */
-const CLOUD_REQUEST_TIMEOUT_MS = 120000;
+/** Timeout for cloud (Grok, DeepSeek) API requests when caller does not override. */
+const CLOUD_REQUEST_TIMEOUT_MS = 300000;
+
+/** Cloud stream fetch timeout from options (e.g. Arena execution setting); clamp 60s–15m. */
+function resolveCloudStreamTimeoutMs(options) {
+  const raw = options?.request_timeout_ms;
+  if (raw != null && Number.isFinite(Number(raw))) {
+    return Math.max(60_000, Math.min(900_000, Number(raw)));
+  }
+  return CLOUD_REQUEST_TIMEOUT_MS;
+}
 
 /**
- * Fetch list of models from LM Studio (local). Throws if unreachable or timeout.
+ * Models reported by the inference server (LM Studio REST, llama-server /v1/models, etc.).
  * @returns {Promise<{ id: string }[]>}
  */
-async function getLocalModels() {
+async function getLocalModelsFromServer() {
   const base = getLmStudioBase();
   const rest = `${base}/api/v1`;
   const openai = `${base}/v1`;
@@ -258,55 +498,130 @@ async function getLocalModels() {
     const res = await fetch(`${rest}/models`, { signal: ctrl.signal });
     if (res.ok) {
       const data = await res.json();
-      const raw = data.models ?? (Array.isArray(data) ? data : []);
-      if (Array.isArray(raw) && raw.length > 0) {
-        const llms = raw
-          .filter((m) => m && m.type !== 'embedding')
-          .map(toModelItem)
-          .filter(Boolean);
-        if (llms.length > 0) {
-          clearTimeout(to);
-          return llms;
-        }
+      const rawModels = Array.isArray(data.models) ? data.models : [];
+      const rawData = Array.isArray(data.data) ? data.data : [];
+      const rawTop = Array.isArray(data) ? data : [];
+      const combined = [...rawModels, ...rawData, ...(rawModels.length || rawData.length ? [] : rawTop)];
+      if (combined.length > 0) {
+        const llms = mergeUniqueModelItems(combined.filter((m) => m && m.type !== 'embedding'));
+        if (llms.length > 0) return llms;
+      }
+    }
+    const routerRes = await fetch(`${base}/models`, { signal: ctrl.signal });
+    if (routerRes.ok) {
+      const ct = routerRes.headers.get('content-type') || '';
+      if (/json/i.test(ct)) {
+        const data = await routerRes.json();
+        llamaRouterModelsSupported = true;
+        const fromRouter = parseLlamaRouterModelsList(data);
+        if (fromRouter.length > 0) return fromRouter;
       }
     }
     const fallback = await fetch(`${openai}/models`, { signal: ctrl.signal });
-    if (!fallback.ok) throw new Error(`LM Studio models: ${fallback.status}`);
+    if (!fallback.ok) return [];
     const data = await fallback.json();
-    const list = data.data ?? data;
-    const arr = Array.isArray(list) ? list : [];
-    return arr.map(toModelItem).filter(Boolean);
+    const fromData = Array.isArray(data.data) ? data.data : [];
+    const fromModels = Array.isArray(data.models) ? data.models : [];
+    const rawArr = Array.isArray(data) && !fromData.length && !fromModels.length ? data : [];
+    return mergeUniqueModelItems([
+      ...fromData.filter((m) => m && m.type !== 'embedding'),
+      ...fromModels.filter((m) => m && m.type !== 'embedding'),
+      ...rawArr.filter((m) => m && m.type !== 'embedding'),
+    ]);
+  } catch {
+    return [];
   } finally {
     clearTimeout(to);
   }
 }
 
 /**
- * Fetch list of models: LM Studio (local) + DeepSeek and Grok when API keys are set.
- * If LM Studio is unreachable, returns only cloud models so you can still use DeepSeek/Grok.
+ * Local models: inference server list plus dev scan of ~/.lmstudio/models and ~/models (.gguf).
+ * @returns {Promise<{ id: string }[]>}
+ */
+async function getLocalModels() {
+  const [fromDisk, fromServer] = await Promise.all([fetchDiskModelInventory(), getLocalModelsFromServer()]);
+  const merged = mergeServerAndDiskModels(fromServer, fromDisk);
+  lastLocalModelIds = merged.map((x) => x.id);
+  return merged;
+}
+
+/**
+ * True when the backend exposes LM Studio–style GET /api/v1/models (load/unload management).
+ * llama-server (OpenAI route only) returns 404 — Arena should not rely on swapping models via REST.
+ */
+export async function probeLmsRestModelsList() {
+  if (lmsRestModelsListSupported !== null) return lmsRestModelsListSupported;
+  const base = getLmStudioBase();
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 4000);
+  try {
+    const res = await fetch(`${base}/api/v1/models`, { method: 'GET', signal: ctrl.signal });
+    lmsRestModelsListSupported = res.ok;
+    return lmsRestModelsListSupported;
+  } catch {
+    lmsRestModelsListSupported = false;
+    return false;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+/**
+ * llama-server (classic): one GGUF at process start. Router mode: many ids from GET /models; chat uses the selected id.
+ * When REST management is absent and exactly one local model is listed, map any local request to it so legacy Arena works.
+ */
+async function resolveEffectiveLocalChatModelId(modelId) {
+  if (!modelId || typeof modelId !== 'string' || modelId.includes(':')) return modelId;
+  if (await probeLlamaRouterModelsList()) return modelId;
+  const lms = await probeLmsRestModelsList();
+  if (lms) return modelId;
+  let ids = lastLocalModelIds;
+  if (ids.length === 0) {
+    try {
+      ids = (await getLocalModels()).map((m) => m.id);
+    } catch {
+      return modelId;
+    }
+  }
+  if (ids.length === 1) return ids[0];
+  const selBase = ggufBasenameLower(modelId);
+  if (selBase) {
+    const serverOnly = ids.filter((id) => !id.startsWith('/') && !/^[A-Za-z]:[\\/]/.test(id));
+    if (serverOnly.length === 1 && ggufBasenameLower(serverOnly[0]) === selBase) return serverOnly[0];
+  }
+  return modelId;
+}
+
+/**
+ * Fetch list of models: local inference server + disk GGUFs + live cloud catalogs.
+ * If the local server is unreachable, still returns cloud models when API keys are set.
  * @returns {Promise<{ id: string }[]>}
  */
 export async function getModels() {
-  let local = [];
-  try {
-    local = await getLocalModels();
-  } catch (_) {
-    // LM Studio unreachable; still return cloud models if configured
-  }
-  const cloud = getCloudModels();
+  const [local, cloud] = await Promise.all([
+    getLocalModels().catch(() => []),
+    getCloudModels(),
+  ]);
   return [...local, ...cloud];
 }
 
 /**
- * Get model keys that are currently loaded (have at least one instance in memory).
- * Uses GET /api/v1/models and checks loaded_instances. Use to wait until unload is complete.
- * @returns {Promise<string[]>} Model keys (ids) that are loaded
+ * Get model keys that are currently loaded in VRAM.
+ * llama.cpp router: GET /models. LM Studio: GET /api/v1/models + loaded_instances.
+ * @returns {Promise<string[]>}
  */
 export async function getLoadedModelKeys() {
   const base = getLmStudioBase();
   const ctrl = new AbortController();
   const to = setTimeout(() => ctrl.abort(), 15000);
   try {
+    if (await probeLlamaRouterModelsList()) {
+      const res = await fetch(`${base}/models`, { signal: ctrl.signal });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return getLoadedIdsFromRouterData(data);
+    }
     const res = await fetch(`${base}/api/v1/models`, { signal: ctrl.signal });
     if (!res.ok) return [];
     const data = await res.json();
@@ -376,30 +691,47 @@ export async function waitUntilUnloaded(modelIds, opts = {}) {
 }
 
 /**
- * Load a model with the given load config (LM Studio REST API v1).
- * Sends only params LM Studio accepts: context_length, eval_batch_size, flash_attention, offload_kv_cache_to_gpu.
- * GPU, CPU threads, Parallel are stored in our UI but not sent (LM Studio manages them).
- * @param {string} modelId - Model identifier (as in GET /v1/models)
+ * Load a model: llama.cpp router uses POST /models/load; LM Studio uses POST /api/v1/models/load.
+ * @param {string} modelId - Model identifier (as in GET /v1/models or GET /models)
  * @param {Object} loadConfig
  * @param {number} [loadConfig.context_length]
  * @param {number} [loadConfig.eval_batch_size]
  * @param {boolean} [loadConfig.flash_attention]
  * @param {boolean} [loadConfig.offload_kv_cache_to_gpu]
- * @returns {Promise<{ type: string, instance_id: string, load_time_seconds: number, status: string, load_config?: object }>}
+ * @returns {Promise<object>}
  */
 export async function loadModel(modelId, loadConfig = {}) {
-  const body = { model: modelId };
-  if (loadConfig.context_length != null) body.context_length = loadConfig.context_length;
-  if (loadConfig.eval_batch_size != null) body.eval_batch_size = loadConfig.eval_batch_size;
-  if (loadConfig.flash_attention != null) body.flash_attention = loadConfig.flash_attention;
-  if (loadConfig.offload_kv_cache_to_gpu != null) body.offload_kv_cache_to_gpu = loadConfig.offload_kv_cache_to_gpu;
-  body.echo_load_config = true;
-
+  if (!modelId || typeof modelId !== 'string' || !modelId.trim()) {
+    throw new Error('loadModel: model id required');
+  }
   const base = getLmStudioBase();
-  // 60s timeout: large models can take a while to load into VRAM
   const ctrl = new AbortController();
-  const to = setTimeout(() => ctrl.abort(), 60000);
+  const to = setTimeout(() => ctrl.abort(), 180000);
   try {
+    if (await probeLlamaRouterModelsList()) {
+      const res = await fetch(`${base}/models/load`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: modelId.trim() }),
+        signal: ctrl.signal,
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`llama-server load: ${res.status} ${text}`);
+      }
+      return res.json().catch(() => ({}));
+    }
+    if (!(await probeLmsRestModelsList())) {
+      throw new Error(
+        'This backend has no model-load API. Use llama.cpp server with router mode (Atom launcher) or LM Studio.',
+      );
+    }
+    const body = { model: modelId };
+    if (loadConfig.context_length != null) body.context_length = loadConfig.context_length;
+    if (loadConfig.eval_batch_size != null) body.eval_batch_size = loadConfig.eval_batch_size;
+    if (loadConfig.flash_attention != null) body.flash_attention = loadConfig.flash_attention;
+    if (loadConfig.offload_kv_cache_to_gpu != null) body.offload_kv_cache_to_gpu = loadConfig.offload_kv_cache_to_gpu;
+    body.echo_load_config = true;
     const res = await fetch(`${base}/api/v1/models/load`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -449,12 +781,30 @@ export async function getLoadedInstanceIdsForModel(modelKey) {
 }
 
 /**
- * Unload a model from memory by model key. Resolves to instance IDs via list API and unloads each.
+ * Unload a model from memory: llama.cpp router POST /models/unload; LM Studio uses instance ids.
  * @param {string} modelId - Model key (e.g. from load or list)
  * @returns {Promise<void>}
  */
 export async function unloadModel(modelId) {
   if (!modelId || typeof modelId !== 'string') return;
+  const base = getLmStudioBase();
+  if (await probeLlamaRouterModelsList()) {
+    const ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), 120000);
+    try {
+      await fetch(`${base}/models/unload`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: modelId.trim() }),
+        signal: ctrl.signal,
+      });
+    } catch (_) {
+      /* ignore */
+    } finally {
+      clearTimeout(to);
+    }
+    return;
+  }
   const instanceIds = await getLoadedInstanceIdsForModel(modelId);
   await Promise.allSettled(instanceIds.map((id) => unloadByInstanceId(id).catch(() => { })));
 }
@@ -486,14 +836,34 @@ export async function unloadAllLoadedModels(helperUrlOrOverride) {
 }
 
 /**
- * Unload ALL currently loaded model instances using the native LM Studio API.
- * Does NOT require any helper server. Finds every loaded instance via
- * GET /api/v1/models and calls POST /api/v1/models/unload for each.
+ * Unload every loaded model: llama.cpp router POST /models/unload per id; LM Studio uses instance unload.
  * @returns {Promise<{ ok: boolean, unloaded: number }>}
  */
 export async function unloadAllModelsNative() {
   try {
     const base = getLmStudioBase();
+    if (await probeLlamaRouterModelsList()) {
+      const loaded = await getLoadedModelKeys();
+      let unloaded = 0;
+      for (const id of loaded) {
+        const ctrl = new AbortController();
+        const to = setTimeout(() => ctrl.abort(), 120000);
+        try {
+          const res = await fetch(`${base}/models/unload`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: id }),
+            signal: ctrl.signal,
+          });
+          if (res.ok) unloaded += 1;
+        } catch (_) {
+          /* continue */
+        } finally {
+          clearTimeout(to);
+        }
+      }
+      return { ok: true, unloaded };
+    }
     const ctrl = new AbortController();
     const to = setTimeout(() => ctrl.abort(), 15000);
     let res;
@@ -566,11 +936,11 @@ function parseGrokResponseOutput(data) {
  * @param {string} [opts.response_format='url'] - 'url' or 'b64_json'
  * @returns {Promise<{ data: Array<{ url?: string, b64_json?: string }> }>}
  */
-export async function requestGrokImageGeneration({ prompt, n = 1, aspect_ratio = '1:1', resolution = '1k', response_format = 'url' }) {
-  const { headers: authHeaders } = getBaseAndAuth('grok:grok-4');
-  if (!authHeaders?.Authorization) throw new Error('Grok API key required. Add it in Settings → Cloud APIs.');
+export async function requestGrokImageGeneration({ prompt, n = 1, aspect_ratio = '1:1', resolution = '1k', response_format = 'url', apiKey, modelId }) {
+  const key = (apiKey || '').trim() || localStorageOrVite('grokApiKey', 'VITE_GROK_API_KEY');
+  if (!key) throw new Error('Grok API key required. Add it in Settings → Cloud APIs.');
   const body = {
-    model: 'grok-imagine-image',
+    model: modelId || 'grok-imagine-image',
     prompt: String(prompt).trim(),
     n: Math.max(1, Math.min(10, Number(n) || 1)),
     aspect_ratio: aspect_ratio || '1:1',
@@ -582,30 +952,14 @@ export async function requestGrokImageGeneration({ prompt, n = 1, aspect_ratio =
   try {
     const res = await fetch(XAI_IMAGES_GENERATIONS_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
       body: JSON.stringify(body),
       signal: ctrl.signal,
     });
     clearTimeout(to);
     if (!res.ok) {
       const text = await res.text();
-      if (res.status === 404 || /model.*not.*found|invalid.*model/i.test(text)) {
-        const fallbackCtrl = new AbortController();
-        const fallbackTo = setTimeout(() => fallbackCtrl.abort(), 60000);
-        try {
-          const fallback = await fetch(XAI_IMAGES_GENERATIONS_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...authHeaders },
-            body: JSON.stringify({ ...body, model: 'grok-2-image' }),
-            signal: fallbackCtrl.signal,
-          });
-          clearTimeout(fallbackTo);
-          if (fallback.ok) return fallback.json();
-        } catch (_) {
-          clearTimeout(fallbackTo);
-        }
-      }
-      throw new Error(parseChatApiError(res.status, text, 'grok:grok-imagine-image'));
+      throw new Error(parseChatApiError(res.status, text, `grok:${body.model}`));
     }
     return res.json();
   } catch (err) {
@@ -733,8 +1087,8 @@ export async function requestDeepInfraImageGeneration({
     num_images: Math.max(1, Math.min(4, Number(num_images) || 1)),
     num_inference_steps: Math.max(1, Math.min(50, Number(num_inference_steps) || 30)),
     guidance_scale: Number(guidance_scale) || 7.5,
-    width: Math.max(128, Math.min(1024, Number(width) || 1024)),
-    height: Math.max(128, Math.min(1024, Number(height) || 1024)),
+    width: Math.max(128, Math.min(2048, Number(width) || 1024)),
+    height: Math.max(128, Math.min(2048, Number(height) || 1024)),
   };
   if (negative_prompt != null && String(negative_prompt).trim() !== '') body.negative_prompt = String(negative_prompt).trim();
   const url = `${DEEPINFRA_INFERENCE_BASE}/${encodeURIComponent(modelId)}`;
@@ -878,10 +1232,16 @@ export async function requestChatCompletion({ model, messages, options = {} }) {
     }
   }
   const { base, headers: authHeaders } = getBaseAndAuth(model);
-  const resolvedModel = resolveModelId(model);
-  const url = base.endsWith('/v1') ? `${base}/chat/completions` : `${base}/v1/chat/completions`;
-  const headers = { 'Content-Type': 'application/json', ...authHeaders };
   const isCloud = model && String(model).includes(':');
+  let resolvedModel = resolveModelId(model);
+  if (!isCloud) {
+    const eff = resolveModelId(await resolveEffectiveLocalChatModelId(model));
+    const router = await probeLlamaRouterModelsList();
+    resolvedModel = router ? eff : localModelIdForOpenAIRequest(eff);
+  }
+  const lmsHasRestModels = !isCloud && (await probeLmsRestModelsList());
+  const url = isDeepinfraModel(model) ? `${base}/chat/completions` : (base.endsWith('/v1') ? `${base}/chat/completions` : `${base}/v1/chat/completions`);
+  const headers = { 'Content-Type': 'application/json', ...authHeaders };
   const rawMax = options.max_tokens ?? 1024;
   const maxTokens = isCloud ? Math.max(1, Math.min(8192, Number(rawMax) || 1024)) : rawMax;
   const body = {
@@ -891,10 +1251,10 @@ export async function requestChatCompletion({ model, messages, options = {} }) {
     temperature: options.temperature ?? 0.3,
     max_tokens: maxTokens,
     ...(options.top_p != null && { top_p: options.top_p }),
-    ...(options.top_k != null && { top_k: options.top_k }),
+    ...(!isCloud && options.top_k != null && { top_k: options.top_k }),
     ...(!isCloud && options.repeat_penalty != null && { repeat_penalty: options.repeat_penalty }),
-    ...(!isCloud && options.presence_penalty != null && { presence_penalty: options.presence_penalty }),
-    ...(!isCloud && options.frequency_penalty != null && { frequency_penalty: options.frequency_penalty }),
+    ...(lmsHasRestModels && options.presence_penalty != null && { presence_penalty: options.presence_penalty }),
+    ...(lmsHasRestModels && options.frequency_penalty != null && { frequency_penalty: options.frequency_penalty }),
   };
   const fetchOpts = { method: 'POST', headers, body: JSON.stringify(body) };
   if (isCloud) {
@@ -995,7 +1355,7 @@ async function streamGrokResponsesApi({ model, messages, options = {}, onChunk, 
   }
 
   const timeoutCtrl = new AbortController();
-  const timeoutId = setTimeout(() => timeoutCtrl.abort(), CLOUD_REQUEST_TIMEOUT_MS);
+  const timeoutId = setTimeout(() => timeoutCtrl.abort(), resolveCloudStreamTimeoutMs(options));
   let effectiveSignal = timeoutCtrl.signal;
   if (signal) {
     if (signal.aborted) {
@@ -1107,7 +1467,7 @@ async function streamGrokResponsesApi({ model, messages, options = {}, onChunk, 
  * @param {Object} opts
  * @param {string} opts.model - Model id
  * @param {Array<{ role: string, content: string|Array }>} opts.messages
- * @param {Object} [opts.options] - temperature, max_tokens, ttl, etc.
+ * @param {Object} [opts.options] - temperature, max_tokens, ttl, request_timeout_ms (cloud/Grok only, ms, 60s–15m), etc.
  * @param {(chunk: string) => void} opts.onChunk
  * @param {(usage: { prompt_tokens?: number, completion_tokens?: number }) => void} [opts.onUsage]
  * @param {() => void} [opts.onDone] - Called when stream ends ([DONE] line or connection closed). Use to clear busy UI immediately.
@@ -1129,32 +1489,42 @@ export async function streamChatCompletion({ model, messages, options = {}, onCh
     }
   };
   const { base, headers: authHeaders } = getBaseAndAuth(model);
-  const resolvedModel = resolveModelId(model);
-  const streamUrl = base.endsWith('/v1') ? `${base}/chat/completions` : `${base}/v1/chat/completions`;
-  const headers = { 'Content-Type': 'application/json', ...authHeaders };
   const isCloud = model && String(model).includes(':');
+  let resolvedModel = resolveModelId(model);
+  if (!isCloud) {
+    const eff = resolveModelId(await resolveEffectiveLocalChatModelId(model));
+    const router = await probeLlamaRouterModelsList();
+    resolvedModel = router ? eff : localModelIdForOpenAIRequest(eff);
+  }
+  const lmsHasRestModels = !isCloud && (await probeLmsRestModelsList());
+  const streamUrl = isDeepinfraModel(model) ? `${base}/chat/completions` : (base.endsWith('/v1') ? `${base}/chat/completions` : `${base}/v1/chat/completions`);
+  const headers = { 'Content-Type': 'application/json', ...authHeaders };
   const rawMax = options.max_tokens ?? 4096;
   const maxTokens = isCloud ? Math.max(1, Math.min(8192, Number(rawMax) || 4096)) : rawMax;
   const streamBody = {
     model: resolvedModel,
     messages,
     stream: true,
-    ...(!isCloud && { stream_options: { include_usage: true } }),
     temperature: options.temperature ?? 0.7,
     max_tokens: maxTokens,
     ...(options.top_p != null && { top_p: options.top_p }),
-    ...(options.top_k != null && { top_k: options.top_k }),
-    ...(!isCloud && options.repeat_penalty != null && { repeat_penalty: options.repeat_penalty }),
-    ...(!isCloud && options.presence_penalty != null && { presence_penalty: options.presence_penalty }),
-    ...(!isCloud && options.frequency_penalty != null && { frequency_penalty: options.frequency_penalty }),
     ...(options.stop?.length && { stop: options.stop }),
-    ...(!isCloud && options.ttl != null && Number(options.ttl) > 0 && { ttl: Number(options.ttl) }),
   };
+  if (!isCloud) {
+    if (options.top_k != null) streamBody.top_k = options.top_k;
+    if (options.repeat_penalty != null) streamBody.repeat_penalty = options.repeat_penalty;
+    if (lmsHasRestModels) {
+      streamBody.stream_options = { include_usage: true };
+      if (options.presence_penalty != null) streamBody.presence_penalty = options.presence_penalty;
+      if (options.frequency_penalty != null) streamBody.frequency_penalty = options.frequency_penalty;
+      if (options.ttl != null && Number(options.ttl) > 0) streamBody.ttl = Number(options.ttl);
+    }
+  }
   let effectiveSignal = signal;
   let timeoutId = null;
   if (isCloud) {
     const timeoutCtrl = new AbortController();
-    timeoutId = setTimeout(() => timeoutCtrl.abort(), CLOUD_REQUEST_TIMEOUT_MS);
+    timeoutId = setTimeout(() => timeoutCtrl.abort(), resolveCloudStreamTimeoutMs(options));
     if (signal) {
       if (signal.aborted) {
         clearTimeout(timeoutId);
@@ -1266,4 +1636,43 @@ export async function fetchHardwareMetrics() {
     clearTimeout(t);
     return null;
   }
+}
+
+/**
+ * DeepInfra inference URL. Dev uses the Vite proxy so the browser is not blocked by CORS.
+ * @param {string} path
+ */
+export function deepinfraInferenceUrl(path) {
+  const p = path.startsWith('/') ? path : `/${path}`;
+  if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) return `/api/deepinfra${p}`;
+  return `https://api.deepinfra.com${p}`;
+}
+
+/**
+ * Call DeepInfra Kokoro-82M TTS API for text-to-speech. Returns audio blob.
+ * @param {{ apiKey: string, text: string, voice: string, speed?: number }} opts
+ * @returns {Promise<Blob>}
+ */
+export async function requestDeepInfraKokoroSpeech({ apiKey, text, voice = 'af_bella', speed = 1 }) {
+  const key = (apiKey || '').trim();
+  if (!key) throw new Error('DeepInfra API key is required for Kokoro TTS.');
+  const res = await fetch(deepinfraInferenceUrl('/v1/inference/Kokoro-82M/tts'), {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${key}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      input: text,
+      voice,
+      speed: Math.max(0.5, Math.min(2, Number(speed) || 1)),
+      response_format: 'wav',
+      sample_rate: 24000,
+    }),
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    throw new Error(`Kokoro TTS: ${res.status} ${res.statusText}${errText ? ' — ' + errText : ''}`);
+  }
+  return res.blob();
 }

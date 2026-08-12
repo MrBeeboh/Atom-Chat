@@ -6,5 +6,5 @@ Comment=Start ATOM Chat with voice server and UI
 Exec=bash -c "cd /home/mike/atom-chat && ./scripts/start-atom.sh"
 Path=/home/mike/atom-chat
 Terminal=true
-Icon=utilities-terminal
+Icon=/home/mike/atom-chat/public/atom-256.png
 Categories=Development;

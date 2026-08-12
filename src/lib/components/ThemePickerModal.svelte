@@ -12,11 +12,10 @@
 
   /** Preview colors for theme swatches (bg + accent). */
   const PREVIEW = {
-    forge:    { bg: '#f4f4f5', accent: '#b45309', text: '#18181b' },
-    sage:     { bg: '#f6f5f2', accent: '#6b7c5a', text: '#2d2a26' },
-    obsidian: { bg: '#16181d', accent: '#5eead4', text: '#e2e8f0' },
-    nova:     { bg: '#0f1117', accent: '#3b82f6', text: '#e8eaf6' },
-    studio:   { bg: '#ffffff', accent: '#10a37f', text: '#0d0d0d' },
+    studio: { bg: '#0b0c10', accent: '#e8a060', text: '#f4ece3' },
+    sage:   { bg: '#faf6ef', accent: '#9b2c2c', text: '#1c1917' },
+    clay:   { bg: '#120a06', accent: '#fb923c', text: '#fff7ed' },
+    fern:   { bg: '#061210', accent: '#2dd4bf', text: '#ecfdf8' },
   };
 </script>
 
@@ -38,7 +37,7 @@
       onclick={(e) => e.stopPropagation()}
       onkeydown={(e) => e.stopPropagation()}>
       <div class="shrink-0 flex items-center justify-between px-5 py-3 border-b" style="border-color: var(--ui-border);">
-        <h2 class="text-sm font-semibold" style="color: var(--ui-text-primary);">Choose Theme</h2>
+        <h2 class="text-sm font-semibold atom-display" style="color: var(--ui-text-primary);">Palette</h2>
         <button type="button" class="p-1 rounded text-xs" style="color: var(--ui-text-secondary);" onclick={() => (open = false)} aria-label="Close">✕</button>
       </div>
       <div class="flex-1 overflow-y-auto p-4">

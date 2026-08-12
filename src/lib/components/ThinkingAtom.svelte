@@ -18,4 +18,8 @@
   <circle cx="16" cy="16" r="6" class="thinking-atom-orbit" />
   <circle cx="16" cy="16" r="9" class="thinking-atom-orbit-2" />
   <circle cx="16" cy="16" r="12" class="thinking-atom-orbit-3" />
+  <!-- Orbiting electrons -->
+  <circle cx="22" cy="16" r="1.5" class="electron electron-1" />
+  <circle cx="16" cy="7" r="1.5" class="electron electron-2" />
+  <circle cx="28" cy="16" r="1.5" class="electron electron-3" />
 </svg>

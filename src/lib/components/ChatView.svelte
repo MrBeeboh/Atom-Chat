@@ -1,13 +1,17 @@
 <script>
   import { get } from 'svelte/store';
-  import { activeConversationId, activeMessages, conversations, settings, effectiveModelId, isStreaming, chatError, chatCommand, pendingDroppedFiles, webSearchForNextMessage, webSearchInProgress, webSearchConnected, grokApiKey, deepinfraApiKey } from '$lib/stores.js';
-  import { getMessages, addMessage, clearMessages, deleteMessage, getMessageCount } from '$lib/db.js';
+  import { activeConversationId, activeMessages, conversations, settings, effectiveModelId, isStreaming, chatError, chatCommand, insertChatPrompt, pendingDroppedFiles, webSearchForNextMessage, webSearchInProgress, webSearchConnected, grokApiKey, deepinfraApiKey, confirm } from '$lib/stores.js';
+  import SetupGuide from '$lib/components/SetupGuide.svelte';
+  import { deriveSetupStatus } from '$lib/connectionSetup.js';
+  import { getMessages, addMessage, clearMessages, deleteMessage, getMessageCount, updateConversation, listConversations } from '$lib/db.js';
   import { streamChatCompletion, requestGrokImageGeneration, requestDeepInfraImageGeneration, requestDeepInfraVideoGeneration, isGrokModel, isDeepSeekModel } from '$lib/api.js';
   import { searchDuckDuckGo, formatSearchResultForChat } from '$lib/duckduckgo.js';
   import MessageList from '$lib/components/MessageList.svelte';
   import ChatInput from '$lib/components/ChatInput.svelte';
   import AtomLogo from '$lib/components/AtomLogo.svelte';
   import { generateId, resizeImageDataUrlsForVision, shouldSkipImageResizeForVision } from '$lib/utils.js';
+  import { getModelCapabilities } from '$lib/modelCapabilities.js';
+  import { maybeReadAloudAssistantReply } from '$lib/tts.js';
 
   const convId = $derived($activeConversationId);
   let chatAbortController = $state(null);
@@ -21,6 +25,17 @@
     "What would you like to explore?",
     "I'm here to help — just ask.",
   ];
+
+  const STARTER_PROMPTS = [
+    'Explain this in simple terms:',
+    'Help me debug this error:',
+    'Summarize the key points of:',
+    'Write a short, professional email about:',
+  ];
+
+  function useStarterPrompt(prompt) {
+    insertChatPrompt.set({ text: prompt, ts: Date.now() });
+  }
   let welcomeLine = $state(null);
   $effect(() => {
     if ($activeMessages?.length > 0) {
@@ -35,19 +50,55 @@
 
   /** Image options modal. Verified config from docs/image-models-and-settings-for-verification.json (Together AI, 2026-02-15). Grok unchanged. */
   const ENGINE_OPTIONS = [
-    { label: 'FLUX.1 Schnell', model: 'black-forest-labs/FLUX.1-schnell' },
-    { label: 'FLUX.1 Dev', model: 'black-forest-labs/FLUX.1-dev' },
-    { label: 'FLUX.1 Pro', model: 'black-forest-labs/FLUX.1-pro' },
+    { label: 'FLUX.1 Schnell', model: 'black-forest-labs/FLUX.1-schnell', type: 'deepinfra' },
+    { label: 'FLUX.1 Dev', model: 'black-forest-labs/FLUX.1-dev', type: 'deepinfra' },
+    { label: 'FLUX.1 Pro', model: 'black-forest-labs/FLUX.1-pro', type: 'deepinfra' },
+    { label: 'FLUX 1.1 Pro', model: 'black-forest-labs/FLUX-1.1-pro', type: 'deepinfra' },
+    { label: 'FLUX 2 Klein 4B', model: 'black-forest-labs/FLUX-2-klein-4b', type: 'deepinfra' },
+    { label: 'FLUX 2 Klein 9B', model: 'black-forest-labs/FLUX-2-klein-9b', type: 'deepinfra' },
+    { label: 'FLUX 2 Pro', model: 'black-forest-labs/FLUX-2-pro', type: 'deepinfra' },
+    { label: 'Seedream 4', model: 'ByteDance/Seedream-4', type: 'deepinfra' },
+    { label: 'Seedream 4.5', model: 'ByteDance/Seedream-4.5', type: 'deepinfra' },
+    { label: 'Wan 2.6 T2I', model: 'Wan-AI/Wan2.6-T2IW', type: 'deepinfra' },
+    { label: 'Pruna P-Image', model: 'PrunaAI/p-image', type: 'deepinfra' },
+    { label: 'SDXL Turbo', model: 'stabilityai/sdxl-turbo', type: 'deepinfra' },
+    { label: 'Grok Imagine (fast)', model: 'grok-imagine-image', type: 'grok' },
+    { label: 'Grok Imagine Pro (HQ)', model: 'grok-imagine-image-pro', type: 'grok' },
+    { label: 'Grok Imagine Quality', model: 'grok-imagine-image-quality', type: 'grok' },
   ];
   const STEP_OPTIONS_PER_ENGINE = [
     [{ label: 'Minimal', steps: 1 }, { label: 'Quick', steps: 2 }, { label: 'Standard', steps: 4 }],
     [{ label: 'Quick', steps: 20 }, { label: 'Standard', steps: 25 }, { label: 'Detailed', steps: 30 }, { label: 'High Detail', steps: 50 }],
     [{ label: 'Standard', steps: 25 }, { label: 'Detailed', steps: 30 }, { label: 'High Detail', steps: 50 }],
+    [{ label: 'Quick', steps: 20 }, { label: 'Standard', steps: 25 }, { label: 'Detailed', steps: 30 }],
+    [{ label: 'Minimal', steps: 1 }, { label: 'Quick', steps: 2 }, { label: 'Standard', steps: 4 }],
+    [{ label: 'Quick', steps: 4 }, { label: 'Standard', steps: 6 }, { label: 'Detailed', steps: 8 }],
+    [{ label: 'Standard', steps: 25 }, { label: 'Detailed', steps: 30 }, { label: 'High Detail', steps: 50 }],
+    [{ label: 'Standard', steps: 25 }, { label: 'Detailed', steps: 30 }, { label: 'High Detail', steps: 50 }],
+    [{ label: 'Standard', steps: 25 }, { label: 'Detailed', steps: 30 }, { label: 'High Detail', steps: 50 }],
+    [{ label: 'Quick', steps: 20 }, { label: 'Standard', steps: 25 }, { label: 'Detailed', steps: 30 }],
+    [{ label: 'Standard', steps: 1 }],
+    [{ label: 'Quick', steps: 1 }, { label: 'Standard', steps: 2 }, { label: 'Detailed', steps: 4 }],
+    [{ label: '1K (Fast)', resolution: '1k' }, { label: '2K (HQ)', resolution: '2k' }],
+    [{ label: '1K (Fast)', resolution: '1k' }, { label: '2K (HQ)', resolution: '2k' }],
+    [{ label: '1K (Fast)', resolution: '1k' }, { label: '2K (HQ)', resolution: '2k' }],
   ];
   const SIZE_OPTIONS_PER_ENGINE = [
     [{ label: '1:1 Square', width: 1024, height: 1024 }, { label: 'Portrait', width: 1152, height: 896 }, { label: 'Landscape', width: 896, height: 1152 }, { label: 'Wide', width: 1280, height: 768 }],
     [{ label: '1:1 Square', width: 1024, height: 1024 }, { label: 'Portrait', width: 1152, height: 896 }, { label: 'Wide', width: 1344, height: 768 }, { label: 'Panoramic', width: 1728, height: 1152 }],
     [{ label: '1:1 Square', width: 1024, height: 1024 }, { label: 'Large Square', width: 2000, height: 2000 }, { label: '16:9 Widescreen', width: 1820, height: 1024 }],
+    [{ label: '1:1 Square', width: 1024, height: 1024 }, { label: 'Wide', width: 1344, height: 768 }, { label: 'Panoramic', width: 1820, height: 1024 }],
+    [{ label: '1:1 Square', width: 1024, height: 1024 }, { label: 'Portrait', width: 768, height: 1024 }, { label: 'Landscape', width: 1024, height: 768 }],
+    [{ label: '1:1 Square', width: 1024, height: 1024 }, { label: 'Portrait', width: 768, height: 1024 }, { label: 'Wide', width: 1344, height: 768 }],
+    [{ label: '1:1 Square', width: 1024, height: 1024 }, { label: 'Wide', width: 1344, height: 768 }, { label: 'Panoramic', width: 1820, height: 1024 }],
+    [{ label: '1:1 Square', width: 1024, height: 1024 }, { label: 'Portrait', width: 768, height: 1024 }, { label: 'Landscape', width: 1024, height: 768 }],
+    [{ label: '1:1 Square', width: 1024, height: 1024 }, { label: 'Portrait', width: 768, height: 1024 }, { label: 'Landscape', width: 1024, height: 768 }],
+    [{ label: '1:1 Square', width: 1024, height: 1024 }, { label: 'Portrait', width: 1152, height: 896 }, { label: 'Wide', width: 1344, height: 768 }],
+    [{ label: '1:1 Square', width: 1024, height: 1024 }, { label: 'Portrait', width: 1152, height: 896 }, { label: 'Wide', width: 1344, height: 768 }],
+    [{ label: '1:1 Square', width: 1024, height: 1024 }, { label: 'Portrait', width: 1152, height: 896 }, { label: 'Landscape', width: 896, height: 1152 }],
+    [{ label: '1:1 Square', aspect_ratio: '1:1' }, { label: 'Portrait', aspect_ratio: '3:4' }, { label: 'Landscape', aspect_ratio: '4:3' }, { label: 'Wide', aspect_ratio: '16:9' }],
+    [{ label: '1:1 Square', aspect_ratio: '1:1' }, { label: 'Portrait', aspect_ratio: '3:4' }, { label: 'Landscape', aspect_ratio: '4:3' }, { label: 'Wide', aspect_ratio: '16:9' }],
+    [{ label: '1:1 Square', aspect_ratio: '1:1' }, { label: 'Portrait', aspect_ratio: '3:4' }, { label: 'Landscape', aspect_ratio: '4:3' }, { label: 'Wide', aspect_ratio: '16:9' }],
   ];
   const N_OPTIONS = [1, 2, 4];
   let imageModalOpen = $state(false);
@@ -61,7 +112,7 @@
   const canGenerateImage = $derived(imageModalPrompt.trim().length > 0);
 
   /** DeepInfra model IDs (official docs). Our ENGINE_OPTIONS use dot (FLUX.1); DeepInfra uses hyphen (FLUX-1). */
-  const DEEPINFRA_MODEL_IDS = ['black-forest-labs/FLUX-1-schnell', 'black-forest-labs/FLUX-1-dev', 'black-forest-labs/FLUX-1-dev'];
+  const DEEPINFRA_MODEL_IDS = ['black-forest-labs/FLUX-1-schnell', 'black-forest-labs/FLUX-1-dev', 'black-forest-labs/FLUX-1-pro', 'black-forest-labs/FLUX-1.1-pro', 'black-forest-labs/FLUX-2-klein-4b', 'black-forest-labs/FLUX-2-klein-9b', 'black-forest-labs/FLUX-2-pro', 'ByteDance/Seedream-4', 'ByteDance/Seedream-4.5', 'Wan-AI/Wan2.6-T2IW', 'PrunaAI/p-image', 'stabilityai/sdxl-turbo', null, null, null];
   /** Subscribed to store so image/video buttons activate when key is saved in Settings. */
   let hasDeepinfraKey = $state(false);
   $effect(() => {
@@ -134,6 +185,8 @@
       clearChat();
     } else if (cmd.type === 'export') {
       exportChat();
+    } else if (cmd.type === 'regenerate') {
+      regenerateLast();
     }
     chatCommand.set(null);
   });
@@ -176,14 +229,29 @@
     return out;
   }
 
+  /** True when a model is ready; otherwise sets a setup-aware chat error and returns false. */
+  function ensureModelSelected() {
+    if ($effectiveModelId) return true;
+    const st = deriveSetupStatus();
+    if (st === 'disconnected' || st === 'cloud_only') {
+      chatError.set('Connect LM Studio or add a cloud API key (Settings), then click Retry in the setup guide.');
+    } else if (st === 'no_models') {
+      chatError.set('Load a model in LM Studio, or add an API key in Settings → API keys.');
+    } else {
+      chatError.set('Choose a model from the Model menu in the header.');
+    }
+    return false;
+  }
+
   async function sendUserMessage(text, imageDataUrls = [], videoDataUrls = []) {
     const hasText = (text || '').trim().length > 0;
     const hasImages = imageDataUrls?.length > 0;
     const hasVideos = videoDataUrls?.length > 0;
     if (!convId || (!hasText && !hasImages && !hasVideos)) return;
     chatError.set(null);
-    if (!$effectiveModelId) {
-      chatError.set('Please select a model from the dropdown above.');
+    if (!ensureModelSelected()) return;
+    if ((hasImages || hasVideos) && !getModelCapabilities($effectiveModelId).vision) {
+      chatError.set(`"${$effectiveModelId}" does not support image input. Switch to a vision-capable model to send images or video.`);
       return;
     }
 
@@ -221,15 +289,20 @@
         ]
       : effectiveText;
 
-    const history = await getMessages(convId);
     await addMessage(convId, {
       role: 'user',
       content: userContent,
       videoUrls: hasVideos ? [...videoDataUrls] : undefined,
     });
     await loadMessages();
-    const msgsForApi = [...history, { role: 'user', content: userContent }];
-    const apiMessages = buildApiMessages(msgsForApi, $settings.system_prompt);
+    await streamAssistantReply();
+  }
+
+  /** Stream a new assistant reply from the conversation's current DB history. */
+  async function streamAssistantReply() {
+    if (!convId) return;
+    const history = await getMessages(convId);
+    const apiMessages = buildApiMessages(history, $settings.system_prompt);
 
     const assistantMsgId = generateId();
     const assistantPlaceholder = {
@@ -306,6 +379,8 @@
 
     if (streamResult?.aborted) return;
 
+    maybeReadAloudAssistantReply(fullContent, assistantMsgId, get(effectiveModelId));
+
     const completionTokens = streamResult?.usage?.completion_tokens ?? Math.max(1, Math.ceil(fullContent.length / 4));
     const elapsedMs = streamResult?.elapsedMs ?? 0;
     const stats =
@@ -323,9 +398,7 @@
     const conv = $conversations.find((c) => c.id === convId);
     if (conv && conv.title === 'New chat' && fullContent) {
       const title = fullContent.slice(0, 50).replace(/\n/g, ' ').trim() || 'Chat';
-      const { updateConversation } = await import('$lib/db.js');
       await updateConversation(convId, { title });
-      const { listConversations } = await import('$lib/db.js');
       const list = await listConversations();
       const withCount = await Promise.all(list.map(async (c) => ({ ...c, messageCount: await getMessageCount(c.id) })));
       conversations.set(withCount);
@@ -335,6 +408,65 @@
   async function clearChat() {
     if (!convId) return;
     await clearMessages(convId);
+    await loadMessages();
+  }
+
+  /**
+   * Regenerate from a message: for an assistant message, drop it (and anything after) and
+   * re-stream; for a trailing user message (e.g. after an error), just stream a reply.
+   */
+  async function regenerateFromMessage(message) {
+    if (!convId || $isStreaming || !message?.id) return;
+    if (!ensureModelSelected()) return;
+    chatError.set(null);
+    const msgs = await getMessages(convId);
+    const idx = msgs.findIndex((m) => m.id === message.id);
+    if (idx === -1) return;
+    if (message.role === 'assistant') {
+      for (const m of msgs.slice(idx)) await deleteMessage(m.id);
+      await loadMessages();
+    }
+    await streamAssistantReply();
+  }
+
+  /** Regenerate the latest reply (command palette / chatCommand). */
+  async function regenerateLast() {
+    if (!convId || $isStreaming) return;
+    const msgs = await getMessages(convId);
+    const last = msgs[msgs.length - 1];
+    if (last) await regenerateFromMessage(last);
+  }
+
+  /** Replace a user message with edited text: truncate the thread there and resend. */
+  async function editAndResendMessage(message, newText) {
+    if (!convId || $isStreaming || !message?.id) return;
+    const text = (newText || '').trim();
+    if (!text) return;
+    const msgs = await getMessages(convId);
+    const idx = msgs.findIndex((m) => m.id === message.id);
+    if (idx === -1) return;
+    for (const m of msgs.slice(idx)) await deleteMessage(m.id);
+    await loadMessages();
+    try {
+      await sendUserMessage(text);
+    } catch {
+      // Send aborted (e.g. web search failed) after the thread was truncated:
+      // chatError is already set; put the edited text back in the input so it isn't lost.
+      insertChatPrompt.set({ text, ts: Date.now() });
+    }
+  }
+
+  /** Delete a single message (with confirmation). */
+  async function removeMessage(message) {
+    if (!convId || !message?.id) return;
+    if (!(await confirm({
+      title: 'Delete message',
+      message: 'Delete this message from the conversation? This cannot be undone.',
+      confirmLabel: 'Delete',
+      cancelLabel: 'Cancel',
+      danger: true,
+    }))) return;
+    await deleteMessage(message.id);
     await loadMessages();
   }
 
@@ -392,20 +524,39 @@
     imageModalOpen = false;
   }
 
-  /** Generate image via DeepInfra (synchronous; response.images[0] base64 → data URL). */
+  /** Generate image via DeepInfra or Grok API. */
   async function handleImageModalGenerate() {
     if (!convId || !imageModalPrompt.trim()) return;
-    const key = getDeepinfraImageKey();
-    if (!key) {
-      chatError.set('DeepInfra API key required.');
-      return;
-    }
-    const modelId = DEEPINFRA_MODEL_IDS[imageModalEngine] ?? DEEPINFRA_MODEL_IDS[0];
+    const engine = ENGINE_OPTIONS[imageModalEngine] ?? ENGINE_OPTIONS[0];
     const qualityOpts = STEP_OPTIONS_PER_ENGINE[imageModalEngine] ?? STEP_OPTIONS_PER_ENGINE[0];
     const quality = qualityOpts[Math.min(imageModalQuality, qualityOpts.length - 1)] ?? qualityOpts[0];
     const sizeOpts = SIZE_OPTIONS_PER_ENGINE[imageModalEngine] ?? SIZE_OPTIONS_PER_ENGINE[0];
     const size = sizeOpts[Math.min(imageModalSize, sizeOpts.length - 1)] ?? sizeOpts[0];
     const n = N_OPTIONS[imageModalN] ?? 1;
+    const isGrok = engine.type === 'grok';
+
+    if (isGrok) {
+      const grokKey = get(grokApiKey)?.trim();
+      if (!grokKey) { chatError.set('Grok API key required. Add it in Settings → Cloud APIs.'); return; }
+      closeImageModal();
+      imageGenerating = true;
+      chatError.set(null);
+      try {
+        await grokImageGenerate({ modelId: engine.model, prompt: imageModalPrompt, n, resolution: quality?.resolution ?? '1k', aspect_ratio: size?.aspect_ratio ?? '1:1', apiKey: grokKey });
+      } catch (err) {
+        chatError.set(err?.message ?? 'Grok image generation failed.');
+      } finally {
+        imageGenerating = false;
+      }
+      return;
+    }
+
+    const key = getDeepinfraImageKey();
+    if (!key) {
+      chatError.set('DeepInfra API key required. Add it in Settings → Cloud APIs.');
+      return;
+    }
+    const modelId = DEEPINFRA_MODEL_IDS[imageModalEngine] ?? DEEPINFRA_MODEL_IDS[0];
     closeImageModal();
     imageGenerating = true;
     chatError.set(null);
@@ -439,6 +590,24 @@
     } finally {
       imageGenerating = false;
     }
+  }
+
+  /** Grok image generation (called from modal for Grok engines, or direct from image button). */
+  async function grokImageGenerate({ modelId, prompt, n, resolution, aspect_ratio, apiKey }) {
+    const data = await requestGrokImageGeneration({ prompt, n, resolution, aspect_ratio, response_format: 'url', apiKey, modelId });
+    const urls = data?.data?.map((d) => d?.url).filter(Boolean) ?? [];
+    if (urls.length === 0) {
+      chatError.set('Image generation failed—no URLs returned.');
+      return;
+    }
+    const modelIdEffective = get(effectiveModelId);
+    await addMessage(convId, {
+      role: 'assistant',
+      content: 'Generated images for your prompt.',
+      imageUrls: urls,
+      modelId: modelIdEffective || `grok:${modelId}`,
+    });
+    await loadMessages();
   }
 
   /** Video: open modal (prompt + model). */
@@ -671,13 +840,33 @@
       <div class="ui-splash-wrap flex-1 flex flex-col items-center justify-center px-4 py-6 min-h-0">
         <div class="w-full max-w-[min(40rem,92%)] mx-auto flex flex-col items-center gap-5">
 
-          <h1 class="ui-greeting-title text-2xl md:text-3xl font-bold text-center" style="color: var(--ui-text-primary);">ATOM Chat</h1>
-          <p class="ui-greeting-welcome text-sm text-center" style="color: var(--ui-text-secondary);">Local AI. No cloud. No compromise.</p>
-          {#if welcomeLine}
-            <p class="ui-greeting-welcome text-sm text-center animate-fade-in opacity-80" style="color: var(--ui-text-secondary);">{welcomeLine}</p>
-          {/if}
+          <div class="flex flex-col items-center gap-4">
+            <div class="atom-brand-mark" style="width: 4.25rem; height: 4.25rem;">
+              <AtomLogo size={42} />
+            </div>
+            <p class="ui-greeting-kicker">Local intelligence</p>
+            <h1 class="ui-greeting-title text-5xl md:text-6xl text-center" style="color: var(--ui-text-primary);">ATOM</h1>
+            <p class="ui-greeting-welcome text-base text-center max-w-md" style="color: var(--ui-text-secondary);">Your models. Your keys. A room that doesn’t look like every other chat app.</p>
+            {#if welcomeLine}
+              <p class="ui-greeting-welcome text-sm text-center animate-fade-in" style="color: var(--ui-accent); opacity: 0.9;">{welcomeLine}</p>
+            {/if}
+          </div>
+          <SetupGuide />
+          <div class="w-full flex flex-wrap justify-center gap-2" role="list" aria-label="Example prompts">
+            {#each STARTER_PROMPTS as prompt}
+              <button
+                type="button"
+                role="listitem"
+                class="starter-chip px-3 py-1.5 rounded-full text-xs font-medium transition-all"
+                style="border: 1px solid var(--ui-border); color: var(--ui-text-secondary); background: var(--ui-bg-sidebar);"
+                onclick={() => useStarterPrompt(prompt)}
+              >
+                {prompt}
+              </button>
+            {/each}
+          </div>
           {#if $chatError}
-            <div class="w-full px-4 py-2.5 rounded-lg text-sm flex items-center justify-between gap-2" style="background: color-mix(in srgb, var(--ui-accent-hot, #dc2626) 10%, transparent); color: var(--ui-text-primary);">
+            <div class="chat-error-banner w-full px-4 py-2.5 rounded-lg text-sm flex items-center justify-between gap-2" role="alert" style="background: color-mix(in srgb, var(--ui-accent-hot, #dc2626) 10%, transparent); color: var(--ui-text-primary);">
               <span>{$chatError}</span>
               <button type="button" class="shrink-0 p-1 rounded transition-opacity hover:opacity-80" style="color: var(--ui-text-secondary);" onclick={() => chatError.set(null)} aria-label="Dismiss">×</button>
             </div>
@@ -686,26 +875,26 @@
             <ChatInput
               onSend={sendUserMessage}
               onStop={() => chatAbortController?.abort?.()}
-              onGenerateImageGrok={$effectiveModelId && isGrokModel($effectiveModelId) && $grokApiKey?.trim() ? handleGrokImage : undefined}
-              onGenerateImageDeepSeek={hasDeepinfraKey ? openImageOptionsModal : undefined}
+              onGenerateImageGrok={undefined}
+              onGenerateImageDeepSeek={(hasDeepinfraKey || $grokApiKey?.trim()) ? openImageOptionsModal : undefined}
               onGenerateVideoDeepSeek={hasDeepinfraKey ? openVideoModal : undefined}
               imageGenerating={imageGenerating}
               videoGenerating={videoGenerating}
               videoGenElapsed={videoGenElapsed}
-              placeholder="Ask anything… (Ctrl+Enter to send)"
+              placeholder="Ask anything…"
             />
           </div>
         </div>
       </div>
     {:else}
       <!-- After first message: messages above, input fixed at bottom -->
-      <div class="flex-1 overflow-y-auto min-h-0">
-        <MessageList />
+      <div class="chat-messages-scroll flex-1 overflow-y-auto min-h-0">
+        <MessageList onRegenerate={regenerateFromMessage} onEditResend={editAndResendMessage} onDelete={removeMessage} />
       </div>
-      <div class="shrink-0 p-4 chat-input-dock" style="background: color-mix(in srgb, var(--ui-border) 8%, var(--ui-bg-main));">
-        <div class="max-w-[min(52rem,92%)] mx-auto w-full">
+      <div class="chat-input-dock shrink-0 px-2 py-2 sm:p-4">
+        <div class="max-w-[min(44rem,92%)] mx-auto w-full">
           {#if $chatError}
-            <div class="mb-3 px-4 py-3 rounded-xl text-sm flex items-center justify-between gap-2" style="background: color-mix(in srgb, var(--ui-accent-hot, #dc2626) 10%, transparent); color: var(--ui-text-primary);">
+            <div class="chat-error-banner mb-3 px-4 py-3 rounded-xl text-sm flex items-center justify-between gap-2" role="alert" style="background: color-mix(in srgb, var(--ui-accent-hot, #dc2626) 10%, transparent); color: var(--ui-text-primary);">
               <span>{$chatError}</span>
               <button type="button" class="shrink-0 p-1.5 rounded-lg transition-opacity hover:opacity-80" style="color: var(--ui-text-secondary);" onclick={() => chatError.set(null)} aria-label="Dismiss">×</button>
             </div>
@@ -726,8 +915,8 @@
   {:else}
     <div class="flex-1 flex items-center justify-center p-8">
       <div class="text-center max-w-sm">
-        <p class="text-xl font-semibold text-zinc-800 dark:text-zinc-200">Start a conversation</p>
-        <p class="text-sm text-zinc-500 dark:text-zinc-400 mt-2">Create a new chat from the sidebar or select an existing one.</p>
+        <p class="text-xl font-semibold" style="color: var(--ui-text-primary);">Start a conversation</p>
+        <p class="text-sm mt-2" style="color: var(--ui-text-secondary);">Create a new chat from the sidebar or select an existing one.</p>
       </div>
     </div>
   {/if}

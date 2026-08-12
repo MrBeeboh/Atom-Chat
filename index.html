@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@400;500;600;700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet" />
     <title>ATOM</title>
   </head>
   <body>
@@ -15,8 +15,8 @@
         var t = localStorage.getItem('theme');
         var dark = t === 'dark' || (t !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
         if (dark) document.documentElement.classList.add('dark');
-        var ui = localStorage.getItem('uiTheme');
-        if (ui) document.documentElement.dataset.uiTheme = ui;
+        var ui = localStorage.getItem('uiTheme') || 'studio';
+        document.documentElement.dataset.uiTheme = ui;
       })();
     </script>
     <div id="app"></div>

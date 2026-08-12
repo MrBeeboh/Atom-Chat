@@ -392,6 +392,247 @@ export function parseJudgeScoresAndExplanations(text) {
   return { scores, explanations };
 }
 
+/**
+ * Extract the first balanced JSON array substring (respects brackets inside strings).
+ * @param {string} text
+ * @returns {string | null}
+ */
+export function extractJsonArraySubstring(text) {
+  if (!text || typeof text !== 'string') return null;
+  const start = text.indexOf('[');
+  if (start < 0) return null;
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escape) {
+        escape = false;
+        continue;
+      }
+      if (ch === '\\') {
+        escape = true;
+        continue;
+      }
+      if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === '[') depth++;
+    else if (ch === ']') {
+      depth--;
+      if (depth === 0) return text.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+
+/**
+ * All balanced top-level JSON array substrings in text, scanning from every '[' (bounded).
+ * Unlike extractJsonArraySubstring (first '[' only), this survives prose/thinking text that
+ * contains stray brackets before the real JSON array.
+ * @param {string} text
+ * @param {number} [maxCandidates]
+ * @returns {string[]}
+ */
+export function extractAllJsonArraySubstrings(text, maxCandidates = 8) {
+  if (!text || typeof text !== 'string') return [];
+  const out = [];
+  let from = 0;
+  while (out.length < maxCandidates) {
+    const start = text.indexOf('[', from);
+    if (start < 0) break;
+    const candidate = extractJsonArraySubstring(text.slice(start));
+    if (candidate) {
+      out.push(candidate);
+      from = start + candidate.length;
+    } else {
+      from = start + 1;
+    }
+  }
+  return out;
+}
+
+/**
+ * Salvage a truncated JSON array (e.g. generation hit max_tokens mid-object):
+ * keep everything up to the last complete top-level object and close the array.
+ * Returns null when the array is already balanced or nothing can be salvaged.
+ * @param {string} text
+ * @returns {string|null}
+ */
+export function repairTruncatedJsonArray(text) {
+  if (!text || typeof text !== 'string') return null;
+  const start = text.indexOf('[');
+  if (start < 0) return null;
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  let lastObjEnd = -1;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escape) {
+        escape = false;
+        continue;
+      }
+      if (ch === '\\') {
+        escape = true;
+        continue;
+      }
+      if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === '[' || ch === '{') depth++;
+    else if (ch === ']' || ch === '}') {
+      depth--;
+      if (ch === '}' && depth === 1) lastObjEnd = i;
+      if (ch === ']' && depth === 0) return null; // balanced — not truncated
+    }
+  }
+  if (lastObjEnd > start) return text.slice(start, lastObjEnd + 1) + ']';
+  return null;
+}
+
+/**
+ * Lenient judge score parser for alternate line formats.
+ * @param {string} text
+ * @returns {Record<string, number>}
+ */
+export function parseJudgeScoresLenient(text) {
+  if (!text || typeof text !== 'string') return {};
+  const cleaned = stripThinkBlocks(text);
+  const out = {};
+  const patterns = [
+    /Model\s+([A-D])\s*[-:]\s*(\d+)(?:\s*\/\s*10)?/gi,
+    /Slot\s+([A-D])\s*:\s*(\d+)/gi,
+  ];
+  for (const re of patterns) {
+    let m;
+    while ((m = re.exec(cleaned)) !== null) {
+      const slot = m[1].toUpperCase();
+      const n = parseInt(m[2], 10);
+      if (slot >= 'A' && slot <= 'D' && n >= 0 && n <= 10) out[slot] = n;
+    }
+  }
+  return out;
+}
+
+/**
+ * Merge strict and lenient judge parsers; strict wins on conflict.
+ * @param {string} text
+ * @returns {{ scores: Record<string, number>, parseSource: 'strict' | 'lenient' | 'none' }}
+ */
+export function parseJudgeScoresMerged(text) {
+  const strict = parseJudgeScores(text);
+  const lenient = parseJudgeScoresLenient(text);
+  if (Object.keys(strict).length > 0) {
+    return { scores: { ...lenient, ...strict }, parseSource: 'strict' };
+  }
+  if (Object.keys(lenient).length > 0) {
+    return { scores: lenient, parseSource: 'lenient' };
+  }
+  return { scores: {}, parseSource: 'none' };
+}
+
+/**
+ * Lenient blind judge parser (Response #1, Response 2, etc.).
+ * @param {string} text
+ * @param {string[]} responseOrder
+ * @returns {{ scores: Record<string, number>, explanations: Record<string, string> }}
+ */
+export function parseBlindJudgeScoresLenient(text, responseOrder) {
+  if (!text || typeof text !== 'string' || !Array.isArray(responseOrder)) {
+    return { scores: {}, explanations: {} };
+  }
+  const cleaned = stripThinkBlocks(text);
+  const scores = {};
+  const explanations = {};
+  const re = /Response\s*#?\s*(\d+)\s*:\s*(\d+)(?:\s*\/\s*10)?\s*(?:-\s*)?([\s\S]*?)(?=Response\s*#?\s*\d+\s*:|$)/gi;
+  let m;
+  while ((m = re.exec(cleaned)) !== null) {
+    const oneBased = parseInt(m[1], 10);
+    const n = parseInt(m[2], 10);
+    const reason = (m[3] || '').trim();
+    const slot = responseOrder[oneBased - 1];
+    if (slot && n >= 0 && n <= 10) {
+      scores[slot] = n;
+      explanations[slot] = reason;
+    }
+  }
+  return { scores, explanations };
+}
+
+/**
+ * Merge strict and lenient blind parsers; strict wins on conflict.
+ * @param {string} text
+ * @param {string[]} responseOrder
+ * @returns {{ scores: Record<string, number>, parseSource: 'strict' | 'lenient' | 'none' }}
+ */
+export function parseBlindJudgeScoresMerged(text, responseOrder) {
+  const strict = parseBlindJudgeScores(text, responseOrder);
+  const lenient = parseBlindJudgeScoresLenient(text, responseOrder);
+  if (Object.keys(strict.scores).length > 0) {
+    return { scores: { ...lenient.scores, ...strict.scores }, parseSource: 'strict' };
+  }
+  if (Object.keys(lenient.scores).length > 0) {
+    return { scores: lenient.scores, parseSource: 'lenient' };
+  }
+  return { scores: {}, parseSource: 'none' };
+}
+
+/**
+ * Prompt to repair malformed Arena question-set JSON.
+ * @param {string} brokenJson
+ * @returns {Array<{ role: string, content: string }>}
+ */
+export function buildArenaJsonRepairPrompt(brokenJson) {
+  const raw = String(brokenJson ?? '');
+  // Strip thinking blocks so the repair model sees only the broken JSON, not the judge's reasoning.
+  const cleaned = stripThinkBlocks(raw) || raw;
+  return [
+    {
+      role: 'system',
+      content:
+        'Fix the following broken JSON so it is a single valid JSON array. Each element must have "question" and may have "answer". Output only the JSON array, no markdown or explanation.',
+    },
+    { role: 'user', content: cleaned },
+  ];
+}
+
+/**
+ * Second-pass prompt to extract scores when judge output is unstructured.
+ * @param {string} rawOutput
+ * @param {boolean} blind
+ * @param {string[]} [responseOrder]
+ * @returns {Array<{ role: string, content: string }>}
+ */
+export function buildJudgeScoreExtractionPrompt(rawOutput, blind, responseOrder = []) {
+  let mapping = '';
+  if (blind && Array.isArray(responseOrder) && responseOrder.length) {
+    mapping = responseOrder
+      .map((slot, i) => `Response ${i + 1} = Model ${slot}`)
+      .join('\n');
+    mapping += '\n\n';
+  }
+  return [
+    {
+      role: 'system',
+      content: blind
+        ? 'Extract numeric scores 0-10 per model from the judge text. Reply with one line per model: Model X: N/10 - brief reason.'
+        : 'Extract numeric scores 0-10 per model. Reply with one line per model: Model X: N/10 - brief reason.',
+    },
+    { role: 'user', content: mapping + String(rawOutput ?? '') },
+  ];
+}
+
 // ---------- Loop detection ----------
 
 /**
@@ -738,14 +979,14 @@ export function buildArenaQuestionGenerationPrompt({ categories = [], questionCo
     5: 'Difficulty level 5 (frontier only): Highest difficulty. Questions that would typically only be solvable by frontier-level models: subtle, expert-level, or cutting-edge knowledge; complex reasoning; ambiguous or multi-valid-answer cases where only the best models distinguish correctly.',
   };
   const userParts = [
-    `Generate exactly ${questionCount} questions.`,
+    `Generate EXACTLY ${questionCount} questions — no more, no fewer. The JSON array must contain exactly ${questionCount} elements.`,
     `Topics or categories: ${categoriesText}.`,
     '',
     `DIFFICULTY LEVEL: ${level} (of 5). ${difficultyInstructions[level]}`,
     'Generate all questions at this difficulty. Do not mix easier and harder; keep the set consistent.',
     '',
     'Each question should be clear and answerable in a short phrase or sentence. Provide a concise correct answer for each.',
-    'Output format: [{"question":"...","answer":"..."}, ...]',
+    `Output format: exactly ${questionCount} objects, like [{"question":"...","answer":"..."}, ...]`,
   ];
   if (webContext && webContext.trim()) {
     userParts.push('');
@@ -764,28 +1005,64 @@ export function buildArenaQuestionGenerationPrompt({ categories = [], questionCo
  * @param {string} rawContent
  * @returns {{ questions: string[], answers: string[] } | null}
  */
+function parseQuestionSetArray(arr) {
+  if (!Array.isArray(arr) || arr.length === 0) return null;
+  const questions = [];
+  const answers = [];
+  for (const item of arr) {
+    // Accept {question, answer} plus common variants the judge may emit despite instructions.
+    const qRaw = typeof item === 'string' ? item : item?.question ?? item?.q ?? item?.text;
+    const aRaw = typeof item === 'string' ? '' : item?.answer ?? item?.a ?? item?.correct_answer;
+    const q = qRaw != null ? String(qRaw).trim() : '';
+    const a = aRaw != null ? String(aRaw).trim() : '';
+    if (q) {
+      questions.push(q);
+      answers.push(a);
+    }
+  }
+  return questions.length > 0 ? { questions, answers } : null;
+}
+
+/** Accept a parsed JSON value: array of items, or an object wrapping one ({ questions: [...] }). */
+function parseQuestionSetValue(value) {
+  if (Array.isArray(value)) return parseQuestionSetArray(value);
+  if (value && typeof value === 'object' && Array.isArray(value.questions)) {
+    return parseQuestionSetArray(value.questions);
+  }
+  return null;
+}
+
 export function parseGeneratedQuestionSet(rawContent) {
   if (!rawContent || typeof rawContent !== 'string') return null;
-  let jsonStr = rawContent.trim();
+  // Reasoning judges wrap output in <think> blocks despite instructions; strip them first
+  // so stray brackets in the thinking text cannot shadow the real JSON array.
+  const cleaned = stripThinkBlocks(rawContent) || rawContent.trim();
+  let jsonStr = cleaned;
   const codeBlock = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (codeBlock) jsonStr = codeBlock[1].trim();
-  try {
-    const arr = JSON.parse(jsonStr);
-    if (!Array.isArray(arr) || arr.length === 0) return null;
-    const questions = [];
-    const answers = [];
-    for (const item of arr) {
-      const q = item?.question != null ? String(item.question).trim() : '';
-      const a = item?.answer != null ? String(item.answer).trim() : '';
-      if (q) {
-        questions.push(q);
-        answers.push(a);
-      }
+  // Prefer balanced arrays that actually contain "question" over prose brackets.
+  const arrays = extractAllJsonArraySubstrings(cleaned);
+  arrays.sort((a, b) => Number(b.includes('"question"')) - Number(a.includes('"question"')));
+  const candidates = [
+    jsonStr,
+    ...arrays,
+    extractJsonArraySubstring(jsonStr),
+    // Last resort: salvage output truncated at the token limit.
+    repairTruncatedJsonArray(jsonStr),
+    repairTruncatedJsonArray(cleaned),
+  ].filter(Boolean);
+  const seen = new Set();
+  for (const candidate of candidates) {
+    if (!candidate || seen.has(candidate)) continue;
+    seen.add(candidate);
+    try {
+      const parsed = parseQuestionSetValue(JSON.parse(candidate));
+      if (parsed) return parsed;
+    } catch {
+      /* try next candidate */
     }
-    return questions.length > 0 ? { questions, answers } : null;
-  } catch {
-    return null;
   }
+  return null;
 }
 
 // ---------- Question objects (id-based, for filtering and audit) ----------

@@ -4,6 +4,15 @@ import {
   parseJudgeScores,
   parseJudgeScoresAndExplanations,
   parseBlindJudgeScores,
+  parseJudgeScoresLenient,
+  parseJudgeScoresMerged,
+  parseBlindJudgeScoresMerged,
+  extractJsonArraySubstring,
+  extractAllJsonArraySubstrings,
+  repairTruncatedJsonArray,
+  parseGeneratedQuestionSet,
+  buildArenaJsonRepairPrompt,
+  buildJudgeScoreExtractionPrompt,
   shuffleArray,
   makeSeededRandom,
   buildJudgePromptBlind,
@@ -738,5 +747,155 @@ describe('isCloudModel', () => {
     expect(isCloudModel('qwen3-32b-instruct')).toBe(false);
     expect(isCloudModel('')).toBe(false);
     expect(isCloudModel(null)).toBe(false);
+  });
+});
+
+describe('extractJsonArraySubstring', () => {
+  it('returns null when no array', () => {
+    expect(extractJsonArraySubstring('no brackets')).toBeNull();
+  });
+  it('extracts array with leading prose', () => {
+    const s = 'Here you go:\n[{"question":"a","answer":"b"}]\ntrailing';
+    expect(extractJsonArraySubstring(s)).toBe('[{"question":"a","answer":"b"}]');
+  });
+  it('respects brackets inside JSON strings', () => {
+    const inner = '[{"question":"[x]","answer":"y"}]';
+    const s = `prefix ${inner} suffix`;
+    expect(extractJsonArraySubstring(s)).toBe(inner);
+  });
+});
+
+describe('parseGeneratedQuestionSet', () => {
+  it('parses fenced JSON', () => {
+    const raw = '```json\n[{"question":"Q1","answer":"A1"}]\n```';
+    const r = parseGeneratedQuestionSet(raw);
+    expect(r?.questions).toEqual(['Q1']);
+    expect(r?.answers).toEqual(['A1']);
+  });
+  it('parses array after preamble', () => {
+    const raw = 'Sure! [{"question":"Q","answer":"A"}] Hope this helps.';
+    const r = parseGeneratedQuestionSet(raw);
+    expect(r?.questions).toEqual(['Q']);
+    expect(r?.answers).toEqual(['A']);
+  });
+  it('parses output from reasoning judges that prepend <think> blocks', () => {
+    const raw = '<think>\nLet me plan [easy, medium] questions about science.\n</think>\n[{"question":"Q1","answer":"A1"},{"question":"Q2","answer":"A2"}]';
+    const r = parseGeneratedQuestionSet(raw);
+    expect(r?.questions).toEqual(['Q1', 'Q2']);
+    expect(r?.answers).toEqual(['A1', 'A2']);
+  });
+  it('skips prose brackets before the real array', () => {
+    const raw = 'Here is the set [as requested]:\n[{"question":"Q","answer":"A"}]';
+    const r = parseGeneratedQuestionSet(raw);
+    expect(r?.questions).toEqual(['Q']);
+    expect(r?.answers).toEqual(['A']);
+  });
+  it('accepts an object wrapping the array ({ questions: [...] })', () => {
+    const raw = '{"questions":[{"question":"Q","answer":"A"}]}';
+    const r = parseGeneratedQuestionSet(raw);
+    expect(r?.questions).toEqual(['Q']);
+    expect(r?.answers).toEqual(['A']);
+  });
+  it('accepts alternate keys (q/a, text/correct_answer) and plain string items', () => {
+    const r1 = parseGeneratedQuestionSet('[{"q":"Q1","a":"A1"}]');
+    expect(r1?.questions).toEqual(['Q1']);
+    expect(r1?.answers).toEqual(['A1']);
+    const r2 = parseGeneratedQuestionSet('[{"text":"Q2","correct_answer":"A2"}]');
+    expect(r2?.questions).toEqual(['Q2']);
+    expect(r2?.answers).toEqual(['A2']);
+    const r3 = parseGeneratedQuestionSet('["What is 2+2?"]');
+    expect(r3?.questions).toEqual(['What is 2+2?']);
+    expect(r3?.answers).toEqual(['']);
+  });
+  it('salvages an array truncated at the token limit', () => {
+    const raw = '[{"question":"Q1","answer":"A1"},{"question":"Q2","answer":"A2"},{"question":"Q3","ans';
+    const r = parseGeneratedQuestionSet(raw);
+    expect(r?.questions).toEqual(['Q1', 'Q2']);
+    expect(r?.answers).toEqual(['A1', 'A2']);
+  });
+  it('returns null when no questions can be recovered', () => {
+    expect(parseGeneratedQuestionSet('No JSON here, sorry.')).toBeNull();
+    expect(parseGeneratedQuestionSet('')).toBeNull();
+    expect(parseGeneratedQuestionSet(null)).toBeNull();
+  });
+});
+
+describe('extractAllJsonArraySubstrings', () => {
+  it('finds arrays beyond the first bracket', () => {
+    const text = 'note [unbalanced... then [1,2] and ["x"]';
+    const arrays = extractAllJsonArraySubstrings(text);
+    expect(arrays.some((a) => a.includes('[1,2]') || a === '[1,2]')).toBe(true);
+  });
+  it('returns empty array for no input', () => {
+    expect(extractAllJsonArraySubstrings('')).toEqual([]);
+    expect(extractAllJsonArraySubstrings(null)).toEqual([]);
+  });
+});
+
+describe('repairTruncatedJsonArray', () => {
+  it('closes a truncated array after the last complete object', () => {
+    const out = repairTruncatedJsonArray('[{"question":"Q1"},{"question":"Q2","an');
+    expect(out).toBe('[{"question":"Q1"}]');
+    expect(() => JSON.parse(out)).not.toThrow();
+  });
+  it('returns null for balanced arrays and unsalvageable input', () => {
+    expect(repairTruncatedJsonArray('[{"a":1}]')).toBeNull();
+    expect(repairTruncatedJsonArray('no array')).toBeNull();
+    expect(repairTruncatedJsonArray('[{"never_closed')).toBeNull();
+  });
+});
+
+describe('parseJudgeScoresLenient', () => {
+  it('parses alternate Model line format', () => {
+    expect(parseJudgeScoresLenient('Model B - 8/10 ok')).toEqual({ B: 8 });
+  });
+  it('parses Slot C format', () => {
+    expect(parseJudgeScoresLenient('Slot C: 7')).toEqual({ C: 7 });
+  });
+});
+
+describe('parseJudgeScoresMerged', () => {
+  it('prefers strict over lenient on conflict', () => {
+    const text = 'Model B: 9/10 - good\nAlso B=3';
+    const m = parseJudgeScoresMerged(text);
+    expect(m.scores.B).toBe(9);
+    expect(m.parseSource).toBe('strict');
+  });
+  it('fills from lenient when strict empty', () => {
+    const m = parseJudgeScoresMerged('Rough: Model A - 6/10');
+    expect(m.scores.A).toBe(6);
+    expect(m.parseSource).toBe('lenient');
+  });
+});
+
+describe('parseBlindJudgeScoresMerged', () => {
+  it('merges lenient Response lines', () => {
+    const order = ['B', 'A'];
+    const text = 'Response #1: 8/10 ok\nResponse 2: 7/10';
+    const m = parseBlindJudgeScoresMerged(text, order);
+    expect(m.scores.B).toBe(8);
+    expect(m.scores.A).toBe(7);
+  });
+});
+
+describe('buildArenaJsonRepairPrompt', () => {
+  it('returns two messages', () => {
+    const m = buildArenaJsonRepairPrompt('[broken');
+    expect(m).toHaveLength(2);
+    expect(m[0].role).toBe('system');
+    expect(m[1].content).toContain('[broken');
+  });
+  it('strips <think> blocks so the repair model sees only the broken JSON', () => {
+    const m = buildArenaJsonRepairPrompt('<think>my [reasoning]</think>[{"question":"Q"');
+    expect(m[1].content).not.toContain('reasoning');
+    expect(m[1].content).toContain('[{"question":"Q"');
+  });
+});
+
+describe('buildJudgeScoreExtractionPrompt', () => {
+  it('includes blind mapping when provided', () => {
+    const m = buildJudgeScoreExtractionPrompt('foo', true, ['B', 'C']);
+    expect(m[1].content).toContain('Response 1 = Model B');
+    expect(m[1].content).toContain('foo');
   });
 });

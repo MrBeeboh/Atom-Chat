@@ -2,10 +2,14 @@
   import { makeDraggable, makeResizable } from "$lib/utils.js";
   import { onMount } from "svelte";
 
-  export let questionPanelPos = $state({ x: 20, y: 80 });
-  export let questionPanelSize = $state({ w: 300, h: 150 });
-  export let currentQuestionText = "";
-  export let currentQuestionNum = 0;
+  let {
+    open = true,
+    onClose = () => {},
+    questionPanelPos = $bindable({ x: 20, y: 80 }),
+    questionPanelSize = $bindable({ w: 300, h: 150 }),
+    currentQuestionText = "",
+    currentQuestionNum = 0,
+  } = $props();
 
   onMount(() => {
     if (typeof localStorage === "undefined") return;
@@ -37,17 +41,17 @@
   let panelElement = $state(null);
 </script>
 
-{#if currentQuestionText}
+{#if open && currentQuestionText}
   <div
     bind:this={panelElement}
     class="arena-question-panel rounded-lg border shadow-lg overflow-hidden"
-    style="position: fixed; left: {questionPanelPos.x}px; top: {questionPanelPos.y}px; width: {questionPanelSize.w}px; height: {questionPanelSize.h}px; z-index: 20; background-color: var(--ui-bg-sidebar); border-color: var(--ui-border);"
+    style="position: fixed; left: {questionPanelPos.x}px; top: {questionPanelPos.y}px; width: {questionPanelSize.w}px; height: {questionPanelSize.h}px; z-index: 40; background-color: var(--ui-bg-sidebar); border-color: var(--ui-border);"
     use:makeResizable={{
       storageKey: "arenaQuestionPanelSize",
       getSize: () => questionPanelSize,
       setSize: (s) => (questionPanelSize = s),
       minWidth: 200,
-      minHeight: 100
+      minHeight: 100,
     }}
   >
     <div
@@ -66,9 +70,12 @@
         type="button"
         class="p-1 rounded opacity-70 hover:opacity-100"
         style="color: var(--ui-text-secondary);"
-        onclick={(e) => e.stopPropagation()}
-        aria-label="Close"
-      >×</button>
+        onclick={(e) => {
+          e.stopPropagation();
+          onClose();
+        }}
+        aria-label="Close floating question panel"
+        >×</button>
     </div>
     <div class="p-3 overflow-auto h-full" style="color: var(--ui-text-primary);">
       <div class="text-sm whitespace-pre-wrap">{currentQuestionText}</div>

@@ -1,13 +1,14 @@
 <script>
   /**
    * ArenaPanel: Reusable response panel for Arena slots A–D.
-   * Shows: header (label), options accordion, scrollable message area, footer (score + standing + t/s + clear).
+   * Shows: header (slot badge + model selector + score + t/s), options accordion, scrollable message area, footer (clear).
    */
   import { fly } from 'svelte/transition';
   import { quintOut } from 'svelte/easing';
   import { arenaSlotOverrides, setArenaSlotOverride } from '$lib/stores.js';
   import { ARENA_SYSTEM_PROMPT_TEMPLATES } from '$lib/arenaLogic.js';
   import MessageBubble from '$lib/components/MessageBubble.svelte';
+  import ModelSelectorSlot from '$lib/components/ModelSelectorSlot.svelte';
 
   let {
     slot = 'A',
@@ -104,16 +105,31 @@
   aria-label="Model {slot} panel"
   in:fly={{ x: 200, duration: 800, easing: quintOut }}
 >
-  <!-- Header -->
-  <div class="shrink-0 flex items-center justify-between gap-2 px-3 py-2 text-[11px]" style="color: var(--ui-text-secondary);">
-    <div class="flex items-center gap-2">
-      <span class="font-medium">{slot}</span>
-      {#if loadStatus === 'loading'}
-        <span class="text-[10px] animate-pulse" style="color: var(--ui-accent);">loading…</span>
-      {:else if loadStatus === 'loaded'}
-        <span class="w-1.5 h-1.5 rounded-full shrink-0" style="background-color: #22c55e;" title="Model loaded"></span>
-      {:else if loadStatus === 'error'}
-        <span class="w-1.5 h-1.5 rounded-full shrink-0" style="background-color: #ef4444;" title="Load error"></span>
+  <!-- Header: slot badge + model selector + score + t/s -->
+  <div class="shrink-0 flex items-center gap-2 px-3 py-2" style="border-bottom: 1px solid var(--ui-border); background: color-mix(in srgb, {accentColor} 6%, var(--ui-bg-sidebar));">
+    <!-- Slot badge -->
+    <span class="text-[11px] font-bold w-5 h-5 rounded flex items-center justify-center shrink-0" style="background: color-mix(in srgb, {accentColor} 18%, transparent); color: {accentColor};">{slot}</span>
+    {#if loadStatus === 'loading'}
+      <span class="text-[10px] animate-pulse shrink-0" style="color: var(--ui-accent);">loading…</span>
+    {:else if loadStatus === 'loaded'}
+      <span class="w-1.5 h-1.5 rounded-full shrink-0" style="background-color: #22c55e;" title="Model loaded"></span>
+    {:else if loadStatus === 'error'}
+      <span class="w-1.5 h-1.5 rounded-full shrink-0" style="background-color: #ef4444;" title="Load error"></span>
+    {/if}
+    <!-- Model selector fills remaining space -->
+    <div class="flex-1 min-w-0">
+      <ModelSelectorSlot slot={slot} />
+    </div>
+    <!-- Score + t/s -->
+    <div class="flex items-center gap-3 shrink-0">
+      {#if running}
+        <span class="text-xs font-medium animate-pulse" style="color: {accentColor};">Running…</span>
+      {:else if tps}
+        {@const c = Number(tps) >= 40 ? 'var(--atom-teal)' : Number(tps) >= 20 ? 'var(--atom-amber)' : 'var(--atom-accent)'}
+        <span class="font-mono text-sm font-bold" style="color: {c};" title="Tokens per second">{tps} <span class="text-xs font-normal opacity-70">t/s</span></span>
+      {/if}
+      {#if showScore}
+        <span class="text-sm font-bold tabular-nums" style="color: {accentColor};">{score}</span>
       {/if}
     </div>
   </div>
@@ -128,27 +144,27 @@
     <div class="shrink-0 p-3 text-xs" style="background: color-mix(in srgb, var(--ui-border) 10%, var(--ui-bg-main));">
       <p class="font-medium mb-1.5" style="color: var(--ui-text-secondary);">Model {slot} settings</p>
       <div class="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1.5 items-center">
-        <label class="text-zinc-500 dark:text-zinc-400">Temperature</label>
+        <label style="color: var(--ui-text-secondary);">Temperature</label>
         <input type="number" step="0.1" min="0" max="2" class="w-20 px-1.5 py-0.5 rounded border text-right font-mono" style="border-color: var(--ui-border); background-color: var(--ui-bg-main); color: var(--ui-text-primary);" value={$arenaSlotOverrides[slot]?.temperature ?? effectiveSettings.temperature} oninput={slotOverrideInput('temperature')} />
-        <label class="text-zinc-500 dark:text-zinc-400">Max tokens</label>
+        <label style="color: var(--ui-text-secondary);">Max tokens</label>
         <input type="number" min="1" max="100000" step="1" class="w-20 px-1.5 py-0.5 rounded border text-right font-mono" style="border-color: var(--ui-border); background-color: var(--ui-bg-main); color: var(--ui-text-primary);" value={$arenaSlotOverrides[slot]?.max_tokens ?? effectiveSettings.max_tokens} oninput={slotOverrideInput('max_tokens')} />
-        <label class="text-zinc-500 dark:text-zinc-400">Top-P</label>
+        <label style="color: var(--ui-text-secondary);">Top-P</label>
         <input type="number" step="0.05" min="0" max="1" class="w-20 px-1.5 py-0.5 rounded border text-right font-mono" style="border-color: var(--ui-border); background-color: var(--ui-bg-main); color: var(--ui-text-primary);" value={$arenaSlotOverrides[slot]?.top_p ?? effectiveSettings.top_p} oninput={slotOverrideInput('top_p')} />
-        <label class="text-zinc-500 dark:text-zinc-400">Top-K</label>
+        <label style="color: var(--ui-text-secondary);">Top-K</label>
         <input type="number" min="1" max="200" step="1" class="w-20 px-1.5 py-0.5 rounded border text-right font-mono" style="border-color: var(--ui-border); background-color: var(--ui-bg-main); color: var(--ui-text-primary);" value={$arenaSlotOverrides[slot]?.top_k ?? effectiveSettings.top_k} oninput={slotOverrideInput('top_k')} />
-        <label class="text-zinc-500 dark:text-zinc-400">Repeat penalty</label>
+        <label style="color: var(--ui-text-secondary);">Repeat penalty</label>
         <input type="number" step="0.05" min="1" max="2" class="w-20 px-1.5 py-0.5 rounded border text-right font-mono" style="border-color: var(--ui-border); background-color: var(--ui-bg-main); color: var(--ui-text-primary);" value={$arenaSlotOverrides[slot]?.repeat_penalty ?? effectiveSettings.repeat_penalty} oninput={slotOverrideInput('repeat_penalty')} />
-        <label class="text-zinc-500 dark:text-zinc-400">Presence penalty</label>
+        <label style="color: var(--ui-text-secondary);">Presence penalty</label>
         <input type="number" step="0.1" min="-2" max="2" class="w-20 px-1.5 py-0.5 rounded border text-right font-mono" style="border-color: var(--ui-border); background-color: var(--ui-bg-main); color: var(--ui-text-primary);" value={$arenaSlotOverrides[slot]?.presence_penalty ?? effectiveSettings.presence_penalty} oninput={slotOverrideInput('presence_penalty')} />
-        <label class="text-zinc-500 dark:text-zinc-400">Frequency penalty</label>
+        <label style="color: var(--ui-text-secondary);">Frequency penalty</label>
         <input type="number" step="0.1" min="-2" max="2" class="w-20 px-1.5 py-0.5 rounded border text-right font-mono" style="border-color: var(--ui-border); background-color: var(--ui-bg-main); color: var(--ui-text-primary);" value={$arenaSlotOverrides[slot]?.frequency_penalty ?? effectiveSettings.frequency_penalty} oninput={slotOverrideInput('frequency_penalty')} />
       </div>
-      <label class="block mt-1.5 text-zinc-500 dark:text-zinc-400">System prompt template</label>
+      <label class="block mt-1.5" style="color: var(--ui-text-secondary);">System prompt template</label>
       <select class="w-full mb-0.5 px-1.5 py-0.5 rounded border text-xs" style="border-color: var(--ui-border); background-color: var(--ui-bg-main); color: var(--ui-text-primary);" onchange={(e) => { const opt = ARENA_SYSTEM_PROMPT_TEMPLATES.find((t) => t.name === e.currentTarget?.value); if (opt?.prompt) applyTemplate(opt.prompt); }} aria-label="System prompt template">
         {#each ARENA_SYSTEM_PROMPT_TEMPLATES as t}<option value={t.name}>{t.name}</option>{/each}
       </select>
-      <label class="block mt-1 text-zinc-500 dark:text-zinc-400">System prompt (optional)</label>
-      <textarea rows="2" class="w-full mt-0.5 px-1.5 py-1 rounded border text-xs resize-y" style="border-color: var(--ui-border); background-color: var(--ui-bg-main); color: var(--ui-text-primary);" placeholder="Leave blank to use Arena default" value={$arenaSlotOverrides[slot]?.system_prompt ?? ''} oninput={slotOverrideInput('system_prompt')}></textarea>
+      <label class="block mt-1" style="color: var(--ui-text-secondary);">System prompt (optional)</label>
+      <textarea rows="2" class="w-full mt-0.5 px-1.5 py-1 rounded border text-xs resize-y" style="border-color: var(--ui-border); background-color: var(--ui-bg-main); color: var(--ui-text-primary);" placeholder="Leave blank to use Arena default" value={$arenaSlotOverrides[slot]?.system_prompt ?? ''} oninput={slotOverrideInput('system_prompt')} aria-label="System prompt for slot {slot}"></textarea>
       <button type="button" class="mt-1.5 text-[10px] underline opacity-80 hover:opacity-100" style="color: var(--ui-text-secondary);" onclick={() => setArenaSlotOverride(slot, null)}>Reset to Arena default</button>
     </div>
   {/if}
@@ -169,19 +185,15 @@
   </div>
 
   <!-- Footer -->
-  <div class="shrink-0 flex justify-between items-center gap-2 px-3 py-2 text-[11px]" style="background: color-mix(in srgb, var(--ui-border) 8%, var(--ui-bg-main));">
-    {#if showScore}
-      <div class="flex items-center gap-2 min-w-0">
-        <span class="arena-panel-score font-bold tabular-nums shrink-0" style="color: {accentColor};">{score} pts</span>
-        <span class="text-[10px] font-medium uppercase tracking-wide opacity-85" style="color: var(--ui-text-secondary);">{standingLabel}</span>
-      </div>
-    {:else}
-      <div></div>
-    {/if}
+  <div class="shrink-0 flex justify-between items-center gap-2 px-3 py-1.5" style="border-top: 1px solid var(--ui-border); background: color-mix(in srgb, var(--ui-border) 6%, var(--ui-bg-main));">
+    <div class="flex items-center gap-1.5">
+      {#if showScore && standingLabel !== '—'}
+        <span class="text-[10px] font-medium uppercase tracking-wide" style="color: var(--ui-text-secondary);">{standingLabel}</span>
+      {/if}
+    </div>
     <div class="flex items-center gap-2">
-      <button type="button" class="arena-panel-options-btn flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-medium transition-opacity hover:opacity-90" style="background: var(--ui-input-bg); color: var(--ui-text-primary);" onclick={onToggleOptions} aria-label="Model {slot} options" aria-expanded={optionsOpen} title="Model {slot} options">⚙ Options</button>
-      {#if running}<span class="text-xs" style="color: var(--ui-accent);">Running…</span>{:else if tps}{@const c = Number(tps) >= 40 ? 'var(--atom-teal)' : Number(tps) >= 20 ? 'var(--atom-amber)' : 'var(--atom-accent)'}<span class="font-mono text-[10px]" style="color: {c};">{tps} t/s</span>{/if}
-      {#if messages.length > 0}<button type="button" class="p-1 rounded-lg opacity-50 hover:opacity-100 transition-opacity" style="color: var(--ui-text-secondary);" onclick={onClear} aria-label="Clear slot {slot}">✕</button>{/if}
+      <button type="button" class="arena-panel-options-btn flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-opacity hover:opacity-90" style="background: var(--ui-input-bg); color: var(--ui-text-secondary);" onclick={onToggleOptions} aria-label="Model {slot} options" aria-expanded={optionsOpen} title="Model {slot} options">⚙ Options</button>
+      {#if messages.length > 0}<button type="button" class="p-1 rounded-lg opacity-50 hover:opacity-100 transition-opacity text-xs" style="color: var(--ui-text-secondary);" onclick={onClear} aria-label="Clear slot {slot}">✕ Clear</button>{/if}
     </div>
   </div>
 </div>

@@ -3,12 +3,21 @@ import { svelte } from '@sveltejs/vite-plugin-svelte'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { execSync } from 'node:child_process'
+import { vitePluginLocalDiskModels } from './scripts/vite-plugin-local-disk-models.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
+function gitRev() {
+  try { return execSync('git rev-parse --short HEAD', { stdio: ['pipe', 'pipe', 'ignore'] }).toString().trim(); } catch { return 'dev'; }
+}
+
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [svelte(), tailwindcss()],
+  define: {
+    __GIT_REV__: JSON.stringify(gitRev()),
+  },
+  plugins: [svelte(), tailwindcss(), vitePluginLocalDiskModels()],
   resolve: {
     alias: {
       $lib: path.resolve(__dirname, 'src/lib'),
@@ -19,10 +28,11 @@ export default defineConfig({
     strictPort: false,
     host: true, // listen on 0.0.0.0 so you can open the UI from other devices (e.g. bedroom mini at http://<this-pc-ip>:5173)
     proxy: {
-      '/api/lmstudio': {
-        target: 'http://localhost:1234',
+      // Proxy for llama.cpp (llama-server) on port 8080
+      '/api/llama': {
+        target: 'http://localhost:8080',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/lmstudio/, ''),
+        rewrite: (path) => path.replace(/^\/api\/llama/, ''),
       },
       '/api/hf': {
         target: 'https://huggingface.co',
@@ -33,6 +43,26 @@ export default defineConfig({
         target: 'https://registry.ollama.ai',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/ollama/, ''),
+      },
+      '/api/xai': {
+        target: 'https://api.x.ai',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/xai/, ''),
+      },
+      '/api/deepseek': {
+        target: 'https://api.deepseek.com',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/deepseek/, ''),
+      },
+      '/api/cerebras': {
+        target: 'https://api.cerebras.ai',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/cerebras/, ''),
+      },
+      '/api/deepinfra': {
+        target: 'https://api.deepinfra.com',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/deepinfra/, ''),
       },
       '/api/search': {
         target: 'http://localhost:5174',

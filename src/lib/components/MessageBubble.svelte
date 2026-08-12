@@ -5,7 +5,13 @@
   import { get } from "svelte/store";
   import PerfStats from "$lib/components/PerfStats.svelte";
   import AuthVideo from "$lib/components/AuthVideo.svelte";
-  import { pinnedContent, deepinfraApiKey } from "$lib/stores.js";
+  import { pinnedContent, deepinfraApiKey, isStreaming } from "$lib/stores.js";
+  import { modelDisplayName } from "$lib/api.js";
+  import ThinkingAtom from "$lib/components/ThinkingAtom.svelte";
+
+  const modelLabel = $derived(
+    message.modelId ? modelDisplayName(message.modelId) : "",
+  );
 
   /** DeepInfra key: init from store + env so it's there on first paint; subscribe to stay in sync with Settings. */
   let deepinfraKey = $state(
@@ -30,7 +36,13 @@
     return () => unsub();
   });
 
-  let { message } = $props();
+  let {
+    message,
+    isLast = false,
+    onRegenerate = null,
+    onEditResend = null,
+    onDelete = null,
+  } = $props();
   const isUser = $derived(message.role === "user");
   const isAssistant = $derived(message.role === "assistant");
   const content = $derived(
@@ -68,6 +80,41 @@
   let copyFeedback = $state(false);
   let pinFeedback = $state(false);
 
+  /** Inline edit & resend (text-only user messages). */
+  let editing = $state(false);
+  let editText = $state("");
+  const canEdit = $derived(
+    isUser && typeof message.content === "string" && !!onEditResend,
+  );
+  const canRegenerate = $derived(isLast && !!onRegenerate);
+  function startEdit() {
+    editText = content;
+    editing = true;
+  }
+  function cancelEdit() {
+    editing = false;
+  }
+  function saveEdit() {
+    const t = editText.trim();
+    editing = false;
+    if (!t || t === content.trim()) return;
+    onEditResend?.(message, t);
+  }
+  function onEditKeydown(e) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      saveEdit();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      cancelEdit();
+    }
+  }
+  /** Svelte action: focus the edit textarea with the caret at the end. */
+  function autofocus(node) {
+    node.focus();
+    node.setSelectionRange(node.value.length, node.value.length);
+  }
+
   function copyContent() {
     const text =
       content ||
@@ -95,19 +142,49 @@
 </script>
 
 <div
-  class="flex {isUser ? 'justify-end' : 'justify-start'} w-full max-w-[56rem]"
+  class="flex {isUser ? 'justify-end' : 'justify-start'} w-full max-w-[44rem]"
   in:fly={{ y: 20, duration: 380, easing: quintOut }}
 >
   <div
-    class="message-bubble-inner w-full rounded-[10px] px-3 py-2 shadow-sm relative overflow-hidden
-      {isUser
-      ? 'ui-user-bubble'
-      : 'bg-white dark:bg-zinc-800/90 text-zinc-900 dark:text-zinc-100 border border-zinc-200/80 dark:border-zinc-700/80'}"
+    class="message-bubble-inner group relative overflow-hidden
+      {isUser ? 'ui-user-bubble max-w-[85%] rounded-[10px] px-3 py-2' : 'atom-assistant w-full px-3 py-1'}"
+    style={isUser ? '' : 'color: var(--ui-text-primary);'}
   >
     <!-- No background div here; handled by CSS below -->
 
     {#if isUser}
-      {#if contentArray.length}
+      {#if editing}
+        <div class="flex flex-col gap-2" style="width: min(34rem, 70vw);">
+          <textarea
+            bind:value={editText}
+            use:autofocus
+            onkeydown={onEditKeydown}
+            rows={Math.min(8, Math.max(2, editText.split("\n").length))}
+            class="w-full rounded-md px-2.5 py-2 text-sm resize-y"
+            style="background: var(--ui-bg-main); color: var(--ui-text-primary); border: 1px solid var(--ui-border);"
+            aria-label="Edit message"
+          ></textarea>
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-[10px]" style="color: var(--ui-text-secondary);"
+              >Sending removes the replies after this message.</span
+            >
+            <div class="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                class="text-[11px] px-2.5 py-1 rounded border"
+                style="border-color: var(--ui-border); color: var(--ui-text-secondary); background: transparent;"
+                onclick={cancelEdit}>Cancel</button
+              >
+              <button
+                type="button"
+                class="text-[11px] px-2.5 py-1 rounded font-medium"
+                style="background: var(--ui-accent); color: var(--ui-bg-main);"
+                onclick={saveEdit}>Send</button
+              >
+            </div>
+          </div>
+        </div>
+      {:else if contentArray.length}
         <div class="space-y-2">
           {#each contentArray as part}
             {#if part.type === "text"}
@@ -143,47 +220,27 @@
         </div>
       {/if}
     {:else if isAssistant}
-      {#if message.modelId}
+      {#if modelLabel}
         <div
-          class="flex items-center gap-1.5 mb-2 pb-2 border-b border-zinc-200/60 dark:border-zinc-600/60"
+          class="flex items-center gap-1.5 mb-2 pb-2"
+          style="border-bottom: 1px solid color-mix(in srgb, var(--ui-border) 70%, transparent);"
         >
           <span
-            class="text-xs font-medium text-zinc-500 dark:text-zinc-400 truncate"
-            title={message.modelId}>{message.modelId}</span
+            class="text-[10px] font-semibold uppercase tracking-[0.14em] truncate"
+            style="color: var(--ui-accent); opacity: 0.9;"
+            title={message.modelId}>{modelLabel}</span
           >
         </div>
       {/if}
-      {#if !content}
-        <div class="flex items-center py-1" aria-label="Thinking">
-          <svg
-            class="thinking-atom-icon w-8 h-8"
-            viewBox="0 0 32 32"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <circle cx="16" cy="16" r="3" class="thinking-atom-nucleus" />
-            <ellipse
-              cx="16"
-              cy="16"
-              rx="10"
-              ry="4"
-              class="thinking-atom-orbit"
-            />
-            <ellipse
-              cx="16"
-              cy="16"
-              rx="12"
-              ry="5"
-              class="thinking-atom-orbit-2"
-            />
-            <ellipse
-              cx="16"
-              cy="16"
-              rx="11"
-              ry="4.5"
-              class="thinking-atom-orbit-3"
-            />
-          </svg>
+      {#if !content && $isStreaming}
+        <div class="flex items-center gap-3 py-2" aria-label="Thinking">
+          <ThinkingAtom size={32} />
+          <span class="thinking-label text-xs font-medium" style="color: var(--ui-text-secondary);">Reasoning…</span>
+        </div>
+      {:else if !content}
+        <div class="flex items-center gap-3 py-2" aria-label="Waiting">
+          <ThinkingAtom size={24} />
+          <span class="thinking-label text-xs font-medium" style="color: var(--ui-text-secondary);">Waiting…</span>
         </div>
       {:else if hasThinkingOrAnswer}
         <div class="prose-chat prose dark:prose-invert max-w-none space-y-3">
@@ -205,7 +262,7 @@
                 <img
                   src={url}
                   alt="Result image"
-                  class="max-h-32 rounded border border-zinc-200 dark:border-zinc-600"
+                  class="max-h-32 rounded" style="border: 1px solid var(--ui-border);"
                   loading="lazy"
                 />
               {/each}
@@ -221,7 +278,7 @@
         >
           {#each imageRefs as ref (ref.image_id)}
             <div
-              class="shrink-0 rounded border border-zinc-200 dark:border-zinc-600 overflow-hidden bg-zinc-100 dark:bg-zinc-800/80"
+              class="shrink-0 rounded overflow-hidden" style="border: 1px solid var(--ui-border); background-color: var(--ui-bg-sidebar);"
               role="listitem"
             >
               <img
@@ -234,7 +291,7 @@
                 loading="lazy"
               />
               <p
-                class="p-1.5 text-[10px] text-zinc-500 dark:text-zinc-400 truncate max-w-[120px]"
+                class="p-1.5 text-[10px] truncate max-w-[120px]" style="color: var(--ui-text-secondary);"
               >
                 ID: {ref.image_id}
               </p>
@@ -250,7 +307,7 @@
         >
           {#each imageUrls as url (url)}
             <div
-              class="shrink-0 rounded border border-zinc-200 dark:border-zinc-600 overflow-hidden bg-zinc-100 dark:bg-zinc-800/80"
+              class="shrink-0 rounded overflow-hidden" style="border: 1px solid var(--ui-border); background-color: var(--ui-bg-sidebar);"
               role="listitem"
             >
               <img
@@ -271,7 +328,7 @@
         >
           {#each videoUrls as url (url)}
             <div
-              class="rounded border border-zinc-200 dark:border-zinc-600 overflow-hidden bg-zinc-100 dark:bg-zinc-800/80 max-w-2xl"
+              class="rounded overflow-hidden max-w-2xl" style="border: 1px solid var(--ui-border); background-color: var(--ui-bg-sidebar);"
               role="listitem"
             >
               <AuthVideo {url} apiKey={deepinfraKey} />
@@ -287,22 +344,16 @@
       {/if}
     {/if}
 
-    <!-- Copy/Pin buttons for ALL messages (User or Assistant) -->
-    {#if (isUser && (content || contentArray.length)) || (isAssistant && (content || hasThinkingOrAnswer))}
+    <!-- Copy/Pin/Edit/Regenerate/Delete actions for ALL messages (User or Assistant) -->
+    {#if !editing && ((isUser && (content || contentArray.length)) || (isAssistant && (content || hasThinkingOrAnswer)))}
       <div
-        class="flex items-center gap-1 mt-2 pt-2 {isUser ? 'justify-end' : ''}"
+        class="message-actions flex items-center gap-1 mt-2 pt-2 opacity-0 group-hover:opacity-100 transition-opacity duration-150 {isUser ? 'justify-end' : ''}"
       >
         <!-- Copy button with clipboard icon -->
         <button
           type="button"
-          class="flex items-center gap-1 text-[10px] px-2 py-1 rounded border {isUser
-            ? 'border-primary-200 dark:border-primary-700 hover:bg-primary-100 dark:hover:bg-primary-800/50'
-            : 'border-zinc-200 dark:border-zinc-600 hover:bg-zinc-100 dark:hover:bg-zinc-700/80'} transition-all duration-200"
-          style="color: {copyFeedback
-            ? 'var(--ui-accent, #22c55e)'
-            : isUser
-              ? 'inherit'
-              : 'var(--ui-text-secondary)'};"
+          class="flex items-center gap-1 text-[10px] px-2 py-1 rounded border transition-all duration-200"
+          style="border-color: var(--ui-border); color: {copyFeedback ? 'var(--ui-accent)' : 'var(--ui-text-secondary)'}; background: transparent;"
           onclick={copyContent}
           title={copyFeedback ? "Copied!" : "Copy to clipboard"}
         >
@@ -343,14 +394,8 @@
         <!-- Pin button with pin icon -->
         <button
           type="button"
-          class="flex items-center gap-1 text-[10px] px-2 py-1 rounded border {isUser
-            ? 'border-primary-200 dark:border-primary-700 hover:bg-primary-100 dark:hover:bg-primary-800/50'
-            : 'border-zinc-200 dark:border-zinc-600 hover:bg-zinc-100 dark:hover:bg-zinc-700/80'} transition-all duration-200"
-          style="color: {pinFeedback
-            ? 'var(--ui-accent, #22c55e)'
-            : isUser
-              ? 'inherit'
-              : 'var(--ui-text-secondary)'};"
+          class="flex items-center gap-1 text-[10px] px-2 py-1 rounded border transition-all duration-200"
+          style="border-color: var(--ui-border); color: {pinFeedback ? 'var(--ui-accent)' : 'var(--ui-text-secondary)'}; background: transparent;"
           onclick={pinContent}
           title={pinFeedback ? "Pinned!" : "Pin to Workbench"}
         >
@@ -387,6 +432,87 @@
             >
           {/if}
         </button>
+        {#if canEdit && !$isStreaming}
+          <!-- Edit & resend (user, text-only) -->
+          <button
+            type="button"
+            class="flex items-center gap-1 text-[10px] px-2 py-1 rounded border transition-all duration-200"
+            style="border-color: var(--ui-border); color: var(--ui-text-secondary); background: transparent;"
+            onclick={startEdit}
+            title="Edit & resend"
+            aria-label="Edit and resend this message"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              ><path
+                d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"
+              ></path></svg
+            >
+          </button>
+        {/if}
+        {#if canRegenerate && !$isStreaming}
+          <!-- Regenerate (last assistant reply, or retry after an error on a trailing user message) -->
+          <button
+            type="button"
+            class="flex items-center gap-1 text-[10px] px-2 py-1 rounded border transition-all duration-200"
+            style="border-color: var(--ui-border); color: var(--ui-text-secondary); background: transparent;"
+            onclick={() => onRegenerate?.(message)}
+            title={isAssistant ? "Regenerate response" : "Retry — generate a response"}
+            aria-label={isAssistant ? "Regenerate response" : "Retry: generate a response"}
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              ><polyline points="23 4 23 10 17 10"></polyline><polyline
+                points="1 20 1 14 7 14"
+              ></polyline><path
+                d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"
+              ></path></svg
+            >
+            <span>{isAssistant ? "Regenerate" : "Retry"}</span>
+          </button>
+        {/if}
+        {#if onDelete && !$isStreaming}
+          <!-- Delete message -->
+          <button
+            type="button"
+            class="flex items-center gap-1 text-[10px] px-2 py-1 rounded border transition-all duration-200"
+            style="border-color: var(--ui-border); color: var(--ui-text-secondary); background: transparent;"
+            onclick={() => onDelete?.(message)}
+            title="Delete message"
+            aria-label="Delete this message"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              ><polyline points="3 6 5 6 21 6"></polyline><path
+                d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"
+              ></path></svg
+            >
+          </button>
+        {/if}
       </div>
       {#if isAssistant && (message.stats || content)}
         <div class="perf-stats-wrap mt-2 flex justify-start">
@@ -405,5 +531,12 @@
   .message-bubble-inner {
     font-size: 14px;
     line-height: 1.5;
+  }
+  .thinking-label {
+    animation: thinking-label-fade 2s ease-in-out infinite;
+  }
+  @keyframes thinking-label-fade {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 1; }
   }
 </style>

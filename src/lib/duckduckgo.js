@@ -1,5 +1,6 @@
 /**
  * Web search via local Brave Search proxy. Key from Settings or BRAVE_API_KEY.
+ * No external CORS proxies needed — uses the local /api/search backend endpoint.
  */
 
 // Fetch from backend search proxy
