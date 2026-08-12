@@ -11,6 +11,7 @@
   import AtomLogo from '$lib/components/AtomLogo.svelte';
   import { generateId, resizeImageDataUrlsForVision, shouldSkipImageResizeForVision } from '$lib/utils.js';
   import { getModelCapabilities } from '$lib/modelCapabilities.js';
+  import { maybeReadAloudAssistantReply } from '$lib/tts.js';
 
   const convId = $derived($activeConversationId);
   let chatAbortController = $state(null);
@@ -377,6 +378,8 @@
     }
 
     if (streamResult?.aborted) return;
+
+    maybeReadAloudAssistantReply(fullContent, assistantMsgId, get(effectiveModelId));
 
     const completionTokens = streamResult?.usage?.completion_tokens ?? Math.max(1, Math.ceil(fullContent.length / 4));
     const elapsedMs = streamResult?.elapsedMs ?? 0;
@@ -837,12 +840,15 @@
       <div class="ui-splash-wrap flex-1 flex flex-col items-center justify-center px-4 py-6 min-h-0">
         <div class="w-full max-w-[min(40rem,92%)] mx-auto flex flex-col items-center gap-5">
 
-          <div class="flex flex-col items-center gap-2">
-            <h1 class="ui-greeting-title text-3xl md:text-4xl font-extrabold tracking-tight text-center" style="color: var(--ui-text-primary);">ATOM <span style="color: var(--ui-accent);">Chat</span></h1>
-            <div class="ui-splash-divider w-16 mt-1"></div>
-            <p class="ui-greeting-welcome text-sm text-center font-medium" style="color: var(--ui-text-secondary);">Local AI. No cloud. No compromise.</p>
+          <div class="flex flex-col items-center gap-4">
+            <div class="atom-brand-mark" style="width: 4.25rem; height: 4.25rem;">
+              <AtomLogo size={42} />
+            </div>
+            <p class="ui-greeting-kicker">Local intelligence</p>
+            <h1 class="ui-greeting-title text-5xl md:text-6xl text-center" style="color: var(--ui-text-primary);">ATOM</h1>
+            <p class="ui-greeting-welcome text-base text-center max-w-md" style="color: var(--ui-text-secondary);">Your models. Your keys. A room that doesn’t look like every other chat app.</p>
             {#if welcomeLine}
-              <p class="ui-greeting-welcome text-sm text-center animate-fade-in" style="color: var(--ui-text-secondary); opacity: 0.7;">{welcomeLine}</p>
+              <p class="ui-greeting-welcome text-sm text-center animate-fade-in" style="color: var(--ui-accent); opacity: 0.9;">{welcomeLine}</p>
             {/if}
           </div>
           <SetupGuide />
@@ -886,7 +892,7 @@
         <MessageList onRegenerate={regenerateFromMessage} onEditResend={editAndResendMessage} onDelete={removeMessage} />
       </div>
       <div class="chat-input-dock shrink-0 px-2 py-2 sm:p-4">
-        <div class="max-w-[min(52rem,92%)] mx-auto w-full">
+        <div class="max-w-[min(44rem,92%)] mx-auto w-full">
           {#if $chatError}
             <div class="chat-error-banner mb-3 px-4 py-3 rounded-xl text-sm flex items-center justify-between gap-2" role="alert" style="background: color-mix(in srgb, var(--ui-accent-hot, #dc2626) 10%, transparent); color: var(--ui-text-primary);">
               <span>{$chatError}</span>

@@ -1,12 +1,14 @@
 <script>
   import { get } from 'svelte/store';
-  import { tick } from 'svelte';
-  import { isStreaming, voiceServerUrl, pendingDroppedFiles, insertChatPrompt, webSearchForNextMessage, webSearchInProgress, webSearchConnected, layout, braveApiKey } from '$lib/stores.js';
+  import { tick, onMount } from 'svelte';
+  import { isStreaming, voiceServerUrl, pendingDroppedFiles, insertChatPrompt, webSearchForNextMessage, webSearchInProgress, webSearchConnected, layout, braveApiKey, openMicActive, ttsReadAloudEnabled, ttsActiveMessageId, ttsPreparing, ttsError, ttsVolume, voiceRoleplaySessionActive, settingsOpen, settingsFocus, ttsEngine } from '$lib/stores.js';
   import ThinkingAtom from '$lib/components/ThinkingAtom.svelte';
   import { COCKPIT_SENDING, COCKPIT_SEARCHING, pickWitty } from '$lib/cockpitCopy.js';
   import { warmUpSearchConnection, syncBraveKeyToProxy } from '$lib/duckduckgo.js';
   import { pdfToImageDataUrls } from '$lib/pdfToImages.js';
   import { videoToFrames } from '$lib/videoToFrames.js';
+  import { isUsefulTranscript, recordUntilSilence, sleep, waitUntilReplySpoken } from '$lib/openMic.js';
+  import { isTtsBusy, stopTts, warmUpKokoroTts, unlockAudioPlayback } from '$lib/tts.js';
 
   let { onSend, onStop, onGenerateImageGrok, onGenerateImageDeepSeek, onGenerateVideoDeepSeek, imageGenerating = false, videoGenerating = false, videoGenElapsed = '', placeholder: placeholderOverride = undefined } = $props();
   const placeholderText = $derived(
@@ -23,12 +25,19 @@
   let recording = $state(false);
   let voiceProcessing = $state(false);
   let voiceError = $state(null);
+  const VOICE_OFFLINE = 'Voice server offline. Start ATOM from the desktop icon.';
   let mediaRecorder = $state(null);
   let voiceStream = $state(null); // so we can release mic immediately on stop
   let recordingChunks = $state([]);
   let recordingStartMs = $state(0);
   const MAX_RECORDING_MS = 90_000; // 90 s cap
   let recordingTimerId = $state(null);
+
+  /** Hands-free loop: listen → send → TTS → listen again. */
+  let openMic = $state(false);
+  /** @type {'idle' | 'listening' | 'transcribing' | 'waiting' | 'speaking'} */
+  let openMicPhase = $state('idle');
+  let openMicGen = 0;
 
   /** True while warming up web search connection (right after user turns on globe or when enabled via Command Palette). */
   let webSearchWarmingUp = $state(false);
@@ -48,6 +57,42 @@
 
   /** Ready to send: has text or attachments. Used for Send button "ready" state. */
   const canSend = $derived(!!(text.trim() || attachments.length));
+  const ttsSpeaking = $derived(!!$ttsActiveMessageId || $ttsPreparing);
+
+  function toggleReadAloud() {
+    if ($voiceRoleplaySessionActive) return;
+    const next = !$ttsReadAloudEnabled;
+    if (next) unlockAudioPlayback();
+    ttsReadAloudEnabled.set(next);
+    ttsError.set(null);
+    if (next && $ttsEngine === 'kokoro') warmUpKokoroTts();
+    if (!next) {
+      stopTts();
+      ttsActiveMessageId.set(null);
+    }
+  }
+
+  function onReadAloudClick(e) {
+    if (e.shiftKey) {
+      settingsFocus.set('read-aloud');
+      settingsOpen.set(true);
+      return;
+    }
+    toggleReadAloud();
+  }
+
+  let volumeOpen = $state(false);
+  let volumeWrapEl = $state(/** @type {HTMLElement | null} */ (null));
+  const volumePct = $derived(Math.round(($ttsVolume ?? 0.8) * 100));
+
+  $effect(() => {
+    if (!volumeOpen) return;
+    function onDoc(e) {
+      if (volumeWrapEl && !volumeWrapEl.contains(/** @type {Node} */ (e.target))) volumeOpen = false;
+    }
+    document.addEventListener('pointerdown', onDoc);
+    return () => document.removeEventListener('pointerdown', onDoc);
+  });
   /** Brief "sending" state for bar animation when user hits Send. */
   let sending = $state(false);
   /** Brief success feedback (checkmark) after send. */
@@ -449,12 +494,12 @@
         try {
           healthRes = await checkHealth();
         } catch (__) {
-          voiceError = `Voice server not running. Start the app with the startup script (scripts/start-atom.sh or the ATOM desktop icon) to run it automatically, or see VOICE-SETUP.md.`;
+          voiceError = VOICE_OFFLINE;
           return;
         }
       }
       if (!healthRes.ok) {
-        voiceError = `Voice server at ${url} returned ${healthRes.status}. Restart the app with the startup script or see VOICE-SETUP.md.`;
+        voiceError = `Voice server error (${healthRes.status}). Restart ATOM from the desktop icon.`;
         return;
       }
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -502,6 +547,7 @@
   }
 
   function toggleVoice() {
+    if (openMic) return;
     // Always allow clicking to stop recording (don't block on voiceProcessing)
     if (recording) {
       stopRecording();
@@ -510,6 +556,177 @@
     if (voiceProcessing) return; // still uploading/transcribing
     startVoiceInput();
   }
+
+  function voiceServerBase() {
+    const baseUrl = get(voiceServerUrl) ?? (typeof localStorage !== 'undefined' ? localStorage.getItem('voiceServerUrl') : null) ?? 'http://localhost:8765';
+    return (baseUrl || '').trim().replace(/\/$/, '');
+  }
+
+  async function ensureVoiceServer() {
+    const url = voiceServerBase();
+    if (!url) {
+      voiceError = 'Set Voice server URL in Settings (e.g. http://localhost:8765)';
+      return '';
+    }
+    async function checkHealth() {
+      const ac = new AbortController();
+      const to = setTimeout(() => ac.abort(), 3000);
+      const res = await fetch(`${url}/health`, { method: 'GET', signal: ac.signal });
+      clearTimeout(to);
+      return res;
+    }
+    let healthRes;
+    try {
+      healthRes = await checkHealth();
+    } catch (_) {
+      await sleep(2000);
+      try {
+        healthRes = await checkHealth();
+      } catch {
+        voiceError = VOICE_OFFLINE;
+        return '';
+      }
+    }
+    if (!healthRes.ok) {
+      voiceError = `Voice server error (${healthRes.status}). Restart ATOM from the desktop icon.`;
+      return '';
+    }
+    return url;
+  }
+
+  async function transcribeBlob(blob, url) {
+    const form = new FormData();
+    form.append('audio', blob, 'audio.webm');
+    const res = await fetch(`${url}/transcribe`, { method: 'POST', body: form });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(err || `Server ${res.status}`);
+    }
+    const data = await res.json();
+    return data && data.text ? String(data.text).trim() : '';
+  }
+
+  function releaseOpenMicStream() {
+    if (voiceStream) {
+      voiceStream.getTracks().forEach((t) => t.stop());
+      voiceStream = null;
+    }
+  }
+
+  async function acquireOpenMicStream() {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    voiceStream = stream;
+    return stream;
+  }
+
+  function stopOpenMic() {
+    openMicGen += 1;
+    openMic = false;
+    openMicPhase = 'idle';
+    openMicActive.set(false);
+    stopTts();
+    if (recording) stopRecording();
+    releaseOpenMicStream();
+  }
+
+  async function startOpenMic() {
+    if (openMic || recording || voiceProcessing) return;
+    voiceError = null;
+    const url = await ensureVoiceServer();
+    if (!url) return;
+    try {
+      await acquireOpenMicStream();
+    } catch (e) {
+      voiceError = e?.message || 'Microphone access denied or unavailable';
+      return;
+    }
+    const gen = ++openMicGen;
+    openMic = true;
+    openMicActive.set(true);
+    openMicPhase = 'listening';
+    unlockAudioPlayback();
+    ttsReadAloudEnabled.set(true);
+    ttsError.set(null);
+    warmUpKokoroTts();
+
+    while (openMic && gen === openMicGen) {
+      openMicPhase = 'listening';
+      if (!voiceStream) {
+        try {
+          await acquireOpenMicStream();
+        } catch (e) {
+          if (gen !== openMicGen) break;
+          voiceError = e?.message || 'Microphone access denied or unavailable';
+          break;
+        }
+      }
+      const stream = voiceStream;
+      let blob = null;
+      try {
+        blob = await recordUntilSilence(stream, { cancelled: () => gen !== openMicGen || !openMic });
+      } catch (e) {
+        if (gen !== openMicGen) break;
+        voiceError = e?.message || 'Open mic recording failed';
+        await sleep(600);
+        continue;
+      }
+      if (gen !== openMicGen || !openMic) break;
+      if (!blob || blob.size < 800) continue;
+      openMicPhase = 'transcribing';
+      voiceProcessing = true;
+      try {
+        const transcribed = await transcribeBlob(blob, url);
+        if (gen !== openMicGen || !openMic) break;
+        if (!isUsefulTranscript(transcribed)) continue;
+        text = transcribed;
+        releaseOpenMicStream();
+        openMicPhase = 'waiting';
+        await handleSubmit();
+        if (gen !== openMicGen || !openMic) break;
+        openMicPhase = 'speaking';
+        await waitUntilReplySpoken({
+          cancelled: () => gen !== openMicGen || !openMic,
+          isStreaming: () => get(isStreaming),
+          isTtsBusy,
+        });
+      } catch (e) {
+        if (gen !== openMicGen) break;
+        voiceError = e?.message || 'Voice server error. Is it running on ' + url + '?';
+        await sleep(800);
+      } finally {
+        voiceProcessing = false;
+      }
+    }
+
+    if (gen === openMicGen) {
+      openMic = false;
+      openMicPhase = 'idle';
+      openMicActive.set(false);
+      releaseOpenMicStream();
+    }
+  }
+
+  function toggleOpenMic() {
+    if (openMic) {
+      stopOpenMic();
+      return;
+    }
+    if (recording) stopRecording();
+    startOpenMic();
+  }
+
+  onMount(() => {
+    return () => {
+      openMicGen += 1;
+      openMic = false;
+      openMicActive.set(false);
+      stopTts();
+      if (voiceStream) {
+        voiceStream.getTracks().forEach((t) => t.stop());
+        voiceStream = null;
+      }
+    };
+  });
 </script>
 
 <div
@@ -631,27 +848,140 @@
       {/if}
     </div>
   {/if}
+  <div class="composer-tools" role="toolbar" aria-label="Talk, dictate, speak, and web">
   <button
     type="button"
-    class="mic-button"
-    title={recording ? 'Stop recording (click again)' : 'Voice input – start Python server first'}
-    disabled={$isStreaming || (voiceProcessing && !recording)}
-    onclick={toggleVoice}
-    aria-label={recording ? 'Stop recording' : 'Start voice input'}
+    class="tool-btn"
+    class:tool-btn-on={openMic}
+    title={openMic ? 'Live talk on — click to hang up' : 'Live talk — hands-free: you speak, it answers out loud, then it listens again'}
+    disabled={!openMic && ($isStreaming || (voiceProcessing && !recording))}
+    onclick={toggleOpenMic}
+    aria-label={openMic ? 'Stop live talk' : 'Start live talk'}
+    aria-pressed={openMic}
   >
-    {#if voiceProcessing && !recording}
-      <span class="mic-spinner" aria-hidden="true">⟳</span>
-    {:else if recording}
-      <span class="mic-dot" aria-hidden="true"></span>
-    {:else}
-      <span class="mic-icon" aria-hidden="true">🎤</span>
-    {/if}
+    <span class="tool-icon-wrap">
+      {#if openMic && openMicPhase === 'transcribing'}
+        <span class="mic-spinner" aria-hidden="true">⟳</span>
+      {:else}
+        <svg class="tool-glyph" class:tool-glyph-live={openMic} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4 15v-1a8 8 0 0 1 16 0v1" />
+          <rect x="2.5" y="13" width="4.5" height="7" rx="1.6" />
+          <rect x="17" y="13" width="4.5" height="7" rx="1.6" />
+        </svg>
+      {/if}
+      {#if openMic}<span class="tool-pip tool-pip-live" aria-hidden="true"></span>{/if}
+    </span>
+    <span class="tool-label">{openMic ? 'Live' : 'Talk'}</span>
   </button>
   <button
     type="button"
-    class="web-search-button"
-    class:active={$webSearchForNextMessage}
-    title={webSearchWarmingUp ? 'Connecting…' : $webSearchForNextMessage ? ($webSearchConnected ? 'Web search on – connected (click to turn off)' : 'Web search on – not connected yet (click globe again to retry)') : 'Search the web for next message'}
+    class="tool-btn"
+    class:tool-btn-rec={recording}
+    title={recording ? 'Dictating — click to stop' : 'Dictate — click, talk, click again. Then send.'}
+    disabled={openMic || $isStreaming || (voiceProcessing && !recording)}
+    onclick={toggleVoice}
+    aria-label={recording ? 'Stop dictation' : 'Start dictation'}
+    aria-pressed={recording}
+  >
+    <span class="tool-icon-wrap">
+      {#if voiceProcessing && !recording}
+        <span class="mic-spinner" aria-hidden="true">⟳</span>
+      {:else}
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="9" y="2.5" width="6" height="11" rx="3" />
+          <path d="M6 11a6 6 0 0 0 12 0" />
+          <line x1="12" y1="17" x2="12" y2="20.5" />
+          <line x1="8" y1="20.5" x2="16" y2="20.5" />
+        </svg>
+      {/if}
+      {#if recording}<span class="tool-pip tool-pip-rec" aria-hidden="true"></span>{/if}
+    </span>
+    <span class="tool-label">{recording ? 'Rec' : 'Dictate'}</span>
+  </button>
+  <button
+    type="button"
+    class="tool-btn"
+    class:tool-btn-on={$ttsReadAloudEnabled}
+    class:tool-btn-busy={ttsSpeaking}
+    title={$voiceRoleplaySessionActive
+      ? 'Speak is paused while Eve is active'
+      : $ttsReadAloudEnabled
+        ? (ttsSpeaking ? 'Speaking the reply… click to mute' : 'Speak on — replies are read aloud (click to mute, Shift+click for voice settings)')
+        : 'Speak off — click to read replies aloud (Shift+click for voice settings)'}
+    disabled={$voiceRoleplaySessionActive}
+    onclick={onReadAloudClick}
+    aria-label={$ttsReadAloudEnabled ? 'Speak on' : 'Speak off'}
+    aria-pressed={$ttsReadAloudEnabled}
+  >
+    <span class="tool-icon-wrap">
+      <svg class:tool-glyph-speak={ttsSpeaking} width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+        {#if $ttsReadAloudEnabled}
+          <path class="speak-wave speak-wave-1" d="M15.5 8.5a5 5 0 0 1 0 7"></path>
+          <path class="speak-wave speak-wave-2" d="M18.7 5.8a9 9 0 0 1 0 12.4"></path>
+        {:else}
+          <line x1="16" y1="9" x2="22" y2="15"></line>
+          <line x1="22" y1="9" x2="16" y2="15"></line>
+        {/if}
+      </svg>
+      {#if $ttsReadAloudEnabled}<span class="tool-pip" class:tool-pip-busy={ttsSpeaking} aria-hidden="true"></span>{/if}
+    </span>
+    <span class="tool-label">Speak</span>
+  </button>
+  <div class="volume-wrap" bind:this={volumeWrapEl}>
+    <button
+      type="button"
+      class="tool-btn"
+      class:tool-btn-on={volumeOpen}
+      title="ATOM volume — only this app, not system volume"
+      onclick={() => (volumeOpen = !volumeOpen)}
+      aria-label={`ATOM volume ${volumePct} percent`}
+      aria-expanded={volumeOpen}
+    >
+      <span class="tool-icon-wrap">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+          {#if volumePct === 0}
+            <line x1="16" y1="9" x2="22" y2="15"></line>
+            <line x1="22" y1="9" x2="16" y2="15"></line>
+          {:else if volumePct < 50}
+            <path d="M15.5 9.5a3.5 3.5 0 0 1 0 5"></path>
+          {:else}
+            <path d="M15.5 8.5a5 5 0 0 1 0 7"></path>
+            <path d="M18.7 5.8a9 9 0 0 1 0 12.4"></path>
+          {/if}
+        </svg>
+      </span>
+      <span class="tool-label">{volumePct}%</span>
+    </button>
+    {#if volumeOpen}
+      <div class="volume-popover" role="dialog" aria-label="ATOM volume">
+        <p class="volume-popover-title">ATOM volume</p>
+        <div class="volume-popover-row">
+          <input
+            id="atom-chat-volume"
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            bind:value={$ttsVolume}
+            class="volume-slider"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={volumePct}
+            aria-label="ATOM playback volume"
+          />
+          <span class="volume-popover-pct">{volumePct}%</span>
+        </div>
+        <p class="volume-popover-hint">Only ATOM. Does not change system volume.</p>
+      </div>
+    {/if}
+  </div>
+  <button
+    type="button"
+    class="tool-btn"
+    class:tool-btn-on={$webSearchForNextMessage}
+    title={webSearchWarmingUp ? 'Connecting to the web…' : $webSearchForNextMessage ? ($webSearchConnected ? 'Web on — this message can use the internet (click to turn off)' : 'Web on — not connected yet (click again to retry)') : 'Web off — click to let the next message use the internet (works with local models)'}
     disabled={$isStreaming}
     onclick={() => {
       const on = $webSearchForNextMessage;
@@ -669,24 +999,24 @@
       webSearchForNextMessage.set(true);
       runWarmUp();
     }}
-    aria-label={webSearchWarmingUp ? 'Connecting' : $webSearchForNextMessage ? 'Web search on' : 'Search web for next message'}
+    aria-label={webSearchWarmingUp ? 'Connecting to the web' : $webSearchForNextMessage ? 'Web search on' : 'Web search off'}
     aria-pressed={$webSearchForNextMessage}
     aria-busy={webSearchWarmingUp}
   >
-    <span
-      class="web-search-icon"
-      class:web-search-icon-spin={webSearchWarmingUp}
-      aria-hidden="true"
-      title="Internet"
-    >🌐</span>
-    {#if $webSearchForNextMessage}
-      {#if $webSearchConnected}
-        <span class="web-search-dot web-search-dot-green" aria-hidden="true" title="Connected"></span>
-      {:else}
-        <span class="web-search-dot web-search-dot-red" class:web-search-dot-pulse={webSearchWarmingUp} aria-hidden="true" title="Not connected"></span>
+    <span class="tool-icon-wrap">
+      <svg class:web-search-icon-spin={webSearchWarmingUp} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="9" />
+        <path d="M3 12h18" />
+        <path d="M12 3a14 14 0 0 1 0 18" />
+        <path d="M12 3a14 14 0 0 0 0 18" />
+      </svg>
+      {#if $webSearchForNextMessage}
+        <span class="tool-pip" class:tool-pip-live={$webSearchConnected} class:tool-pip-rec={!$webSearchConnected} class:tool-pip-busy={webSearchWarmingUp} aria-hidden="true"></span>
       {/if}
-    {/if}
+    </span>
+    <span class="tool-label">Web</span>
   </button>
+  </div>
   {#if $isStreaming && onStop}
     <button type="button" class="send-button" style="background: var(--ui-accent-hot, #dc2626);" onclick={() => onStop()} title="Stop">Stop</button>
   {:else}
@@ -710,14 +1040,36 @@
     </button>
   {/if}
   </div>
-  {#if recording}
+  {#if openMic}
     <span class="voice-recording-hint" aria-live="polite">
       <span class="recording-dot" aria-hidden="true"></span>
-      Recording – click mic to stop
+      {#if openMicPhase === 'listening'}
+        Live talk — listening… speak, then pause
+      {:else if openMicPhase === 'transcribing'}
+        Live talk — transcribing…
+      {:else if openMicPhase === 'waiting'}
+        Live talk — mic off, waiting for reply…
+      {:else}
+        Live talk — mic off, speaking reply…
+      {/if}
+    </span>
+  {:else if recording}
+    <span class="voice-recording-hint" aria-live="polite">
+      <span class="recording-dot" aria-hidden="true"></span>
+      Dictating — click Dictate to stop
     </span>
   {/if}
   {#if voiceError}
-    <p class="voice-error" role="alert">{voiceError}</p>
+    <div class="voice-error" role="alert">
+      <span>{voiceError}</span>
+      <button type="button" class="voice-error-dismiss" onclick={() => (voiceError = null)} aria-label="Dismiss">×</button>
+    </div>
+  {/if}
+  {#if $ttsError}
+    <div class="voice-error" role="alert">
+      <span>{$ttsError}</span>
+      <button type="button" class="voice-error-dismiss" onclick={() => ttsError.set(null)} aria-label="Dismiss">×</button>
+    </div>
   {/if}
   {#if attachError}
     <p class="attach-error" role="alert">{attachError}</p>
@@ -754,7 +1106,7 @@
     flex-direction: row;
     align-items: center;
     gap: 4px;
-    min-height: 44px;
+    min-height: 52px;
     border-radius: 12px;
     background: var(--ui-input-bg, #fff);
     border: 1px solid color-mix(in srgb, var(--ui-border, #e5e7eb) 50%, transparent);
@@ -835,6 +1187,152 @@
     border-radius: 6px;
     color: var(--ui-text-secondary, #6b7280);
   }
+  .chat-input-bar .composer-tools {
+    display: flex;
+    align-items: stretch;
+    flex-shrink: 0;
+    gap: 0;
+    padding: 0 2px;
+  }
+  .chat-input-bar .tool-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    width: 46px;
+    min-width: 46px;
+    height: auto;
+    min-height: 48px;
+    padding: 4px 2px 3px;
+    border: none;
+    background: transparent;
+    border-radius: 8px;
+    color: var(--ui-text-secondary, #6b7280);
+    cursor: pointer;
+  }
+  .chat-input-bar .tool-btn:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--ui-accent) 10%, transparent);
+    color: var(--ui-accent);
+  }
+  .chat-input-bar .tool-btn.tool-btn-on {
+    background: color-mix(in srgb, var(--ui-accent) 12%, transparent);
+    color: var(--ui-accent);
+  }
+  .chat-input-bar .tool-btn.tool-btn-rec {
+    color: var(--ui-accent-hot, #dc2626);
+    background: color-mix(in srgb, var(--ui-accent-hot, #dc2626) 12%, transparent);
+  }
+  .chat-input-bar .tool-btn:active:not(:disabled) {
+    transform: scale(0.94);
+    transition: transform 0.1s ease;
+  }
+  .chat-input-bar .tool-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .tool-icon-wrap {
+    position: relative;
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .tool-label {
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    line-height: 1;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .tool-pip {
+    position: absolute;
+    top: -2px;
+    right: -3px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--ui-accent);
+    box-shadow: 0 0 0 1.5px var(--ui-input-bg, #fff);
+    pointer-events: none;
+  }
+  .tool-pip-live {
+    background: #22c55e;
+  }
+  .tool-pip-rec {
+    background: var(--ui-accent-hot, #dc2626);
+    animation: pulse 1s ease-in-out infinite;
+  }
+  .tool-pip-busy {
+    animation: pulse 0.8s ease-in-out infinite;
+  }
+  .volume-wrap {
+    position: relative;
+    display: flex;
+    align-items: stretch;
+  }
+  .volume-popover {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 8px);
+    z-index: 20;
+    width: 220px;
+    padding: 10px 12px 8px;
+    border-radius: 10px;
+    border: 1px solid var(--ui-border);
+    background: var(--ui-bg-main);
+    box-shadow: 0 8px 24px color-mix(in srgb, #000 18%, transparent);
+  }
+  .volume-popover-title {
+    margin: 0 0 6px;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--ui-text-primary);
+  }
+  .volume-popover-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .volume-slider {
+    flex: 1;
+    min-width: 0;
+    height: 6px;
+    accent-color: var(--ui-accent);
+  }
+  .volume-popover-pct {
+    flex-shrink: 0;
+    width: 2.4em;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    font-weight: 650;
+    color: var(--ui-text-primary);
+    text-align: right;
+  }
+  .volume-popover-hint {
+    margin: 6px 0 0;
+    font-size: 10px;
+    line-height: 1.3;
+    color: var(--ui-text-secondary);
+  }
+  .tool-glyph-live {
+    animation: open-mic-pulse 1.4s ease-in-out infinite;
+  }
+  .tool-glyph-speak .speak-wave {
+    transform-origin: 12px 12px;
+  }
+  .tool-glyph-speak .speak-wave-1 {
+    animation: speak-wave 1.1s ease-in-out infinite;
+  }
+  .tool-glyph-speak .speak-wave-2 {
+    animation: speak-wave 1.1s ease-in-out infinite 0.15s;
+  }
+  @keyframes speak-wave {
+    0%, 100% { opacity: 0.35; }
+    50% { opacity: 1; }
+  }
   .chat-input-bar .mic-button:hover:not(:disabled),
   .chat-input-bar .web-search-button:hover:not(:disabled) {
     background: color-mix(in srgb, var(--ui-accent) 10%, transparent);
@@ -842,6 +1340,11 @@
   }
   .chat-input-bar .web-search-button.active {
     background: color-mix(in srgb, var(--ui-accent) 12%, transparent);
+    color: var(--ui-accent);
+  }
+  .chat-input-bar .mic-button.open-mic-on,
+  .chat-input-bar .mic-button.tts-on {
+    background: color-mix(in srgb, var(--ui-accent) 18%, transparent);
     color: var(--ui-accent);
   }
   .chat-input-bar .mic-button:active:not(:disabled),
@@ -1080,9 +1583,21 @@
     background: color-mix(in srgb, var(--ui-accent, #3b82f6) 14%, var(--ui-input-bg, #fff));
     color: var(--ui-accent, #3b82f6);
   }
-  .mic-button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
+  .mic-button.open-mic-on,
+  .mic-button.tts-on {
+    background: color-mix(in srgb, var(--ui-accent) 22%, var(--ui-input-bg, #fff));
+    color: var(--ui-accent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent) 35%, transparent);
+  }
+  .open-mic-glyph {
+    display: block;
+  }
+  .mic-button.open-mic-on .open-mic-glyph {
+    animation: open-mic-pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes open-mic-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.7; transform: scale(1.08); }
   }
   .mic-dot {
     width: 12px;
@@ -1132,10 +1647,32 @@
     left: 16px;
     right: 80px;
     margin: 0 0 4px 0;
-    padding: 8px 12px;
+    padding: 6px 8px 6px 12px;
     font-size: 12px;
+    line-height: 1.3;
     border-radius: 8px;
     background: color-mix(in srgb, var(--ui-accent-hot, #dc2626) 12%, var(--ui-bg-main));
+    color: var(--ui-text-primary);
+  }
+  .voice-error {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .voice-error-dismiss {
+    flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--ui-text-secondary);
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .voice-error-dismiss:hover {
     color: var(--ui-text-primary);
   }
   .hidden-file-input {

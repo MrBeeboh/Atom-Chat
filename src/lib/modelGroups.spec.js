@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { groupModelsForSelector } from './modelGroups.js';
+import { groupModelsForSelector, bucketForModelId } from './modelGroups.js';
 
 describe('groupModelsForSelector', () => {
   it('orders This device, LM Studio disk, then cloud', () => {
@@ -16,5 +16,10 @@ describe('groupModelsForSelector', () => {
   it('puts non-lmstudio absolute gguf in Local disk', () => {
     const g = groupModelsForSelector([{ id: '/opt/models/z.gguf' }]);
     expect(g.some((x) => x.bucket === 'disk:other')).toBe(true);
+  });
+
+  it('buckets grok and deepseek separately', () => {
+    expect(bucketForModelId('grok:grok-4.6')).toBe('cloud:grok');
+    expect(bucketForModelId('deepseek:deepseek-v4-flash')).toBe('cloud:deepseek');
   });
 });

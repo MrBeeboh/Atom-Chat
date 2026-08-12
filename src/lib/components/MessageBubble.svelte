@@ -142,13 +142,13 @@
 </script>
 
 <div
-  class="flex {isUser ? 'justify-end' : 'justify-start'} w-full max-w-[56rem]"
+  class="flex {isUser ? 'justify-end' : 'justify-start'} w-full max-w-[44rem]"
   in:fly={{ y: 20, duration: 380, easing: quintOut }}
 >
   <div
-    class="message-bubble-inner group rounded-[10px] px-3 py-2 shadow-sm relative overflow-hidden
-      {isUser ? 'ui-user-bubble max-w-[85%]' : 'w-full'}"
-    style={isUser ? '' : 'background-color: var(--ui-bg-sidebar); color: var(--ui-text-primary); border: 1px solid var(--ui-border);'}
+    class="message-bubble-inner group relative overflow-hidden
+      {isUser ? 'ui-user-bubble max-w-[85%] rounded-[10px] px-3 py-2' : 'atom-assistant w-full px-3 py-1'}"
+    style={isUser ? '' : 'color: var(--ui-text-primary);'}
   >
     <!-- No background div here; handled by CSS below -->
 
@@ -223,11 +223,11 @@
       {#if modelLabel}
         <div
           class="flex items-center gap-1.5 mb-2 pb-2"
-          style="border-bottom: 1px solid var(--ui-border);"
+          style="border-bottom: 1px solid color-mix(in srgb, var(--ui-border) 70%, transparent);"
         >
           <span
-            class="text-[10px] font-semibold tracking-wide truncate"
-            style="color: var(--ui-accent); opacity: 0.85;"
+            class="text-[10px] font-semibold uppercase tracking-[0.14em] truncate"
+            style="color: var(--ui-accent); opacity: 0.9;"
             title={message.modelId}>{modelLabel}</span
           >
         </div>

@@ -118,7 +118,7 @@ export const cockpitIntelOpen = writable(false);
 export const pinnedContent = writable(null);
 
 
-/** Color scheme: studio | sage | clay | fern (see themeOptions.js) */
+/** Color scheme: studio (Orbit) | sage (Paper) | clay (Ember) | fern (Ion) */
 const VALID_UI_THEMES = ['sage', 'clay', 'fern', 'studio'];
 function getInitialUiTheme() {
   if (typeof localStorage === 'undefined') return 'studio';
@@ -164,6 +164,14 @@ const getStoredUnloadHelperUrl = () => (typeof localStorage !== 'undefined' ? lo
 export const lmStudioUnloadHelperUrl = writable(getStoredUnloadHelperUrl());
 if (typeof localStorage !== 'undefined') {
   lmStudioUnloadHelperUrl.subscribe((v) => localStorage.setItem('lmStudioUnloadHelperUrl', v ?? ''));
+}
+
+/** Extra folders to scan for .gguf files (one path per line). */
+const getStoredLocalModelDirs = () =>
+  typeof localStorage !== 'undefined' ? localStorage.getItem('localModelDirs') || '' : '';
+export const localModelDirs = writable(getStoredLocalModelDirs());
+if (typeof localStorage !== 'undefined') {
+  localModelDirs.subscribe((v) => localStorage.setItem('localModelDirs', v ?? ''));
 }
 
 /** DeepSeek API key (optional). When set, DeepSeek models appear in the model list and can be used for chat. Stored trimmed to avoid copy-paste spaces. */
@@ -230,6 +238,89 @@ export const cloudApisAvailable = derived(
 
 /** Focus a Settings section when opened: 'connection' | 'api-keys'. Cleared after open. */
 export const settingsFocus = writable(null);
+
+/** True while xAI Eve voice roleplay session is active — read-aloud stays disabled. */
+export const voiceRoleplaySessionActive = writable(false);
+
+/** Hands-free open-mic loop is running (listen → send → TTS → listen). */
+export const openMicActive = writable(false);
+
+/** Message id currently being read aloud by TTS, or null. */
+export const ttsActiveMessageId = writable(/** @type {string | null} */ (null));
+
+/** User toggled read-aloud on in the chat bar speaker icon. Persisted. */
+export const ttsReadAloudEnabled = writable(
+  typeof localStorage !== 'undefined' && localStorage.getItem('ttsReadAloudEnabled') === '1'
+);
+if (typeof localStorage !== 'undefined') {
+  ttsReadAloudEnabled.subscribe((v) => {
+    localStorage.setItem('ttsReadAloudEnabled', v ? '1' : '0');
+  });
+}
+
+/** `kokoro` = DeepInfra Kokoro-82M (natural). `browser` = OS speechSynthesis (robotic fallback). */
+const loadTtsEngine = () => {
+  if (typeof localStorage === 'undefined') return 'kokoro';
+  const v = (localStorage.getItem('ttsEngine') ?? '').trim();
+  return v === 'browser' || v === 'kokoro' ? v : 'kokoro';
+};
+export const ttsEngine = writable(loadTtsEngine());
+if (typeof localStorage !== 'undefined') {
+  ttsEngine.subscribe((v) => localStorage.setItem('ttsEngine', v === 'browser' ? 'browser' : 'kokoro'));
+}
+
+/** True while waiting for Kokoro to synthesize (before audio plays). */
+export const ttsPreparing = writable(false);
+
+/** Last read-aloud failure, shown in the chat bar. */
+export const ttsError = writable(/** @type {string | null} */ (null));
+
+/** Browser speechSynthesis voice URI (browser engine only). */
+const loadVoiceUri = () => {
+  if (typeof localStorage === 'undefined') return '';
+  return (localStorage.getItem('ttsVoiceUri') ?? '').trim();
+};
+export const ttsVoiceUri = writable(loadVoiceUri());
+if (typeof localStorage !== 'undefined') {
+  ttsVoiceUri.subscribe((v) => localStorage.setItem('ttsVoiceUri', typeof v === 'string' ? v.trim() : ''));
+}
+
+/** Kokoro preset voice id (kokoro engine). */
+const loadKokoroVoice = () => {
+  if (typeof localStorage === 'undefined') return 'af_bella';
+  return (localStorage.getItem('ttsKokoroVoice') ?? 'af_bella').trim() || 'af_bella';
+};
+export const ttsKokoroVoice = writable(loadKokoroVoice());
+if (typeof localStorage !== 'undefined') {
+  ttsKokoroVoice.subscribe((v) => localStorage.setItem('ttsKokoroVoice', typeof v === 'string' ? v.trim() || 'af_bella' : 'af_bella'));
+}
+
+const _initialTtsRate = (() => {
+  if (typeof localStorage === 'undefined') return 1;
+  const n = Number(localStorage.getItem('ttsRate'));
+  return Number.isFinite(n) ? n : 1;
+})();
+export const ttsRate = writable(_initialTtsRate);
+if (typeof localStorage !== 'undefined') {
+  ttsRate.subscribe((v) => {
+    const n = Number(v);
+    localStorage.setItem('ttsRate', String(Number.isFinite(n) ? n : 1));
+  });
+}
+
+/** ATOM-only playback volume (TTS + Eve). Does not change system/master volume. 0–1. */
+const _initialTtsVolume = (() => {
+  if (typeof localStorage === 'undefined') return 0.8;
+  const n = Number(localStorage.getItem('ttsVolume'));
+  return Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 0.8;
+})();
+export const ttsVolume = writable(_initialTtsVolume);
+if (typeof localStorage !== 'undefined') {
+  ttsVolume.subscribe((v) => {
+    const n = Number(v);
+    localStorage.setItem('ttsVolume', String(Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 0.8));
+  });
+}
 
 /** Layout: cockpit | arena only (restore point). Old layouts migrate to cockpit. */
 const OLD_TO_NEW_LAYOUT = {

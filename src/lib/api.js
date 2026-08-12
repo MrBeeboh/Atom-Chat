@@ -9,6 +9,15 @@
  * Base URL: localStorage lmStudioBaseUrl or dev proxy /api/llama or http://localhost:8080.
  */
 
+import {
+  CLOUD_PROVIDERS,
+  fetchCloudModels,
+  getModelTypeTag,
+  invalidateCloudModelCache,
+} from '$lib/cloudCatalog.js';
+
+export { CLOUD_PROVIDERS, getModelTypeTag, invalidateCloudModelCache };
+
 // Default backend changed to llama.cpp (llama-server) on port 8080.
 // LM Studio still works if you change the URL in Settings → Connection.
 const DEFAULT_BASE = typeof import.meta !== 'undefined' && import.meta.env?.DEV ? '/api/llama' : 'http://localhost:8080';
@@ -195,100 +204,6 @@ export async function checkLmStudioConnection() {
   }
 }
 
-/**
- * Cloud API providers (OpenAI-compatible). When API key is set in localStorage, their models are included in getModels().
- * Model id format: "provider:modelId" so we know which base URL and auth to use.
- */
-const CLOUD_PROVIDERS = {
-  deepseek: {
-    name: 'DeepSeek',
-    baseUrl: 'https://api.deepseek.com',
-    /** No /v1 in base; we append /v1/chat/completions */
-    models: ['deepseek-chat', 'deepseek-reasoner'],
-    getKey: () => localStorageOrVite('deepSeekApiKey', 'VITE_DEEPSEEK_API_KEY'),
-  },
-  grok: {
-    name: 'Grok',
-    baseUrl: 'https://api.x.ai/v1',
-    /** xAI base already has /v1; chat path is /chat/completions */
-    models: ['grok-3-mini', 'grok-3', 'grok-4', 'grok-4-1-fast-reasoning', 'grok-4-1-fast-non-reasoning', 'grok-4-fast-reasoning', 'grok-4-latest', 'grok-4.3'],
-    getKey: () => localStorageOrVite('grokApiKey', 'VITE_GROK_API_KEY'),
-  },
-  cerebras: {
-    name: 'Cerebras',
-    baseUrl: 'https://api.cerebras.ai/v1',
-    /** base already has /v1; chat path is /chat/completions */
-    models: ['llama3.1-8b', 'llama3.1-70b', 'llama-3.3-70b', 'llama-4-scout-17b-16e-instruct', 'qwen-3-32b', 'deepseek-r1-distill-llama-70b'],
-    getKey: () => localStorageOrVite('cerebrasApiKey', 'VITE_CEREBRAS_API_KEY'),
-  },
-  deepinfra: {
-    name: 'DeepInfra',
-    baseUrl: 'https://api.deepinfra.com/v1/openai',
-    /** /v1/openai is NOT /v1, so URL construction uses custom path */
-    models: [
-      'meta-llama/Llama-3.3-70B-Instruct',
-      'meta-llama/Llama-3.1-8B-Instruct',
-      'meta-llama/Llama-3.1-405B-Instruct-Turbo',
-      'mistralai/Mistral-Small-3.1-24B-Instruct-2503',
-      'Qwen/Qwen3-235B-A22B',
-      'Qwen/Qwen2.5-72B-Instruct',
-      'Qwen/Qwen2.5-32B-Instruct',
-      'Qwen/Qwen2.5-14B-Instruct',
-      'Qwen/Qwen2.5-7B-Instruct',
-      'nvidia/Llama-3.3-Nemotron-Super-49B-v1',
-      'microsoft/Phi-4-multimodal-instruct',
-      'deepseek-ai/DeepSeek-R1',
-      'deepseek-ai/DeepSeek-V3-0324',
-      'google/gemma-2-27b-it',
-      'google/gemma-2-9b-it',
-    ],
-    getKey: () => localStorageOrVite('deepinfraApiKey', 'VITE_DEEPINFRA_API_KEY'),
-  },
-};
-
-/** Short descriptive tag for cloud models (shown next to name in selector). */
-const MODEL_TYPE_TAGS = {
-  'grok-3-mini': 'Mini Chat',
-  'grok-3': 'General Chat',
-  'grok-4': 'Reasoning',
-  'grok-4-1-fast-reasoning': 'Fast Reasoning',
-  'grok-4-1-fast-non-reasoning': 'Fast Chat',
-  'grok-4-fast-reasoning': 'Fast Reasoning',
-  'grok-4-latest': 'Reasoning (Latest)',
-  'grok-4.3': 'Reasoning',
-  'deepseek-chat': 'Chat',
-  'deepseek-reasoner': 'Reasoning',
-  'llama3.1-8b': 'Fast Chat',
-  'llama3.1-70b': 'Chat',
-  'llama-3.3-70b': 'Chat',
-  'llama-4-scout-17b-16e-instruct': 'Scout',
-  'qwen-3-32b': 'Chat',
-  'deepseek-r1-distill-llama-70b': 'Reasoning',
-  'meta-llama/Llama-3.3-70B-Instruct': 'Chat',
-  'meta-llama/Llama-3.1-8B-Instruct': 'Fast Chat',
-  'meta-llama/Llama-3.1-405B-Instruct-Turbo': 'Chat',
-  'mistralai/Mistral-Small-3.1-24B-Instruct-2503': 'Chat',
-  'Qwen/Qwen3-235B-A22B': 'Chat',
-  'Qwen/Qwen2.5-72B-Instruct': 'Chat',
-  'Qwen/Qwen2.5-32B-Instruct': 'Chat',
-  'Qwen/Qwen2.5-14B-Instruct': 'Chat',
-  'Qwen/Qwen2.5-7B-Instruct': 'Fast Chat',
-  'nvidia/Llama-3.3-Nemotron-Super-49B-v1': 'Chat',
-  'microsoft/Phi-4-multimodal-instruct': 'Multimodal',
-  'deepseek-ai/DeepSeek-R1': 'Reasoning',
-  'deepseek-ai/DeepSeek-V3-0324': 'Chat',
-  'google/gemma-2-27b-it': 'Chat',
-  'google/gemma-2-9b-it': 'Fast Chat',
-};
-
-/** Get short model type tag (e.g. "Reasoning", "Fast Chat"). Returns null if no tag. */
-export function getModelTypeTag(id) {
-  if (!id || typeof id !== 'string') return null;
-  const colon = id.indexOf(':');
-  const modelPart = colon === -1 ? id : id.slice(colon + 1);
-  return MODEL_TYPE_TAGS[modelPart] ?? null;
-}
-
 /** Human-readable label for the model dropdown. "deepseek:deepseek-chat" → "DeepSeek: deepseek-chat". */
 export function modelDisplayName(id) {
   if (!id || typeof id !== 'string') return id;
@@ -377,38 +292,62 @@ function localModelIdForOpenAIRequest(id) {
 }
 
 /**
- * Merge server model list with dev disk scan: server order first; skip disk rows whose basename
- * duplicates a server id.
+ * Merge server model list with disk scan: server order first.
+ * Disk rows whose basename already appears on the server are skipped.
+ * Two disk copies with the same filename in different folders both stay visible.
  * @param {{ id: string }[]} fromServer
  * @param {{ id: string }[]} fromDisk
  */
-function mergeServerAndDiskModels(fromServer, fromDisk) {
+export function mergeServerAndDiskModels(fromServer, fromDisk) {
   const seenFull = new Set();
-  const seenBase = new Set();
+  const serverBases = new Set();
   const out = [];
-  for (const list of [fromServer, fromDisk]) {
-    for (const m of list) {
-      const id = typeof m?.id === 'string' ? m.id.trim() : '';
-      if (!id) continue;
-      const fullKey = id.toLowerCase();
-      const baseKey = ggufBasenameLower(id);
-      if (seenFull.has(fullKey)) continue;
-      if (seenBase.has(baseKey) && baseKey.endsWith('.gguf')) continue;
-      seenFull.add(fullKey);
-      if (baseKey) seenBase.add(baseKey);
-      out.push({ id });
-    }
+  for (const m of fromServer || []) {
+    const id = typeof m?.id === 'string' ? m.id.trim() : '';
+    if (!id) continue;
+    const fullKey = id.toLowerCase();
+    if (seenFull.has(fullKey)) continue;
+    seenFull.add(fullKey);
+    const baseKey = ggufBasenameLower(id);
+    if (baseKey.endsWith('.gguf')) serverBases.add(baseKey);
+    out.push({ id });
+  }
+  for (const m of fromDisk || []) {
+    const id = typeof m?.id === 'string' ? m.id.trim() : '';
+    if (!id) continue;
+    const fullKey = id.toLowerCase();
+    if (seenFull.has(fullKey)) continue;
+    const baseKey = ggufBasenameLower(id);
+    if (baseKey.endsWith('.gguf') && serverBases.has(baseKey)) continue;
+    seenFull.add(fullKey);
+    out.push({ id });
   }
   return out;
 }
 
-/** Dev-only: list .gguf paths from ~/.lmstudio/models and ~/models (Vite middleware). */
+function extraLocalModelDirsFromStorage() {
+  if (typeof localStorage === 'undefined') return [];
+  try {
+    const raw = (localStorage.getItem('localModelDirs') ?? '').trim();
+    if (!raw) return [];
+    return raw
+      .split(/[\n,]/)
+      .map((s) => s.trim())
+      .filter((s) => s.startsWith('/') || /^[A-Za-z]:[\\/]/.test(s));
+  } catch {
+    return [];
+  }
+}
+
+/** Dev: list .gguf paths from LM Studio, ~/models, llama.cpp cache, Downloads, and extra folders. */
 async function fetchDiskModelInventory() {
   if (!import.meta.env.DEV) return [];
+  const extra = extraLocalModelDirsFromStorage();
+  const q = extra.length ? `?extra=${encodeURIComponent(extra.join('\n'))}` : '';
   const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 5000);
+  const t = setTimeout(() => ctrl.abort(), 8000);
   try {
-    const res = await fetch('/api/atom-local-disk-models', { signal: ctrl.signal });
+    const res = await fetch(`/api/atom-local-disk-models${q}`, { signal: ctrl.signal });
     if (!res.ok) return [];
     const data = await res.json();
     const raw = data.models ?? data;
@@ -522,15 +461,12 @@ function parseChatApiError(status, bodyText, modelId) {
 }
 
 /** Return cloud provider models when API key is set. Ids are "provider:modelId". */
-function getCloudModels() {
-  const out = [];
-  for (const [providerId, p] of Object.entries(CLOUD_PROVIDERS)) {
-    if (!p.getKey()?.trim()) continue;
-    for (const modelId of p.models) {
-      out.push({ id: `${providerId}:${modelId}` });
-    }
+async function getCloudModels() {
+  try {
+    return await fetchCloudModels();
+  } catch {
+    return [];
   }
-  return out;
 }
 
 /** Timeout for LM Studio model list fetch so we don't hang when server is down; then cloud-only list can still load. */
@@ -658,18 +594,15 @@ async function resolveEffectiveLocalChatModelId(modelId) {
 }
 
 /**
- * Fetch list of models: LM Studio (local) + DeepSeek and Grok when API keys are set.
- * If LM Studio is unreachable, returns only cloud models so you can still use DeepSeek/Grok.
+ * Fetch list of models: local inference server + disk GGUFs + live cloud catalogs.
+ * If the local server is unreachable, still returns cloud models when API keys are set.
  * @returns {Promise<{ id: string }[]>}
  */
 export async function getModels() {
-  let local = [];
-  try {
-    local = await getLocalModels();
-  } catch (_) {
-    // LM Studio unreachable; still return cloud models if configured
-  }
-  const cloud = getCloudModels();
+  const [local, cloud] = await Promise.all([
+    getLocalModels().catch(() => []),
+    getCloudModels(),
+  ]);
   return [...local, ...cloud];
 }
 
@@ -1703,4 +1636,43 @@ export async function fetchHardwareMetrics() {
     clearTimeout(t);
     return null;
   }
+}
+
+/**
+ * DeepInfra inference URL. Dev uses the Vite proxy so the browser is not blocked by CORS.
+ * @param {string} path
+ */
+export function deepinfraInferenceUrl(path) {
+  const p = path.startsWith('/') ? path : `/${path}`;
+  if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) return `/api/deepinfra${p}`;
+  return `https://api.deepinfra.com${p}`;
+}
+
+/**
+ * Call DeepInfra Kokoro-82M TTS API for text-to-speech. Returns audio blob.
+ * @param {{ apiKey: string, text: string, voice: string, speed?: number }} opts
+ * @returns {Promise<Blob>}
+ */
+export async function requestDeepInfraKokoroSpeech({ apiKey, text, voice = 'af_bella', speed = 1 }) {
+  const key = (apiKey || '').trim();
+  if (!key) throw new Error('DeepInfra API key is required for Kokoro TTS.');
+  const res = await fetch(deepinfraInferenceUrl('/v1/inference/Kokoro-82M/tts'), {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${key}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      input: text,
+      voice,
+      speed: Math.max(0.5, Math.min(2, Number(speed) || 1)),
+      response_format: 'wav',
+      sample_rate: 24000,
+    }),
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    throw new Error(`Kokoro TTS: ${res.status} ${res.statusText}${errText ? ' — ' + errText : ''}`);
+  }
+  return res.blob();
 }

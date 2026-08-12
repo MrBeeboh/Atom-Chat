@@ -18,12 +18,20 @@
   const stepModels = $derived(($models?.length ?? 0) > 0 ? 'done' : 'todo');
   const stepSelected = $derived(!!$effectiveModelId && ($models?.length ?? 0) > 0 ? 'done' : 'todo');
 
-  const allReady = $derived(status === 'ready');
+  /** Hide once the user can send — models on disk/cloud count even if the LM Studio ping is still in flight. */
+  const allReady = $derived(stepModels === 'done' && stepSelected === 'done');
 
   async function onRetry() {
     refreshing = true;
     try {
-      await refreshConnectionAndModels();
+      await Promise.race([
+        refreshConnectionAndModels(),
+        new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Connection check timed out')), 15000);
+        }),
+      ]);
+    } catch {
+      /* keep current checklist; button must not stay on Checking… */
     } finally {
       refreshing = false;
     }
@@ -40,16 +48,7 @@
   }
 </script>
 
-{#if allReady}
-  <div
-    class="w-full rounded-xl px-4 py-2.5 text-sm flex items-center gap-2"
-    style="background: color-mix(in srgb, #22c55e 10%, var(--ui-bg-sidebar)); border: 1px solid color-mix(in srgb, #22c55e 28%, var(--ui-border));"
-    role="status"
-  >
-    <span class="w-2 h-2 rounded-full shrink-0" style="background: #22c55e;" aria-hidden="true"></span>
-    <span style="color: var(--ui-text-primary);">Ready to chat — pick a prompt below or type your question.</span>
-  </div>
-{:else}
+{#if !allReady}
   <div
     class="w-full rounded-xl px-4 py-4 text-sm"
     style="background: var(--ui-bg-sidebar); border: 1px solid var(--ui-border);"

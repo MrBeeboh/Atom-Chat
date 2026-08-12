@@ -1,0 +1,256 @@
+/**
+ * ATOM shell — spatial chrome, type, and motion.
+ * Themes still own color; this file owns shape, depth, and the “instrument” feel.
+ */
+
+:root {
+  --font-display: 'Syne', 'Outfit', system-ui, sans-serif;
+  --font-ui: 'Outfit', system-ui, ui-sans-serif, sans-serif;
+  --ui-radius-shell: 1.35rem;
+  --ui-radius-chip: 1.1rem;
+  --ui-header-h: 3.35rem;
+}
+
+html,
+body,
+.atom-shell {
+  font-family: var(--font-ui);
+}
+
+.atom-display {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+}
+
+/* ---- Canvas: depth without a wallpaper image ---- */
+.atom-shell {
+  position: relative;
+  isolation: isolate;
+  background-color: var(--ui-bg-main);
+  color: var(--ui-text-primary);
+}
+
+.atom-shell::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 70% 45% at 8% -8%, color-mix(in srgb, var(--ui-accent) 28%, transparent), transparent 58%),
+    radial-gradient(ellipse 55% 40% at 96% 108%, color-mix(in srgb, var(--atom-teal) 18%, transparent), transparent 52%),
+    radial-gradient(ellipse 40% 30% at 70% 0%, color-mix(in srgb, var(--atom-amber) 10%, transparent), transparent 60%);
+}
+
+.atom-shell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.045;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  mix-blend-mode: overlay;
+}
+
+.atom-shell > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* ---- Header: glass instrument bar ---- */
+.atom-header {
+  background: color-mix(in srgb, var(--ui-bg-sidebar) 88%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-border) 70%, transparent);
+  box-shadow: 0 1px 0 color-mix(in srgb, #fff 6%, transparent);
+}
+
+.atom-brand {
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  font-size: 0.92rem;
+  text-transform: uppercase;
+  color: var(--ui-text-primary);
+}
+
+.atom-brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.85rem;
+  height: 1.85rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ui-accent) 16%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--ui-accent) 35%, transparent), 0 0 18px var(--ui-glow);
+}
+
+.layout-pill {
+  background: color-mix(in srgb, var(--ui-bg-main) 55%, transparent) !important;
+  border: 1px solid color-mix(in srgb, var(--ui-border) 80%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 8%, transparent);
+}
+
+.layout-pill-btn {
+  font-family: var(--font-ui);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 10px !important;
+}
+
+.atom-status-dot {
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 18%, transparent);
+}
+
+.atom-status-live {
+  animation: atom-status-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes atom-status-pulse {
+  0%, 100% { box-shadow: 0 0 0 3px color-mix(in srgb, #22c55e 0%, transparent); }
+  50% { box-shadow: 0 0 0 5px color-mix(in srgb, #22c55e 28%, transparent); }
+}
+
+/* ---- Composer: floating island ---- */
+.chat-input-dock {
+  background: transparent !important;
+  border-top: none !important;
+  padding: 0.35rem 0.75rem 1rem !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+.chat-input-container {
+  padding: 0 !important;
+}
+
+.chat-input-bar {
+  border-radius: var(--ui-radius-shell) !important;
+  background: color-mix(in srgb, var(--ui-input-bg) 88%, transparent) !important;
+  border: 1px solid color-mix(in srgb, var(--ui-border) 85%, transparent) !important;
+  box-shadow:
+    0 18px 50px color-mix(in srgb, #000 22%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--ui-accent) 8%, transparent);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  overflow: hidden;
+}
+
+.chat-input-bar:focus-within {
+  border-color: color-mix(in srgb, var(--ui-accent) 55%, var(--ui-border)) !important;
+  box-shadow:
+    0 22px 56px color-mix(in srgb, #000 26%, transparent),
+    0 0 0 3px color-mix(in srgb, var(--ui-accent) 18%, transparent);
+}
+
+.chat-input-bar .send-button {
+  border-radius: 0 var(--ui-radius-shell) var(--ui-radius-shell) 0 !important;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: 11px;
+}
+
+.chat-input-hint {
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 9px !important;
+}
+
+/* ---- Messages ---- */
+.ui-user-bubble {
+  background: color-mix(in srgb, var(--ui-accent) 16%, var(--ui-bg-sidebar)) !important;
+  color: var(--ui-text-primary) !important;
+  border: 1px solid color-mix(in srgb, var(--ui-accent) 32%, transparent) !important;
+  border-radius: 1.15rem 1.15rem 0.35rem 1.15rem !important;
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--ui-accent) 12%, transparent);
+}
+
+.message-bubble-inner.atom-assistant {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  padding-left: 1rem !important;
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--ui-accent) 70%, transparent) !important;
+}
+
+/* ---- Empty / splash ---- */
+.ui-splash-wrap {
+  position: relative;
+}
+
+.ui-greeting-title {
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: -0.05em;
+  line-height: 0.95;
+}
+
+.ui-greeting-kicker {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--ui-accent);
+}
+
+.starter-chip {
+  border-radius: 999px !important;
+  background: color-mix(in srgb, var(--ui-bg-sidebar) 70%, transparent) !important;
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 1px 0 color-mix(in srgb, #fff 8%, transparent);
+}
+
+.starter-chip:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--ui-accent) 14%, transparent);
+}
+
+/* ---- Rail ---- */
+.convo-rail {
+  background: color-mix(in srgb, var(--ui-bg-sidebar) 78%, transparent) !important;
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  border-right: 1px solid color-mix(in srgb, var(--ui-border) 65%, transparent);
+}
+
+.rail-icon-labeled {
+  border-radius: 0.85rem !important;
+}
+
+.panel-tab {
+  border-radius: 0 12px 12px 0 !important;
+  background: color-mix(in srgb, var(--ui-accent) 18%, var(--ui-bg-sidebar)) !important;
+  box-shadow: 4px 0 16px color-mix(in srgb, var(--ui-accent) 12%, transparent);
+}
+
+/* ---- Model selector ---- */
+.ui-model-selector {
+  border-radius: 0.9rem !important;
+  background: color-mix(in srgb, var(--ui-input-bg) 80%, transparent) !important;
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+
+/* ---- Logo orbits ---- */
+.atom-logo-live {
+  animation: atom-logo-spin 28s linear infinite;
+}
+.atom-logo-live .atom-logo-nucleus {
+  filter: drop-shadow(0 0 6px var(--atom-accent));
+}
+
+@keyframes atom-logo-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .atom-logo-live,
+  .atom-status-live {
+    animation: none !important;
+  }
+}

@@ -19,8 +19,8 @@ export function getModelCapabilities(modelId) {
   // Thinking / reasoning (extended chain-of-thought, R1-style, deep thinking)
   const thinking =
     /\b(thinking|reasoning|chain[-.]?of[-.]?thought|cot)\b/.test(lower) ||
-    /[-.]r1[-.]|deepseek[-.]?r1|phi[-.]?4[-.]?mini|qwen3[-.]?4b|glm[-.]?4|minicpm[-.]?v/i.test(lower) ||
-    (/grok[-.]?4/i.test(lower) && !/non[-.]?reasoning/i.test(lower));
+    /[-.]r1[-.]|deepseek[-.]?r1|deepseek[-.]?v4[-.]?pro|phi[-.]?4[-.]?mini|qwen3[-.]?4b|glm[-.]?4|minicpm[-.]?v/i.test(lower) ||
+    (/grok[-.]?[34]/i.test(lower) && !/non[-.]?reasoning|imagine|voice/i.test(lower));
   // JSON / structured output
   const json = /\bjson\b/.test(lower) || /schematron/i.test(lower);
   return { vision, tools, thinking, json };

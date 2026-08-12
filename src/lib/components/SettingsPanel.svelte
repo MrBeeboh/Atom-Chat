@@ -1,11 +1,12 @@
 <script>
   import { fly } from 'svelte/transition';
   import { backOut, quintOut } from 'svelte/easing';
-  import { globalDefault, updateGlobalDefault, selectedModelId, models, presetDefaultModels, lmStudioBaseUrl, voiceServerUrl, lmStudioUnloadHelperUrl, deepSeekApiKey, grokApiKey, cerebrasApiKey, togetherApiKey, deepinfraApiKey, braveApiKey, settingsFocus } from '$lib/stores.js';
+  import { globalDefault, updateGlobalDefault, selectedModelId, models, presetDefaultModels, lmStudioBaseUrl, voiceServerUrl, lmStudioUnloadHelperUrl, localModelDirs, deepSeekApiKey, grokApiKey, cerebrasApiKey, togetherApiKey, deepinfraApiKey, braveApiKey, settingsFocus, ttsEngine, ttsKokoroVoice, ttsVoiceUri, ttsRate, ttsVolume } from '$lib/stores.js';
   import { refreshConnectionAndModels } from '$lib/connectionSetup.js';
   import { syncBraveKeyToProxy } from '$lib/duckduckgo.js';
-  import { modelSelectorPrimaryLine } from '$lib/api.js';
+  import { modelSelectorPrimaryLine, invalidateCloudModelCache } from '$lib/api.js';
   import { groupModelsForSelector } from '$lib/modelGroups.js';
+  import { KOKORO_VOICES, listBrowserVoices, plainTextForSpeech, speakPlainText, stopTts, browserTtsSupported, warmUpKokoroTts, unlockAudioPlayback } from '$lib/tts.js';
 
   let { onclose } = $props();
 
@@ -60,6 +61,48 @@
 
   let connectionDetailsEl = $state(/** @type {HTMLDetailsElement | null} */ (null));
   let apiDetailsEl = $state(/** @type {HTMLDetailsElement | null} */ (null));
+  let readAloudDetailsEl = $state(/** @type {HTMLDetailsElement | null} */ (null));
+  let readAloudOpen = $state(false);
+  let ttsTesting = $state(false);
+  let ttsVoices = $state(/** @type {SpeechSynthesisVoice[]} */ ([]));
+
+  const hasDeepinfraForTts = $derived(!!($deepinfraApiKey?.trim() || (typeof import.meta !== 'undefined' && import.meta.env?.VITE_DEEPINFRA_API_KEY)));
+
+  async function testReadAloudVoice() {
+    if (ttsTesting) return;
+    ttsTesting = true;
+    unlockAudioPlayback();
+    stopTts();
+    if ($ttsEngine === 'kokoro' && hasDeepinfraForTts) await warmUpKokoroTts();
+    try {
+      await speakPlainText(
+        plainTextForSpeech('This is the read aloud voice for chat messages.'),
+        {
+          voiceUri: $ttsVoiceUri,
+          kokoroVoice: $ttsKokoroVoice,
+          rate: $ttsRate,
+          engine: $ttsEngine,
+          onEnd: () => { ttsTesting = false; },
+          onError: () => { ttsTesting = false; },
+        },
+      );
+      if ($ttsEngine !== 'kokoro') ttsTesting = false;
+    } catch {
+      ttsTesting = false;
+    }
+  }
+
+  $effect(() => {
+    if (typeof window === 'undefined' || !browserTtsSupported()) return;
+    const load = () => {
+      ttsVoices = listBrowserVoices()
+        .filter((v) => v.lang?.toLowerCase().startsWith('en') || !v.lang)
+        .sort((a, b) => a.name.localeCompare(b.name));
+    };
+    load();
+    speechSynthesis.addEventListener('voiceschanged', load);
+    return () => speechSynthesis.removeEventListener('voiceschanged', load);
+  });
 
   $effect(() => {
     const focus = $settingsFocus;
@@ -76,10 +119,16 @@
       const input = apiDetailsEl.querySelector('#settings-deepseek-key');
       if (input instanceof HTMLInputElement) input.focus();
     }
+    if (focus === 'read-aloud' && readAloudDetailsEl) {
+      readAloudOpen = true;
+      readAloudDetailsEl.open = true;
+      readAloudDetailsEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
     settingsFocus.set(null);
   });
 
   async function onApiKeyBlur() {
+    invalidateCloudModelCache();
     await refreshConnectionAndModels();
   }
 </script>
@@ -122,13 +171,18 @@
             <input id="settings-voice-url" type="url" bind:value={$voiceServerUrl} placeholder="http://localhost:8765" class="w-full rounded-lg px-3 py-2 text-sm font-mono" style="border: 1px solid var(--ui-border); background-color: var(--ui-input-bg); color: var(--ui-text-primary);" />
             <p class="text-xs mt-1" style="color: var(--ui-text-secondary);">Mic/voice. Default port 8765; see voice-server/README.</p>
           </div>
+          <div>
+            <label for="settings-local-model-dirs" class="block text-xs font-medium mb-1" style="color: var(--ui-text-secondary);">Extra GGUF folders</label>
+            <textarea id="settings-local-model-dirs" rows="3" bind:value={$localModelDirs} onblur={onApiKeyBlur} placeholder="/home/you/extra-models" class="w-full rounded-lg px-3 py-2 text-sm font-mono" style="border: 1px solid var(--ui-border); background-color: var(--ui-input-bg); color: var(--ui-text-primary);"></textarea>
+            <p class="text-xs mt-1" style="color: var(--ui-text-secondary);">One absolute path per line. ATOM already scans ~/.lmstudio/models, ~/models, ~/.cache/llama.cpp, and ~/Downloads.</p>
+          </div>
         </div>
       </details>
 
       <details bind:this={apiDetailsEl} class="rounded-lg overflow-hidden group" style="border: 1px solid var(--ui-border);">
         <summary class="px-4 py-3 cursor-pointer list-none text-sm font-medium transition-colors" style="background-color: var(--ui-bg-sidebar); border-bottom: 1px solid var(--ui-border); color: var(--ui-text-primary);">API keys</summary>
         <div class="px-4 py-3 space-y-4" style="background-color: var(--ui-bg-main);">
-          <p class="text-xs" style="color: var(--ui-text-secondary);">Keys live in the browser for this site (host + port). You can also put them in <code style="background: color-mix(in srgb, var(--ui-border) 40%, transparent); padding: 0 4px; border-radius: 3px;">.env.local</code> as <code style="background: color-mix(in srgb, var(--ui-border) 40%, transparent); padding: 0 4px; border-radius: 3px;">VITE_*</code> (see <code style="background: color-mix(in srgb, var(--ui-border) 40%, transparent); padding: 0 4px; border-radius: 3px;">.env.example</code>); they apply when storage is empty and copy into the browser on load. Restart <code style="background: color-mix(in srgb, var(--ui-border) 40%, transparent); padding: 0 4px; border-radius: 3px;">npm run dev</code> after editing env.</p>
+          <p class="text-xs" style="color: var(--ui-text-secondary);">Keys live in the browser for this site (host + port). With a key set, ATOM asks that provider for its current model list (Grok, DeepSeek, Cerebras, DeepInfra) instead of a short built-in catalog. You can also put keys in <code style="background: color-mix(in srgb, var(--ui-border) 40%, transparent); padding: 0 4px; border-radius: 3px;">.env.local</code> as <code style="background: color-mix(in srgb, var(--ui-border) 40%, transparent); padding: 0 4px; border-radius: 3px;">VITE_*</code> (see <code style="background: color-mix(in srgb, var(--ui-border) 40%, transparent); padding: 0 4px; border-radius: 3px;">.env.example</code>); they apply when storage is empty and copy into the browser on load. Restart <code style="background: color-mix(in srgb, var(--ui-border) 40%, transparent); padding: 0 4px; border-radius: 3px;">npm run dev</code> after editing env.</p>
           <div>
             <label for="settings-deepseek-key" class="block text-xs font-medium mb-1" style="color: var(--ui-text-secondary);">DeepSeek API key</label>
             <input id="settings-deepseek-key" type="password" autocomplete="off" bind:value={$deepSeekApiKey} onblur={onApiKeyBlur} placeholder="API key (paste without extra spaces)" class="w-full rounded-lg px-3 py-2 text-sm font-mono" style="border: 1px solid var(--ui-border); background-color: var(--ui-input-bg); color: var(--ui-text-primary);" />
@@ -150,7 +204,7 @@
             <p class="text-xs mt-1" style="color: var(--ui-text-secondary);"><a href="https://search.brave.com/help/api" target="_blank" rel="noopener noreferrer" style="color: var(--ui-accent);">search.brave.com/help/api</a></p>
           </div>
           <div>
-            <label for="settings-deepinfra-key" class="block text-xs font-medium mb-1" style="color: var(--ui-text-secondary);">DeepInfra API key (image + video)</label>
+            <label for="settings-deepinfra-key" class="block text-xs font-medium mb-1" style="color: var(--ui-text-secondary);">DeepInfra API key (image, video, Kokoro TTS)</label>
             <input id="settings-deepinfra-key" type="password" autocomplete="off" bind:value={$deepinfraApiKey} placeholder="…" class="w-full rounded-lg px-3 py-2 text-sm font-mono" style="border: 1px solid var(--ui-border); background-color: var(--ui-input-bg); color: var(--ui-text-primary);" />
             <p class="text-xs mt-1" style="color: var(--ui-text-secondary);"><a href="https://deepinfra.com" target="_blank" rel="noopener noreferrer" style="color: var(--ui-accent);">deepinfra.com</a></p>
           </div>
@@ -159,6 +213,42 @@
             <input id="settings-together-key" type="password" autocomplete="off" bind:value={$togetherApiKey} placeholder="…" class="w-full rounded-lg px-3 py-2 text-sm font-mono" style="border: 1px solid var(--ui-border); background-color: var(--ui-input-bg); color: var(--ui-text-primary);" />
             <p class="text-xs mt-1" style="color: var(--ui-text-secondary);"><a href="https://api.together.xyz" target="_blank" rel="noopener noreferrer" style="color: var(--ui-accent);">api.together.xyz</a></p>
           </div>
+        </div>
+      </details>
+
+      <details id="settings-section-read-aloud" bind:this={readAloudDetailsEl} class="rounded-lg overflow-hidden group" style="border: 1px solid var(--ui-border);" bind:open={readAloudOpen}>
+        <summary class="px-4 py-3 cursor-pointer list-none text-sm font-medium transition-colors" style="background-color: var(--ui-bg-sidebar); border-bottom: 1px solid var(--ui-border); color: var(--ui-text-primary);">Read aloud (TTS)</summary>
+        <div class="px-4 py-3 space-y-3" style="background-color: var(--ui-bg-main);">
+          <p class="text-xs" style="color: var(--ui-text-secondary);">Use the <strong style="color: var(--ui-text-primary); font-weight: 600;">speaker icon</strong> in the chat bar. Open mic turns it on automatically. Shift+click the speaker to jump here.</p>
+          {#if !hasDeepinfraForTts}
+            <p class="text-xs rounded-md px-2.5 py-2" style="color: var(--ui-text-primary); background: color-mix(in srgb, #eab308 14%, transparent);">Add your <strong>DeepInfra API key</strong> above for natural Kokoro TTS. Browser voice still works without it.</p>
+          {/if}
+          <label for="settings-tts-engine" class="block text-xs font-medium mb-1" style="color: var(--ui-text-secondary);">Engine</label>
+          <select id="settings-tts-engine" bind:value={$ttsEngine} class="w-full rounded-lg px-3 py-2 text-sm" style="border: 1px solid var(--ui-border); background-color: var(--ui-input-bg); color: var(--ui-text-primary);">
+            <option value="kokoro" disabled={!hasDeepinfraForTts}>Kokoro (DeepInfra) — natural voice{hasDeepinfraForTts ? '' : ' — needs DeepInfra key'}</option>
+            <option value="browser">Browser — robotic fallback</option>
+          </select>
+          {#if $ttsEngine === 'kokoro' && hasDeepinfraForTts}
+            <label for="settings-kokoro-voice" class="block text-xs font-medium mb-1" style="color: var(--ui-text-secondary);">Kokoro voice</label>
+            <select id="settings-kokoro-voice" bind:value={$ttsKokoroVoice} class="w-full rounded-lg px-3 py-2 text-sm" style="border: 1px solid var(--ui-border); background-color: var(--ui-input-bg); color: var(--ui-text-primary);">
+              {#each KOKORO_VOICES as v (v.id)}
+                <option value={v.id}>{v.label}</option>
+              {/each}
+            </select>
+          {:else if browserTtsSupported()}
+            <label for="settings-tts-voice" class="block text-xs font-medium mb-1" style="color: var(--ui-text-secondary);">Browser voice</label>
+            <select id="settings-tts-voice" bind:value={$ttsVoiceUri} class="w-full rounded-lg px-3 py-2 text-sm" style="border: 1px solid var(--ui-border); background-color: var(--ui-input-bg); color: var(--ui-text-primary);">
+              <option value="">System default (English)</option>
+              {#each ttsVoices as v (v.voiceURI)}
+                <option value={v.voiceURI}>{v.name}{v.localService ? ' · local' : ''} ({v.lang})</option>
+              {/each}
+            </select>
+          {/if}
+          <label for="settings-tts-rate" class="block text-xs font-medium mb-1" style="color: var(--ui-text-secondary);">Speech rate ({($ttsRate ?? 1).toFixed(2)}×)</label>
+          <input id="settings-tts-rate" type="range" min="0.75" max="1.35" step="0.05" bind:value={$ttsRate} class="w-full h-2 rounded-full accent-themed" />
+          <label for="settings-tts-volume" class="block text-xs font-medium mb-1" style="color: var(--ui-text-secondary);">ATOM volume ({Math.round(($ttsVolume ?? 0.8) * 100)}%) — does not change system volume</label>
+          <input id="settings-tts-volume" type="range" min="0" max="1" step="0.01" bind:value={$ttsVolume} class="w-full h-2 rounded-full accent-themed" />
+          <button type="button" class="text-xs px-2.5 py-1.5 rounded-lg font-medium" style="border: 1px solid var(--ui-border); color: var(--ui-text-primary);" disabled={ttsTesting} onclick={testReadAloudVoice}>{ttsTesting ? 'Playing…' : 'Test read aloud voice'}</button>
         </div>
       </details>
 

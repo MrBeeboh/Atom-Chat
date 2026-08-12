@@ -4,7 +4,7 @@
 </script>
 
 <svg
-  class="atom-logo-icon shrink-0"
+  class="atom-logo-icon atom-logo-live shrink-0"
   viewBox="0 0 32 32"
   fill="none"
   xmlns="http://www.w3.org/2000/svg"
