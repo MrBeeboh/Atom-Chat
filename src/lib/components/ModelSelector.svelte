@@ -28,13 +28,13 @@
       const spaceBelow = window.innerHeight - r.bottom - 8;
       const spaceAbove = r.top - 8;
       const openUp = spaceBelow < 260 && spaceAbove > spaceBelow;
-      const maxHeight = openUp ? Math.min(420, spaceAbove) : Math.min(420, spaceBelow);
+      const maxHeight = openUp ? Math.min(560, spaceAbove) : Math.min(560, spaceBelow);
       dropdownPlace = {
         top: r.bottom + 4,
         bottom: window.innerHeight - r.top + 4,
         left: r.left,
-        width: Math.max(r.width, 340),
-        maxHeight: Math.max(120, maxHeight),
+        width: Math.max(r.width, 440),
+        maxHeight: Math.max(180, maxHeight),
         openUp,
       };
     };
@@ -120,7 +120,7 @@
       class="fixed z-[100] rounded-xl shadow-lg py-0 overflow-y-auto overflow-x-visible min-w-[320px]"
       style="border: 1px solid var(--ui-border); background-color: var(--ui-bg-main); left: {dropdownPlace.left}px; width: {dropdownPlace.width}px; max-height: {dropdownPlace.maxHeight}px; {dropdownPlace.openUp ? 'bottom: ' + dropdownPlace.bottom + 'px; top: auto;' : 'top: ' + dropdownPlace.top + 'px;'}"
       role="listbox">
-      {#if loading}
+      {#if loading && $models.length === 0}
         <div class="px-4 py-3 text-sm flex items-center gap-2" style="color: var(--ui-text-secondary);">
           <ThinkingAtom size={16} />
           {loadingMessage || 'Loading models…'}
@@ -147,6 +147,11 @@
           </div>
         </div>
       {:else}
+        {#if loading}
+          <div class="px-3 py-1.5 text-[10px] flex items-center gap-1.5 border-b" style="color: var(--ui-text-secondary); border-color: var(--ui-border);">
+            <ThinkingAtom size={12} /> Updating catalog…
+          </div>
+        {/if}
         <ModelDropdownGroupedList
           models={$models}
           selectedId={$selectedModelId}

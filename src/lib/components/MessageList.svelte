@@ -36,8 +36,8 @@
 </script>
 
 <ScrollToBottomButton {scrollRoot} />
-<div class="chat-message-list max-w-[min(52rem,92%)] mx-auto py-4 md:py-5 px-3 md:px-4 w-full" bind:this={listEl}>
-  <div class="space-y-4 md:space-y-5">
+<div class="chat-message-list max-w-[min(44rem,92%)] mx-auto py-6 md:py-8 px-3 md:px-4 w-full" bind:this={listEl}>
+  <div class="space-y-6 md:space-y-8">
     {#each msgs as msg, i (msg.id)}
       <div class="message-entrance" in:fly={{ y: 16, duration: 400, easing: quintOut }}>
         <MessageBubble message={msg} isLast={i === msgs.length - 1} {onRegenerate} {onEditResend} {onDelete} />

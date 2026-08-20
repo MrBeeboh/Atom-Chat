@@ -14,10 +14,10 @@
 
 <button
   type="button"
-  class="p-2 rounded-xl text-sm font-medium transition-colors"
-  style="color: var(--ui-text-secondary);"
-  onmouseenter={(e) => (e.currentTarget.style.background = 'color-mix(in srgb, var(--ui-border) 40%, transparent)')}
-  onmouseleave={(e) => (e.currentTarget.style.background = 'transparent')}
+  class="px-2.5 py-1.5 rounded-full text-[10px] font-semibold uppercase tracking-wider transition-colors border"
+  style="color: var(--ui-text-secondary); border-color: var(--ui-border); background: color-mix(in srgb, var(--ui-input-bg) 70%, transparent);"
+  onmouseenter={(e) => (e.currentTarget.style.background = 'color-mix(in srgb, var(--ui-accent) 14%, transparent)')}
+  onmouseleave={(e) => (e.currentTarget.style.background = 'color-mix(in srgb, var(--ui-input-bg) 70%, transparent)')}
   onclick={cycle}
   title="Theme: {label}">
   {label}

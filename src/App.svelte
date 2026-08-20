@@ -4,7 +4,7 @@
   import { get } from 'svelte/store';
   import { fly } from 'svelte/transition';
   import { backOut, quintOut } from 'svelte/easing';
-  import { theme, sidebarOpen, settingsOpen, settingsFocus, layout, dashboardModelA, dashboardModelB, dashboardModelC, dashboardModelD, activeConversationId, conversations, selectedModelId, uiTheme, sidebarCollapsed, cockpitIntelOpen, arenaPanelCount, lmStudioConnected, cloudApisAvailable } from '$lib/stores.js';
+  import { theme, sidebarOpen, settingsOpen, settingsFocus, layout, dashboardModelA, dashboardModelB, dashboardModelC, dashboardModelD, activeConversationId, conversations, selectedModelId, uiTheme, sidebarCollapsed, cockpitIntelOpen, arenaPanelCount, models, lmStudioConnected, cloudApisAvailable, activeMessages } from '$lib/stores.js';
   import { createConversation, listConversations, getMessageCount, getMessages } from '$lib/db.js';
 
   function openSettingsFromStatus() {
@@ -26,6 +26,7 @@
   import DashboardArena from '$lib/components/DashboardArena.svelte';
   import ConfirmModal from '$lib/components/ConfirmModal.svelte';
   import ShortcutsModal from '$lib/components/ShortcutsModal.svelte';
+  import VoiceRoleplayPanel from '$lib/components/VoiceRoleplayPanel.svelte';
   import AtomLogo from '$lib/components/AtomLogo.svelte';
   import { refreshConnectionAndModels } from '$lib/connectionSetup.js';
   import { COCKPIT_LM_CHECKING, COCKPIT_LM_CONNECTED, COCKPIT_LM_UNREACHABLE, COCKPIT_CLOUD_APIS_AVAILABLE, pickWitty } from '$lib/cockpitCopy.js';
@@ -143,22 +144,32 @@
     sidebarTabBounce = true;
     setTimeout(() => (sidebarTabBounce = false), 420);
   }
+
+  let voiceRoleplayOpen = $state(false);
 </script>
 
-<div class="h-screen overflow-hidden" style="background-color: var(--ui-bg-main);">
+<div class="atom-shell h-screen overflow-hidden">
 
   <AudioManager />
   <CommandPalette />
   <ConfirmModal />
   <ShortcutsModal />
+  <VoiceRoleplayPanel
+    bind:open={voiceRoleplayOpen}
+    conversationId={$activeConversationId || ''}
+    onMessagesAdded={async () => {
+      const cid = get(activeConversationId);
+      if (cid) activeMessages.set(await getMessages(cid));
+    }}
+  />
 
   {#if $layout === 'cockpit'}
     <div class="flex h-full flex-col">
       <!-- Cockpit header: 3-zone layout — left (brand+layout), center (model+preset), right (theme+status) -->
-      <header class="cockpit-header shrink-0 flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2 sm:px-4 sm:py-2.5" style="background-color: var(--ui-bg-sidebar); border-bottom: 1px solid var(--ui-border);">
+      <header class="atom-header cockpit-header shrink-0 flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2 sm:px-4 sm:py-2.5">
         <!-- Left: brand + layout pill -->
         <div class="cockpit-header-brand flex items-center gap-2 sm:gap-3 shrink-0" role="group" aria-label="Brand and layout">
-          <span class="cockpit-brand flex items-center gap-1.5 shrink-0 text-lg font-bold" style="color: var(--ui-accent);"><AtomLogo size={22} />ATOM</span>
+          <span class="atom-brand flex items-center gap-2 shrink-0"><span class="atom-brand-mark"><AtomLogo size={18} /></span>ATOM</span>
           <span class="font-mono text-[9px] px-1.5 py-0.5 rounded shrink-0 select-none" style="background: color-mix(in srgb, var(--ui-accent) 12%, transparent); color: var(--ui-accent); opacity: 0.65;" title="Build revision">{__GIT_REV__}</span>
           <nav class="layout-pill flex rounded-full p-0.5 shrink-0 text-xs font-medium" style="background: color-mix(in srgb, var(--ui-border) 60%, transparent);" aria-label="Layout: Cockpit or Arena">
             {#each LAYOUT_OPTS as opt}
@@ -168,7 +179,7 @@
         </div>
         <!-- Center: model selector + preset -->
         <div class="cockpit-header-model flex-1 flex items-center justify-center gap-2 sm:gap-3 min-w-0 basis-full sm:basis-auto order-3 sm:order-none px-0 sm:px-4" role="group" aria-label="Model and preset">
-          <span class="hidden sm:inline text-xs font-semibold uppercase tracking-wider shrink-0" style="color: var(--ui-text-secondary);">Model</span>
+          <span class="hidden sm:inline text-[10px] font-semibold uppercase tracking-[0.18em] shrink-0" style="color: var(--ui-text-secondary);">Model</span>
           <div class="min-w-0 flex-1 sm:flex-none" style="{HEADER_MODEL_MIN}"><ModelSelector /></div>
           <div class="shrink-0 hidden md:block" style="{HEADER_PRESET_MIN}"><PresetSelect compact={true} /></div>
         </div>
@@ -190,13 +201,21 @@
           </div>
           <button
             type="button"
+            class="flex items-center gap-1 shrink-0 text-xs font-medium rounded-md px-1.5 py-1 transition-opacity hover:opacity-80"
+            style="color: var(--ui-accent);"
+            title="Eve voice roleplay"
+            aria-label="Open voice roleplay"
+            onclick={() => (voiceRoleplayOpen = true)}
+          >🎭 <span class="hidden sm:inline">Eve</span></button>
+          <button
+            type="button"
             class="flex items-center gap-1.5 shrink-0 text-xs font-medium rounded-md px-1.5 py-1 -mr-1.5 transition-opacity hover:opacity-80"
             style="color: var(--ui-text-primary);"
             title="{lmStatusMessage} — open Settings"
             aria-label="{lmStatusMessage}. Open connection settings."
             onclick={openSettingsFromStatus}
           >
-            <span class="w-2 h-2 rounded-full shrink-0" style="background-color: {$lmStudioConnected === true ? '#22c55e' : $lmStudioConnected === false ? ($cloudApisAvailable ? '#3b82f6' : '#ef4444') : '#94a3b8'};" aria-hidden="true"></span>
+            <span class="w-2 h-2 rounded-full shrink-0 atom-status-dot {$lmStudioConnected === true ? 'atom-status-live' : ''}" style="background-color: {$lmStudioConnected === true ? '#22c55e' : $lmStudioConnected === false ? ($cloudApisAvailable ? '#e8a060' : '#ef4444') : '#94a3b8'};" aria-hidden="true"></span>
             <span class="hidden sm:inline">{lmStatusMessage}</span>
           </button>
         </div>
@@ -247,10 +266,10 @@
 
   {:else if $layout === 'arena'}
     <div class="flex h-full flex-col">
-      <header class="shrink-0 flex items-center flex-wrap px-3 py-2 text-sm" style="background: var(--ui-bg-sidebar); color: var(--ui-text-secondary); gap: {HEADER_BETWEEN_GROUPS}; border-bottom: 1px solid var(--ui-border);">
+      <header class="atom-header shrink-0 flex items-center flex-wrap px-3 py-2 text-sm" style="color: var(--ui-text-secondary); gap: {HEADER_BETWEEN_GROUPS};">
         <div class="flex items-center shrink-0" style="{HEADER_GROUP_GAP}" role="group" aria-label="Brand and layout">
           <button type="button" class="md:hidden p-2 rounded-md min-h-[44px] min-w-[44px] flex items-center justify-center transition-opacity hover:opacity-80" style="color: var(--ui-text-secondary);" onclick={() => sidebarOpen.set(true)} aria-label="Open menu">☰</button>
-          <span class="flex items-center gap-1.5 text-lg font-bold shrink-0" style="color: var(--ui-accent);"><AtomLogo size={22} />ATOM Arena</span>
+          <span class="atom-brand flex items-center gap-2 shrink-0"><span class="atom-brand-mark"><AtomLogo size={18} /></span>ATOM</span>
           <span class="font-mono text-[9px] px-1.5 py-0.5 rounded shrink-0 select-none" style="background: color-mix(in srgb, var(--ui-accent) 12%, transparent); color: var(--ui-accent); opacity: 0.65;" title="Build revision">{__GIT_REV__}</span>
           <nav class="layout-pill flex rounded-full p-0.5 shrink-0 text-xs font-medium" style="background: color-mix(in srgb, var(--ui-border) 60%, transparent);" aria-label="Layout: Cockpit or Arena">
             {#each LAYOUT_OPTS as opt}
@@ -276,13 +295,21 @@
         <div class="flex items-center shrink-0" style="{HEADER_GROUP_GAP} {HEADER_RIGHT_GROUP}" role="group" aria-label="Status">
           <button
             type="button"
+            class="flex items-center gap-1 shrink-0 text-xs font-medium rounded-md px-1.5 py-1 transition-opacity hover:opacity-80"
+            style="color: var(--ui-accent);"
+            title="Eve voice roleplay"
+            aria-label="Open voice roleplay"
+            onclick={() => (voiceRoleplayOpen = true)}
+          >🎭 <span class="hidden sm:inline">Eve</span></button>
+          <button
+            type="button"
             class="flex items-center gap-1.5 shrink-0 text-xs rounded-md px-1.5 py-1 transition-opacity hover:opacity-80"
             style="color: var(--ui-text-secondary);"
             title="{lmStatusMessage} — open Settings"
             aria-label="{lmStatusMessage}. Open connection settings."
             onclick={openSettingsFromStatus}
           >
-            <span class="w-2 h-2 rounded-full shrink-0" style="background-color: {$lmStudioConnected === true ? '#22c55e' : $lmStudioConnected === false ? ($cloudApisAvailable ? '#3b82f6' : '#ef4444') : '#94a3b8'};" aria-hidden="true"></span>
+            <span class="w-2 h-2 rounded-full shrink-0 atom-status-dot {$lmStudioConnected === true ? 'atom-status-live' : ''}" style="background-color: {$lmStudioConnected === true ? '#22c55e' : $lmStudioConnected === false ? ($cloudApisAvailable ? '#e8a060' : '#ef4444') : '#94a3b8'};" aria-hidden="true"></span>
             <span class="hidden sm:inline">{lmStatusMessage}</span>
           </button>
         </div>

@@ -44,6 +44,26 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/ollama/, ''),
       },
+      '/api/xai': {
+        target: 'https://api.x.ai',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/xai/, ''),
+      },
+      '/api/deepseek': {
+        target: 'https://api.deepseek.com',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/deepseek/, ''),
+      },
+      '/api/cerebras': {
+        target: 'https://api.cerebras.ai',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/cerebras/, ''),
+      },
+      '/api/deepinfra': {
+        target: 'https://api.deepinfra.com',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/deepinfra/, ''),
+      },
       '/api/search': {
         target: 'http://localhost:5174',
         changeOrigin: true,

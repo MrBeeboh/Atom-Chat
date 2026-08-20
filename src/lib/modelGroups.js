@@ -2,13 +2,7 @@
  * Group flat model ids for selector UI: local server, disk libraries, then cloud providers.
  */
 import { modelDisplayName } from '$lib/api.js';
-
-const CLOUD_LABEL = {
-  deepseek: 'DeepSeek',
-  grok: 'Grok',
-  cerebras: 'Cerebras',
-  deepinfra: 'DeepInfra',
-};
+import { cloudProviderLabel } from '$lib/cloudCatalog.js';
 
 const CLOUD_ORDER = ['deepseek', 'grok', 'cerebras', 'deepinfra'];
 
@@ -16,7 +10,7 @@ const STATIC_GROUPS = [
   {
     bucket: 'local:server',
     title: 'This device',
-    hint: 'Models your inference server reports (llama.cpp, LM Studio, …)',
+    hint: 'Loaded or listed by llama.cpp / LM Studio',
   },
   {
     bucket: 'disk:lmstudio',
@@ -26,11 +20,11 @@ const STATIC_GROUPS = [
   {
     bucket: 'disk:other',
     title: 'Local disk',
-    hint: 'Other folders on this machine (e.g. ~/models)',
+    hint: '~/models, llama.cpp cache, Downloads, extra folders',
   },
 ];
 
-function bucketForModelId(id) {
+export function bucketForModelId(id) {
   if (!id || typeof id !== 'string') return 'local:server';
   const colon = id.indexOf(':');
   if (colon > 0 && id.slice(0, colon).trim()) {
@@ -98,8 +92,8 @@ export function groupModelsForSelector(models) {
     const prov = k.slice('cloud:'.length);
     out.push({
       bucket: k,
-      title: CLOUD_LABEL[prov] || prov.charAt(0).toUpperCase() + prov.slice(1),
-      hint: 'Requires API key in Settings',
+      title: cloudProviderLabel(prov),
+      hint: 'Live catalog when the API key works; otherwise a built-in list',
       items: sortByDisplayName(items),
     });
   }
@@ -109,8 +103,8 @@ export function groupModelsForSelector(models) {
     const prov = k.slice('cloud:'.length);
     out.push({
       bucket: k,
-      title: CLOUD_LABEL[prov] || prov.charAt(0).toUpperCase() + prov.slice(1),
-      hint: 'Requires API key in Settings',
+      title: cloudProviderLabel(prov),
+      hint: 'Live catalog when the API key works; otherwise a built-in list',
       items: sortByDisplayName(items),
     });
   }

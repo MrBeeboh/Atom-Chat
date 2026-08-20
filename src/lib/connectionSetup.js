@@ -2,7 +2,7 @@
  * Connection + model bootstrap for first-run and retry flows.
  */
 import { get } from 'svelte/store';
-import { checkLmStudioConnection, getModels } from '$lib/api.js';
+import { checkLmStudioConnection, getModels, invalidateCloudModelCache } from '$lib/api.js';
 import { ensureModelIcons } from '$lib/modelIcons.js';
 import {
   lmStudioConnected,
@@ -43,6 +43,7 @@ export function deriveSetupStatus() {
  * @returns {Promise<{ connected: boolean, modelCount: number, status: SetupStatus }>}
  */
 export async function refreshConnectionAndModels() {
+  invalidateCloudModelCache();
   const connected = await checkLmStudioConnection();
   lmStudioConnected.set(connected);
 

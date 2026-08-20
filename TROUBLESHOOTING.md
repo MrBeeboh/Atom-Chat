@@ -37,6 +37,11 @@ If the model dropdown is empty or says "Cannot connect":
 - Voice server runs on port **8765** (see `voice-server/README.md`).
 - Settings → **Voice-to-text server** should be `http://localhost:8765` (or your voice server URL). Do not put the LM Studio URL here.
 - Use `./scripts/start-atom.sh` or start the voice server manually so it’s running before using the mic.
+- **“Requested device not found”** means the browser cannot open a microphone:
+  - Plug in or enable a mic in your OS sound settings (Input tab).
+  - In ATOM **Settings → Connection → Microphone**, pick a different input and click **Refresh**.
+  - Close other apps that may be holding the mic (Zoom, Discord, OBS, etc.).
+  - Reset the site’s microphone permission in your browser and try again.
 
 ## Web search (globe) not working
 
