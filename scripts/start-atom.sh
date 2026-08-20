@@ -90,9 +90,9 @@ fi
 pick_smallest_gguf() {
     local line
     line="$(
-        for _dir in "$HOME/.lmstudio/models" "$HOME/models" "$HOME/.cache/llama.cpp" "$HOME/Downloads"; do
+        for _dir in "$HOME/.lmstudio/models" "$HOME/models" "$HOME/.cache/huggingface/hub" "$HOME/.cache/llama.cpp" "$HOME/Downloads"; do
             [ -d "$_dir" ] || continue
-            find "$_dir" -maxdepth 5 -name '*.gguf' -type f -printf '%s\t%p\n' 2>/dev/null
+            find "$_dir" -maxdepth 8 -name '*.gguf' -type f -printf '%s\t%p\n' 2>/dev/null
         done | sort -n | head -1
     )"
     if [ -n "$line" ]; then
@@ -112,6 +112,15 @@ else
     echo "[ATOM] Starting llama-server..."
 
     ATOM_MODELS_DIR="${ATOM_MODELS_DIR:-$HOME/.lmstudio/models}"
+    # Optional extra scan roots (colon-separated). HF hub cache is included by default when present.
+    ATOM_MODEL_DIRS="${ATOM_MODEL_DIRS:-}"
+    if [ -z "$ATOM_MODEL_DIRS" ]; then
+        ATOM_MODEL_DIRS="$ATOM_MODELS_DIR"
+        for _extra in "$HOME/models" "$HOME/.cache/huggingface/hub" "$HOME/.cache/llama.cpp" "$HOME/Downloads"; do
+            [ -d "$_extra" ] || continue
+            case ":$ATOM_MODEL_DIRS:" in *":$_extra:"*) ;; *) ATOM_MODEL_DIRS="${ATOM_MODEL_DIRS}:$_extra";; esac
+        done
+    fi
     # Prefer router mode: no GGUF in VRAM until the app calls /models/load (Arena loads one at a time).
     ROUTER=0
     if [ -z "${MODEL:-}" ] && [ -z "${GGUF_PATH:-}" ] && [ -d "$ATOM_MODELS_DIR" ] && "${LLAMA_BIN}" --help 2>&1 | grep -qE 'models-dir'; then
@@ -132,6 +141,7 @@ else
 
     if [ "$ROUTER" = 1 ]; then
         echo "[ATOM] Router: --models-dir $ATOM_MODELS_DIR --models-max 1 --no-models-autoload (nothing preloaded into VRAM)"
+        echo "[ATOM] Disk scan also checks: ${ATOM_MODEL_DIRS#*:} (set ATOM_MODEL_DIRS to override)"
         : >>"$ROOT/llama-server.log"
         nohup "$LLAMA_BIN" --models-dir "$ATOM_MODELS_DIR" --models-max 1 "${ROUTER_EXTRA[@]}" --n-gpu-layers 99 --port 8080 --host 0.0.0.0 >>"$ROOT/llama-server.log" 2>&1 &
         LLAMA_PID=$!

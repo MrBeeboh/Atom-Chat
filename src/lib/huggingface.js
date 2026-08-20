@@ -6,6 +6,7 @@
 
 /** Map LM Studio–style name patterns to Hugging Face repo ids (without quantization suffix). */
 const HF_MODEL_GUESSES = [
+  { pattern: /qwen3\.?5[-_]?(\d+b)/i, repo: (m) => `Qwen/Qwen3.5-${m[1].toUpperCase()}-Instruct` },
   { pattern: /qwen2\.?5?-?(\d+b)/i, repo: (m) => `Qwen/Qwen2.5-${m[1]}-Instruct` },
   { pattern: /qwen2-?(\d+b)/i, repo: (m) => `Qwen/Qwen2-${m[1]}-Instruct` },
   { pattern: /llama-?3\.?2?-?(\d+b)/i, repo: (m) => `meta-llama/Llama-3.2-${m[1]}-Instruct` },

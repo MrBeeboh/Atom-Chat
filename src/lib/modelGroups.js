@@ -28,6 +28,11 @@ const STATIC_GROUPS = [
     title: 'Local disk',
     hint: 'Other folders on this machine (e.g. ~/models)',
   },
+  {
+    bucket: 'disk:hf',
+    title: 'Hugging Face cache',
+    hint: 'GGUF files under ~/.cache/huggingface/hub',
+  },
 ];
 
 function bucketForModelId(id) {
@@ -41,6 +46,7 @@ function bucketForModelId(id) {
     id.endsWith('.gguf') && (id.startsWith('/') || /^[A-Za-z]:[\\/]/.test(id));
   if (isDiskGguf) {
     if (norm.toLowerCase().includes('/.lmstudio/')) return 'disk:lmstudio';
+    if (norm.toLowerCase().includes('/.cache/huggingface/')) return 'disk:hf';
     return 'disk:other';
   }
   return 'local:server';

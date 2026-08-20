@@ -351,6 +351,23 @@ function resolveModelId(modelId) {
   return colon === -1 ? modelId : modelId.slice(colon + 1);
 }
 
+/** True when id is an absolute path to a .gguf on disk. */
+function isDiskGgufPath(id) {
+  if (!id || typeof id !== 'string') return false;
+  return id.endsWith('.gguf') && (id.startsWith('/') || /^[A-Za-z]:[\\/]/.test(id));
+}
+
+/** Model id for POST /models/load — router accepts absolute paths; LM Studio prefers basename or key. */
+function localModelIdForLoad(id, { router = false } = {}) {
+  if (!id || typeof id !== 'string') return id;
+  if (router && isDiskGgufPath(id)) return id.trim();
+  if (isDiskGgufPath(id)) {
+    const base = id.replace(/\\/g, '/').split('/').pop();
+    return base && base.endsWith('.gguf') ? base : id;
+  }
+  return id.trim();
+}
+
 /** Lowercase filename for deduping disk paths vs server-reported model names. */
 function ggufBasenameLower(id) {
   if (!id || typeof id !== 'string') return '';
@@ -402,25 +419,31 @@ function mergeServerAndDiskModels(fromServer, fromDisk) {
   return out;
 }
 
-/** Dev-only: list .gguf paths from ~/.lmstudio/models and ~/models (Vite middleware). */
+/** Dev + production: list .gguf paths from common model folders (Vite dev or search-proxy). */
 async function fetchDiskModelInventory() {
-  if (!import.meta.env.DEV) return [];
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 5000);
-  try {
-    const res = await fetch('/api/atom-local-disk-models', { signal: ctrl.signal });
-    if (!res.ok) return [];
-    const data = await res.json();
-    const raw = data.models ?? data;
-    if (!Array.isArray(raw)) return [];
-    return raw
-      .map((m) => (typeof m?.id === 'string' ? { id: m.id.trim() } : null))
-      .filter((m) => m && m.id);
-  } catch {
-    return [];
-  } finally {
-    clearTimeout(t);
+  const urls = import.meta.env.DEV
+    ? ['/api/atom-local-disk-models']
+    : ['http://localhost:5174/api/atom-local-disk-models', '/api/atom-local-disk-models'];
+  for (const url of urls) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 8000);
+    try {
+      const res = await fetch(url, { signal: ctrl.signal });
+      if (!res.ok) continue;
+      const data = await res.json();
+      const raw = data.models ?? data;
+      if (!Array.isArray(raw)) continue;
+      const models = raw
+        .map((m) => (typeof m?.id === 'string' ? { id: m.id.trim() } : null))
+        .filter((m) => m && m.id);
+      if (models.length) return models;
+    } catch {
+      /* try next url */
+    } finally {
+      clearTimeout(t);
+    }
   }
+  return [];
 }
 
 /** True when model id is Grok (grok:grok-4, etc.). Used to route to Responses API with tools for real-time search. */
@@ -637,7 +660,19 @@ export async function probeLmsRestModelsList() {
  */
 async function resolveEffectiveLocalChatModelId(modelId) {
   if (!modelId || typeof modelId !== 'string' || modelId.includes(':')) return modelId;
-  if (await probeLlamaRouterModelsList()) return modelId;
+  const selBase = ggufBasenameLower(modelId);
+
+  if (await probeLlamaRouterModelsList()) {
+    const loaded = await getLoadedModelKeys();
+    if (loaded.length === 1) return loaded[0];
+    if (selBase) {
+      const match = loaded.find((k) => k === modelId || ggufBasenameLower(k) === selBase);
+      if (match) return match;
+    }
+    if (isDiskGgufPath(modelId)) return modelId;
+    return modelId;
+  }
+
   const lms = await probeLmsRestModelsList();
   if (lms) return modelId;
   let ids = lastLocalModelIds;
@@ -649,10 +684,11 @@ async function resolveEffectiveLocalChatModelId(modelId) {
     }
   }
   if (ids.length === 1) return ids[0];
-  const selBase = ggufBasenameLower(modelId);
   if (selBase) {
     const serverOnly = ids.filter((id) => !id.startsWith('/') && !/^[A-Za-z]:[\\/]/.test(id));
     if (serverOnly.length === 1 && ggufBasenameLower(serverOnly[0]) === selBase) return serverOnly[0];
+    const diskMatch = ids.find((id) => isDiskGgufPath(id) && ggufBasenameLower(id) === selBase);
+    if (diskMatch) return diskMatch;
   }
   return modelId;
 }
@@ -758,6 +794,30 @@ export async function waitUntilUnloaded(modelIds, opts = {}) {
 }
 
 /**
+ * Ensure a local model is loaded into VRAM before chat (router mode with --no-models-autoload).
+ * No-op for cloud models or when backend has no load API.
+ * @param {string} modelId
+ * @param {Object} [loadConfig]
+ */
+export async function ensureLocalModelLoaded(modelId, loadConfig = {}) {
+  if (!modelId || typeof modelId !== 'string' || modelId.includes(':')) return;
+  const router = await probeLlamaRouterModelsList();
+  const lms = await probeLmsRestModelsList();
+  if (!router && !lms) return;
+
+  const loadId = localModelIdForLoad(modelId, { router });
+  const loaded = await getLoadedModelKeys();
+  const loadBase = ggufBasenameLower(loadId);
+  const already = loaded.some((k) => {
+    const kb = ggufBasenameLower(k);
+    return k === loadId || k === modelId || (loadBase && kb === loadBase);
+  });
+  if (already) return;
+
+  await loadModel(modelId, loadConfig);
+}
+
+/**
  * Load a model: llama.cpp router uses POST /models/load; LM Studio uses POST /api/v1/models/load.
  * @param {string} modelId - Model identifier (as in GET /v1/models or GET /models)
  * @param {Object} loadConfig
@@ -776,10 +836,11 @@ export async function loadModel(modelId, loadConfig = {}) {
   const to = setTimeout(() => ctrl.abort(), 180000);
   try {
     if (await probeLlamaRouterModelsList()) {
+      const loadId = localModelIdForLoad(modelId, { router: true });
       const res = await fetch(`${base}/models/load`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: modelId.trim() }),
+        body: JSON.stringify({ model: loadId }),
         signal: ctrl.signal,
       });
       if (!res.ok) {
@@ -793,7 +854,7 @@ export async function loadModel(modelId, loadConfig = {}) {
         'This backend has no model-load API. Use llama.cpp server with router mode (Atom launcher) or LM Studio.',
       );
     }
-    const body = { model: modelId };
+    const body = { model: localModelIdForLoad(modelId) };
     if (loadConfig.context_length != null) body.context_length = loadConfig.context_length;
     if (loadConfig.eval_batch_size != null) body.eval_batch_size = loadConfig.eval_batch_size;
     if (loadConfig.flash_attention != null) body.flash_attention = loadConfig.flash_attention;
@@ -1300,6 +1361,14 @@ export async function requestChatCompletion({ model, messages, options = {} }) {
   }
   const { base, headers: authHeaders } = getBaseAndAuth(model);
   const isCloud = model && String(model).includes(':');
+  if (!isCloud) {
+    await ensureLocalModelLoaded(model, {
+      context_length: options.context_length,
+      eval_batch_size: options.eval_batch_size,
+      flash_attention: options.flash_attention,
+      offload_kv_cache_to_gpu: options.offload_kv_cache_to_gpu,
+    });
+  }
   let resolvedModel = resolveModelId(model);
   if (!isCloud) {
     const eff = resolveModelId(await resolveEffectiveLocalChatModelId(model));
@@ -1557,6 +1626,14 @@ export async function streamChatCompletion({ model, messages, options = {}, onCh
   };
   const { base, headers: authHeaders } = getBaseAndAuth(model);
   const isCloud = model && String(model).includes(':');
+  if (!isCloud) {
+    await ensureLocalModelLoaded(model, {
+      context_length: options.context_length,
+      eval_batch_size: options.eval_batch_size,
+      flash_attention: options.flash_attention,
+      offload_kv_cache_to_gpu: options.offload_kv_cache_to_gpu,
+    });
+  }
   let resolvedModel = resolveModelId(model);
   if (!isCloud) {
     const eff = resolveModelId(await resolveEffectiveLocalChatModelId(model));

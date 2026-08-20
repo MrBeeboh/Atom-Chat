@@ -16,20 +16,25 @@ If the model dropdown is empty or says "Cannot connect":
 
    The UI does not choose CUDA vs SYCL; only the **binary and environment** you run matter. ATOM just sends HTTP to **Settings → Backend URL** (default `http://localhost:8080`).
 
-2. **Verify GPU path (SYCL)**  
+2. **Where local models are found**  
+   ATOM scans these folders for `.gguf` files: `~/.lmstudio/models`, `~/models`, `~/.cache/huggingface/hub`, `~/.cache/llama.cpp`, and `~/Downloads`.  
+   Models downloaded via `huggingface-cli` (e.g. DavidAU quant repos) appear under **Hugging Face cache** in the model menu.  
+   Set **`ATOM_MODEL_DIRS`** (colon-separated paths) to add more folders. The llama router still uses **`ATOM_MODELS_DIR`** (default `~/.lmstudio/models`) — copy or symlink GGUFs there, or select the full path from the disk list (ATOM auto-loads before chat).
+
+3. **Verify GPU path (SYCL)**  
    - Watch **`llama-server.log`** after starting from our script (first lines often show backend / device).  
    - Ensure **oneAPI** / Level Zero drivers match your GPU (Arc Pro B-series needs a current stack).  
    - If something is already listening on 8080, ATOM reuses it: that process might be an **old CPU-only** server — stop it and start your SYCL `llama-server` first.
 
-3. **Settings → Backend URL**  
+4. **Settings → Backend URL**  
    - **Leave empty** → uses `localhost:8080` (llama.cpp).  
    - Change to `http://localhost:1234` for LM Studio.  
    - The URL must point to an **OpenAI-compatible** API (8080 or 1234), **not** the voice server (8765) or search proxy (5174).
 
-4. **CORS**  
+5. **CORS**  
    If you use a custom URL (e.g. another machine), enable CORS in LM Studio → Developer → Server Settings.
 
-5. **Still no models**  
+6. **Still no models**  
    If the list still does not load, the server at that URL is likely down or not OpenAI-compatible.
 
 ## Voice (mic) not working
