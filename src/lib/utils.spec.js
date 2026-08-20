@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { generateId, formatTime, messageContentToText, makeSearchSnippet } from './utils.js'
+import { generateId, formatTime, messageContentToText, makeSearchSnippet, shouldSkipImageResizeForVision } from './utils.js'
 
 describe('utils', () => {
   it('generateId returns a string', () => {
@@ -57,5 +57,19 @@ describe('makeSearchSnippet', () => {
   it('collapses whitespace/newlines into single spaces', () => {
     const snippet = makeSearchSnippet('line one\n\nneedle here\tend', 'needle')
     expect(snippet).toBe('line one needle here end')
+  })
+})
+
+describe('shouldSkipImageResizeForVision', () => {
+  it('skips resize for native Qwen 3.5 GGUFs', () => {
+    expect(
+      shouldSkipImageResizeForVision(
+        'Qwen3.5-9B-The-Defiant-Fable-Uncnr-Heretic-NEO-MAX-MTP-Q5_K_M.gguf',
+      ),
+    ).toBe(true)
+  })
+
+  it('does not skip for unrelated text models', () => {
+    expect(shouldSkipImageResizeForVision('llama-3.1-8b-instruct')).toBe(false)
   })
 })

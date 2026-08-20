@@ -4,6 +4,7 @@
 import { get } from 'svelte/store';
 import { checkLmStudioConnection, getModels } from '$lib/api.js';
 import { ensureModelIcons } from '$lib/modelIcons.js';
+import { localModelIdsMatch, pickInventoryModelId } from '$lib/localModelId.js';
 import {
   lmStudioConnected,
   models,
@@ -34,7 +35,7 @@ export function deriveSetupStatus() {
     if (connected === true) return 'no_models';
     return 'disconnected';
   }
-  if (!modelId || !list.some((m) => m.id === modelId)) return 'no_selection';
+  if (!modelId || !list.some((m) => m.id === modelId || localModelIdsMatch(m.id, modelId))) return 'no_selection';
   return 'ready';
 }
 
@@ -55,8 +56,8 @@ export async function refreshConnectionAndModels() {
     const stored =
       typeof localStorage !== 'undefined' ? (localStorage.getItem('selectedModel') || '').trim() : '';
     const current = (get(selectedModelId) || '').trim();
-    const storedValid = stored && ids.includes(stored);
-    const currentValid = current && ids.includes(current);
+    const storedValid = stored && ids.some((id) => localModelIdsMatch(id, stored));
+    const currentValid = current && ids.some((id) => localModelIdsMatch(id, current));
 
     if (ids.length === 0) {
       if (connected) {
@@ -76,7 +77,8 @@ export async function refreshConnectionAndModels() {
     }
 
     if (!currentValid) {
-      const pick = storedValid ? stored : findSmallestModel(ids);
+      const fromStored = stored ? pickInventoryModelId(stored, ids) : null;
+      const pick = (fromStored && ids.some((id) => localModelIdsMatch(id, fromStored))) ? fromStored : findSmallestModel(ids);
       if (pick) {
         selectedModelId.set(pick);
         if (stored && !storedValid) {
@@ -90,6 +92,8 @@ export async function refreshConnectionAndModels() {
         }
       }
     } else {
+      const canonical = pickInventoryModelId(current, ids);
+      if (canonical && canonical !== current && ids.includes(canonical)) selectedModelId.set(canonical);
       modelSelectionNotification.set(null);
     }
 
