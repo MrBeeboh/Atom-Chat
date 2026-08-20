@@ -25,6 +25,20 @@ const FAMILY_DEFAULTS = {
     top_k: 64,
     repeat_penalty: 1.15,
   },
+  qwen35: {
+    name: 'Qwen 3.5+',
+    context_length: 32768,
+    eval_batch_size: 512,
+    flash_attention: true,
+    offload_kv_cache_to_gpu: true,
+    gpu_offload: 'max',
+    cpu_threads: 8,
+    temperature: 1.0,
+    max_tokens: 4096,
+    top_p: 0.95,
+    top_k: 20,
+    repeat_penalty: 1.0,
+  },
   llama: {
     name: 'Llama',
     context_length: 4096,
@@ -144,6 +158,7 @@ const FAMILY_DEFAULTS = {
 const FAMILY_PATTERNS = [
   { key: 'codellama', test: (id) => /codellama|code.?llama/i.test(id) },
   { key: 'minicpm', test: (id) => /minicpm/i.test(id) },
+  { key: 'qwen35', test: (id) => /qwen3\.\d|defiant[-_.]?fable/i.test(id) },
   { key: 'qwen', test: (id) => /qwen/i.test(id) },
   { key: 'llama', test: (id) => /llama|meta/i.test(id) },
   { key: 'phi', test: (id) => /phi-|microsoft\/phi/i.test(id) },
@@ -169,6 +184,7 @@ function inferFamily(modelId) {
 /** Optimal system prompts per model family (from Hugging Face model cards, creator docs). */
 const RECOMMENDED_SYSTEM_PROMPTS = {
   qwen: 'You are a helpful assistant.',
+  qwen35: 'You are a vision-language model. You can see and discuss images, PDFs, and video. Describe and reason about visual content when the user sends it. Do not say you are text-only.',
   llama: 'You are a helpful assistant.',
   phi: 'You are a helpful assistant.',
   mistral: 'You are a helpful assistant.',
@@ -185,7 +201,7 @@ function inferVisionFamily(modelId) {
   if (!modelId || typeof modelId !== 'string') return null;
   const lower = modelId.toLowerCase();
   if (/minicpm-v|minicpm.*v\s*\d/i.test(lower)) return 'minicpm';
-  if (/qwen2-vl|qwen.*vl/i.test(lower)) return 'qwen2-vl';
+  if (/qwen3\.\d|defiant[-_.]?fable|qwen2-vl|qwen3[-.]?vl|qwen.*vl/i.test(lower)) return 'qwen35';
   return null;
 }
 

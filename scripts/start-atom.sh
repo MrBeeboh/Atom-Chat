@@ -130,18 +130,43 @@ else
         MODEL="$(pick_smallest_gguf)"
     fi
 
+    : >>"$ROOT/llama-server.log"
+    spawn_llama() {
+        if command -v setsid >/dev/null 2>&1; then
+            setsid nohup "$@" >>"$ROOT/llama-server.log" 2>&1 &
+        else
+            nohup "$@" >>"$ROOT/llama-server.log" 2>&1 &
+        fi
+        LLAMA_PID=$!
+        disown || true
+    }
+
+    pick_mmproj() {
+        local dir="$1"
+        local name found
+        for name in mmproj-F16.gguf mmproj-BF16.gguf mmproj-F32.gguf; do
+            if [ -f "$dir/$name" ]; then
+                printf '%s' "$dir/$name"
+                return
+            fi
+        done
+        found="$(find "$dir" -maxdepth 1 -iname 'mmproj*.gguf' -type f 2>/dev/null | head -1)"
+        printf '%s' "$found"
+    }
+
     if [ "$ROUTER" = 1 ]; then
         echo "[ATOM] Router: --models-dir $ATOM_MODELS_DIR --models-max 1 --no-models-autoload (nothing preloaded into VRAM)"
-        : >>"$ROOT/llama-server.log"
-        nohup "$LLAMA_BIN" --models-dir "$ATOM_MODELS_DIR" --models-max 1 "${ROUTER_EXTRA[@]}" --n-gpu-layers 99 --port 8080 --host 0.0.0.0 >>"$ROOT/llama-server.log" 2>&1 &
-        LLAMA_PID=$!
-        disown || true
+        echo "[ATOM] Put mmproj-*.gguf next to each vision GGUF (same folder) so images work after load."
+        spawn_llama "$LLAMA_BIN" --models-dir "$ATOM_MODELS_DIR" --models-max 1 "${ROUTER_EXTRA[@]}" --n-gpu-layers 99 --port 8080 --host 0.0.0.0
     elif [ -n "$MODEL" ] && [ -f "$MODEL" ]; then
         echo "[ATOM] Using model (explicit or smallest GGUF): $MODEL"
-        : >>"$ROOT/llama-server.log"
-        nohup "$LLAMA_BIN" -m "$MODEL" --port 8080 --n-gpu-layers 99 --host 0.0.0.0 >>"$ROOT/llama-server.log" 2>&1 &
-        LLAMA_PID=$!
-        disown || true
+        MMPROJ="$(pick_mmproj "$(dirname "$MODEL")")"
+        MM_ARGS=()
+        if [ -n "$MMPROJ" ]; then
+            echo "[ATOM] Vision projector: $MMPROJ"
+            MM_ARGS=(--mmproj "$MMPROJ")
+        fi
+        spawn_llama "$LLAMA_BIN" -m "$MODEL" "${MM_ARGS[@]}" --port 8080 --n-gpu-layers 99 --host 0.0.0.0
     else
         echo "[ATOM] No .gguf found for legacy -m mode and router unavailable (missing --models-dir in this binary or empty $ATOM_MODELS_DIR)."
         LLAMA_PID=""

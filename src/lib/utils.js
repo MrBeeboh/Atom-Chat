@@ -75,7 +75,7 @@ export async function resizeImageDataUrlsForVision(dataUrls) {
 export function shouldSkipImageResizeForVision(modelId) {
   if (!modelId || typeof modelId !== 'string') return false;
   const lower = modelId.toLowerCase();
-  return /qwen.*vl.*(4b|8b)|(4b|8b).*qwen.*vl/.test(lower);
+  return /qwen.*vl.*(4b|8b|9b)|(4b|8b|9b).*qwen.*vl|qwen3\.\d/.test(lower);
 }
 
 /**

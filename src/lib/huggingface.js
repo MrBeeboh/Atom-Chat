@@ -6,6 +6,9 @@
 
 /** Map LM Studio–style name patterns to Hugging Face repo ids (without quantization suffix). */
 const HF_MODEL_GUESSES = [
+  { pattern: /defiant[-_.]?fable/i, repo: () => 'DavidAU/Qwen3.5-9B-The-Defiant-Fable-Uncensored-Heretic-NEO-IMATRIX-MAX-MTP-GGUF' },
+  { pattern: /qwen3\.5[-_]?9b/i, repo: () => 'Qwen/Qwen3.5-9B' },
+  { pattern: /qwen3\.5/i, repo: () => 'Qwen/Qwen3.5-9B' },
   { pattern: /qwen2\.?5?-?(\d+b)/i, repo: (m) => `Qwen/Qwen2.5-${m[1]}-Instruct` },
   { pattern: /qwen2-?(\d+b)/i, repo: (m) => `Qwen/Qwen2-${m[1]}-Instruct` },
   { pattern: /llama-?3\.?2?-?(\d+b)/i, repo: (m) => `meta-llama/Llama-3.2-${m[1]}-Instruct` },
@@ -80,15 +83,24 @@ const HF_API = 'https://huggingface.co/api';
  */
 export async function searchHfModels(query, opts = {}) {
   const limit = Math.min(Number(opts.limit) || 10, 20);
-  const pipelineTag = opts.pipelineTag || 'text-generation';
+  const pipelineTag = opts.pipelineTag;
   try {
     const params = new URLSearchParams({ search: query, limit: String(limit) });
     const res = await fetch(`${HF_API}/models?${params}`, { method: 'GET', mode: 'cors' });
     if (!res.ok) return [];
     const list = await res.json();
     if (!Array.isArray(list)) return [];
+    const allowed = new Set(
+      pipelineTag
+        ? [String(pipelineTag).toLowerCase()]
+        : ['text-generation', 'image-text-to-text', 'any-to-any'],
+    );
     return list
-      .filter((m) => (m.pipeline_tag || '').toLowerCase() === pipelineTag || !pipelineTag)
+      .filter((m) => {
+        const tag = (m.pipeline_tag || '').toLowerCase();
+        if (pipelineTag) return !tag || tag === String(pipelineTag).toLowerCase();
+        return !tag || allowed.has(tag);
+      })
       .slice(0, limit)
       .map((m) => ({ modelId: m.modelId || m.id, downloads: m.downloads || 0, likes: m.likes || 0 }));
   } catch {
@@ -159,7 +171,7 @@ export async function resolveHfRepoForIcon(lmStudioId) {
     .trim();
   if (cleaned.length < 2) return null;
   const searchQuery = cleaned.replace(/[-_\s]+/g, ' ').trim().slice(0, 50);
-  const results = await searchHfModels(searchQuery, { limit: 5, pipelineTag: 'text-generation' });
+  const results = await searchHfModels(searchQuery, { limit: 5 });
   if (results.length === 0) return null;
   // Prefer highest downloads
   const best = results.sort((a, b) => (b.downloads || 0) - (a.downloads || 0))[0];

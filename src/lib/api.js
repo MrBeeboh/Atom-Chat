@@ -9,6 +9,14 @@
  * Base URL: localStorage lmStudioBaseUrl or dev proxy /api/llama or http://localhost:8080.
  */
 
+import { noteModelVisionCapability } from './modelCapabilities.js';
+import {
+  diskPathCoveredByServer,
+  ggufBasenameLower,
+  isMmprojGguf,
+  pickInventoryModelId,
+} from './localModelId.js';
+
 // Default backend changed to llama.cpp (llama-server) on port 8080.
 // LM Studio still works if you change the URL in Settings → Connection.
 const DEFAULT_BASE = typeof import.meta !== 'undefined' && import.meta.env?.DEV ? '/api/llama' : 'http://localhost:8080';
@@ -108,12 +116,33 @@ function extractRouterModelRows(data) {
   return [];
 }
 
+function routerRowHasVision(m) {
+  const mods = m?.architecture?.input_modalities ?? m?.input_modalities ?? m?.modalities;
+  if (!Array.isArray(mods)) return false;
+  return mods.some((x) => {
+    const s = String(x).toLowerCase();
+    return s === 'image' || s === 'vision' || s === 'video';
+  });
+}
+
+function routerStatusValue(m) {
+  const st = m?.status ?? m?.state;
+  if (st && typeof st === 'object') return String(st.value ?? st.state ?? '').toLowerCase();
+  return String(st ?? '').toLowerCase();
+}
+
 function parseLlamaRouterModelsList(data) {
   const rows = extractRouterModelRows(data);
   const items = [];
   for (const m of rows) {
     const id = m?.id ?? m?.name ?? m?.model ?? m?.path;
-    if (typeof id === 'string' && id.trim()) items.push({ id: id.trim() });
+    if (typeof id !== 'string' || !id.trim() || isMmprojGguf(id)) continue;
+    const item = { id: id.trim() };
+    if (routerRowHasVision(m)) {
+      item.vision = true;
+      noteModelVisionCapability(item.id, true);
+    }
+    items.push(item);
   }
   return mergeUniqueModelItems(items);
 }
@@ -123,13 +152,19 @@ function getLoadedIdsFromRouterData(data) {
   const out = [];
   for (const m of rows) {
     const id = m?.id ?? m?.name ?? m?.model ?? m?.path;
-    if (typeof id !== 'string' || !id.trim()) continue;
-    const st = String(m?.state ?? m?.status ?? '').toLowerCase();
-    if (st === 'loaded' || m?.loaded === true || m?.is_active === true || m?.active === true) {
+    if (typeof id !== 'string' || !id.trim() || isMmprojGguf(id)) continue;
+    const st = routerStatusValue(m);
+    if (st === 'loaded' || st === 'sleeping' || m?.loaded === true || m?.is_active === true || m?.active === true) {
       out.push(id.trim());
     }
   }
   return out;
+}
+
+function withQueryParam(url, key, value) {
+  if (!url || typeof url !== 'string') return url;
+  const sep = url.includes('?') ? '&' : '?';
+  return `${url}${sep}${encodeURIComponent(key)}=${encodeURIComponent(value)}`;
 }
 
 /**
@@ -351,14 +386,6 @@ function resolveModelId(modelId) {
   return colon === -1 ? modelId : modelId.slice(colon + 1);
 }
 
-/** Lowercase filename for deduping disk paths vs server-reported model names. */
-function ggufBasenameLower(id) {
-  if (!id || typeof id !== 'string') return '';
-  const s = id.replace(/\\/g, '/');
-  const i = s.lastIndexOf('/');
-  return (i === -1 ? s : s.slice(i + 1)).toLowerCase();
-}
-
 /**
  * llama-server /v1/chat/completions expects the loaded model id (usually the .gguf basename).
  * Disk inventory uses absolute paths under ~/.lmstudio/models.
@@ -378,24 +405,28 @@ function localModelIdForOpenAIRequest(id) {
 
 /**
  * Merge server model list with dev disk scan: server order first; skip disk rows whose basename
- * duplicates a server id.
- * @param {{ id: string }[]} fromServer
- * @param {{ id: string }[]} fromDisk
+ * duplicates a server id (or whose folder is the router bundle id).
+ * @param {{ id: string, vision?: boolean }[]} fromServer
+ * @param {{ id: string, vision?: boolean, mmproj?: string }[]} fromDisk
  */
 function mergeServerAndDiskModels(fromServer, fromDisk) {
   const seenFull = new Set();
   const seenBase = new Set();
   const out = [];
+  const serverIds = (fromServer || []).map((m) => m?.id).filter(Boolean);
   for (const list of [fromServer, fromDisk]) {
+    const isDisk = list === fromDisk;
     for (const m of list) {
       const id = typeof m?.id === 'string' ? m.id.trim() : '';
-      if (!id) continue;
+      if (!id || isMmprojGguf(id)) continue;
+      if (isDisk && diskPathCoveredByServer(id, serverIds)) continue;
       const fullKey = id.toLowerCase();
       const baseKey = ggufBasenameLower(id);
       if (seenFull.has(fullKey)) continue;
       if (seenBase.has(baseKey) && baseKey.endsWith('.gguf')) continue;
       seenFull.add(fullKey);
       if (baseKey) seenBase.add(baseKey);
+      if (m?.vision || m?.mmproj) noteModelVisionCapability(id, true);
       out.push({ id });
     }
   }
@@ -414,7 +445,13 @@ async function fetchDiskModelInventory() {
     const raw = data.models ?? data;
     if (!Array.isArray(raw)) return [];
     return raw
-      .map((m) => (typeof m?.id === 'string' ? { id: m.id.trim() } : null))
+      .map((m) => {
+        if (typeof m?.id !== 'string') return null;
+        const id = m.id.trim();
+        if (!id || isMmprojGguf(id)) return null;
+        if (m.vision || m.mmproj) noteModelVisionCapability(id, true);
+        return { id, vision: Boolean(m.vision || m.mmproj), mmproj: typeof m.mmproj === 'string' ? m.mmproj : undefined };
+      })
       .filter((m) => m && m.id);
   } catch {
     return [];
@@ -513,9 +550,16 @@ function parseChatApiError(status, bodyText, modelId) {
       }
       return `The API server had an error (${status}). Try again later.`;
     case 400:
-      if (code === 'model_not_found') return apiMessage || 'Model not found. Check the model name in Settings or try a different model.';
-      if (code === 'context_length_exceeded') return apiMessage || 'Message or context too long. Try a shorter conversation or message.';
-      return apiMessage || 'Bad request. Check your request or try a different model.';
+    case 404:
+      if (code === 'model_not_found' || /model ['"].+['"] not found/i.test(apiMessage)) {
+        return (
+          apiMessage ||
+          'Model not found. Re-select it in the model menu, or restart with ./scripts/start-atom.sh so llama-server can load the GGUF (and mmproj for vision).'
+        );
+      }
+      if (status === 400 && code === 'context_length_exceeded') return apiMessage || 'Message or context too long. Try a shorter conversation or message.';
+      if (status === 400) return apiMessage || 'Bad request. Check your request or try a different model.';
+      return apiMessage || `Request failed (${status}). Try again or check Settings.`;
     default:
       return apiMessage || `Request failed (${status}). Try again or check Settings.`;
   }
@@ -637,24 +681,25 @@ export async function probeLmsRestModelsList() {
  */
 async function resolveEffectiveLocalChatModelId(modelId) {
   if (!modelId || typeof modelId !== 'string' || modelId.includes(':')) return modelId;
-  if (await probeLlamaRouterModelsList()) return modelId;
-  const lms = await probeLmsRestModelsList();
-  if (lms) return modelId;
   let ids = lastLocalModelIds;
   if (ids.length === 0) {
     try {
       ids = (await getLocalModels()).map((m) => m.id);
     } catch {
-      return modelId;
+      ids = [];
     }
   }
+  const mapped = pickInventoryModelId(modelId, ids);
+  if (await probeLlamaRouterModelsList()) return mapped;
+  const lms = await probeLmsRestModelsList();
+  if (lms) return mapped;
   if (ids.length === 1) return ids[0];
   const selBase = ggufBasenameLower(modelId);
   if (selBase) {
     const serverOnly = ids.filter((id) => !id.startsWith('/') && !/^[A-Za-z]:[\\/]/.test(id));
     if (serverOnly.length === 1 && ggufBasenameLower(serverOnly[0]) === selBase) return serverOnly[0];
   }
-  return modelId;
+  return mapped;
 }
 
 /**
@@ -774,12 +819,13 @@ export async function loadModel(modelId, loadConfig = {}) {
   const base = getLmStudioBase();
   const ctrl = new AbortController();
   const to = setTimeout(() => ctrl.abort(), 180000);
+  const loadId = modelId.includes(':') ? modelId.trim() : pickInventoryModelId(modelId.trim(), lastLocalModelIds);
   try {
     if (await probeLlamaRouterModelsList()) {
       const res = await fetch(`${base}/models/load`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: modelId.trim() }),
+        body: JSON.stringify({ model: loadId }),
         signal: ctrl.signal,
       });
       if (!res.ok) {
@@ -862,7 +908,7 @@ export async function unloadModel(modelId) {
       await fetch(`${base}/models/unload`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: modelId.trim() }),
+        body: JSON.stringify({ model: pickInventoryModelId(modelId.trim(), lastLocalModelIds) }),
         signal: ctrl.signal,
       });
     } catch (_) {
@@ -1307,7 +1353,9 @@ export async function requestChatCompletion({ model, messages, options = {} }) {
     resolvedModel = router ? eff : localModelIdForOpenAIRequest(eff);
   }
   const lmsHasRestModels = !isCloud && (await probeLmsRestModelsList());
-  const url = isDeepinfraModel(model) ? `${base}/chat/completions` : (base.endsWith('/v1') ? `${base}/chat/completions` : `${base}/v1/chat/completions`);
+  const router = !isCloud && (await probeLlamaRouterModelsList());
+  let url = isDeepinfraModel(model) ? `${base}/chat/completions` : (base.endsWith('/v1') ? `${base}/chat/completions` : `${base}/v1/chat/completions`);
+  if (router) url = withQueryParam(url, 'autoload', 'true');
   const headers = { 'Content-Type': 'application/json', ...authHeaders };
   const rawMax = options.max_tokens ?? 1024;
   const maxTokens = isCloud ? Math.max(1, Math.min(8192, Number(rawMax) || 1024)) : rawMax;
@@ -1564,7 +1612,9 @@ export async function streamChatCompletion({ model, messages, options = {}, onCh
     resolvedModel = router ? eff : localModelIdForOpenAIRequest(eff);
   }
   const lmsHasRestModels = !isCloud && (await probeLmsRestModelsList());
-  const streamUrl = isDeepinfraModel(model) ? `${base}/chat/completions` : (base.endsWith('/v1') ? `${base}/chat/completions` : `${base}/v1/chat/completions`);
+  const router = !isCloud && (await probeLlamaRouterModelsList());
+  let streamUrl = isDeepinfraModel(model) ? `${base}/chat/completions` : (base.endsWith('/v1') ? `${base}/chat/completions` : `${base}/v1/chat/completions`);
+  if (router) streamUrl = withQueryParam(streamUrl, 'autoload', 'true');
   const headers = { 'Content-Type': 'application/json', ...authHeaders };
   const rawMax = options.max_tokens ?? 4096;
   const maxTokens = isCloud ? Math.max(1, Math.min(8192, Number(rawMax) || 4096)) : rawMax;

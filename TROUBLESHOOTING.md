@@ -4,6 +4,12 @@ Quick checks when something stops working (e.g. after fixing voice or internet).
 
 ## Models not loading (llama.cpp / LM Studio)
 
+If chat shows **model '...gguf' not found** after closing Cursor:
+
+- ATOM was sending the full disk path (`~/.lmstudio/models/...`) while llama-server router expects a relative id. Re-select the model (or just send again after updating ATOM) — the UI remaps the path and asks the router to autoload.
+- Closing Cursor can kill a `llama-server` started from the IDE terminal. Restart with **`./scripts/start-atom.sh`** (or the desktop icon). The launcher now detaches llama-server with `setsid` so a later Cursor close should not take it down.
+- If the GGUF is a **vision** model (Qwen 3.5+, Qwen-VL, etc.), put **one** `mmproj-*.gguf` in the **same folder** as the GGUF. DavidAU Qwen3.5 Defiant Fable ships `mmproj-F16.gguf` / `mmproj-BF16.gguf` / `mmproj-F32.gguf` on the Hugging Face repo.
+
 If the model dropdown is empty or says "Cannot connect":
 
 1. **Start your backend first**  

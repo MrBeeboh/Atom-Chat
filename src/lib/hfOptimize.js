@@ -20,10 +20,10 @@ function delay(ms) {
 }
 
 /** Quantization suffixes to strip when resolving model name */
-const QUANT_SUFFIXES = /\.(Q[2-8]_[KQ]?[SML]?|Q[2-8]_0|F16|F32)(\.gguf)?$/i;
+const QUANT_SUFFIXES = /\.(IQ[1-4]_[A-Z]{1,2}|Q[2-8]_[KQ]?[SML]?|Q[2-8]_0|F16|BF16|F32)(\.gguf)?$/i;
 
 /** Known GGUF uploaders whose repos typically have llama.cpp examples with optimal params */
-const GGUF_AUTHORS = ['TheBloke', 'bartowski', 'QuantFactory'];
+const GGUF_AUTHORS = ['TheBloke', 'bartowski', 'QuantFactory', 'DavidAU', 'unsloth', 'lmstudio-community'];
 
 /**
  * Resolve LM Studio model ID to Hugging Face repo ID.
