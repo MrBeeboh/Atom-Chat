@@ -4,17 +4,23 @@
  */
 
 function viteEnvStr(key) {
-  if (typeof import.meta === 'undefined' || !import.meta.env) return '';
-  const v = import.meta.env[key];
+  const map = {
+    VITE_DEEPSEEK_API_KEY: import.meta.env.VITE_DEEPSEEK_API_KEY,
+    VITE_GROK_API_KEY: import.meta.env.VITE_GROK_API_KEY,
+    VITE_CEREBRAS_API_KEY: import.meta.env.VITE_CEREBRAS_API_KEY,
+    VITE_DEEPINFRA_API_KEY: import.meta.env.VITE_DEEPINFRA_API_KEY,
+  };
+  const v = map[key];
   return typeof v === 'string' ? v.trim() : '';
 }
 
 function localStorageOrVite(storageKey, viteName) {
+  const fromEnv = viteEnvStr(viteName);
+  if (fromEnv) return fromEnv;
   if (typeof localStorage !== 'undefined') {
-    const fromLs = (localStorage.getItem(storageKey) ?? '').trim();
-    if (fromLs) return fromLs;
+    return (localStorage.getItem(storageKey) ?? '').trim();
   }
-  return viteEnvStr(viteName);
+  return '';
 }
 
 function isDev() {

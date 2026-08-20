@@ -5,6 +5,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execSync } from 'node:child_process'
 import { vitePluginLocalDiskModels } from './scripts/vite-plugin-local-disk-models.mjs'
+import { vitePluginDesktopHost } from './scripts/vite-plugin-desktop-host.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -17,7 +18,7 @@ export default defineConfig({
   define: {
     __GIT_REV__: JSON.stringify(gitRev()),
   },
-  plugins: [svelte(), tailwindcss(), vitePluginLocalDiskModels()],
+  plugins: [svelte(), tailwindcss(), vitePluginLocalDiskModels(), vitePluginDesktopHost()],
   resolve: {
     alias: {
       $lib: path.resolve(__dirname, 'src/lib'),

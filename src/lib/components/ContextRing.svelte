@@ -16,9 +16,9 @@
   const circumference = 2 * Math.PI * radius;
 
   const used = $derived($contextUsage.promptTokens);
-  const storeMax = $derived($contextUsage.contextMax || 128000);
+  const storeMax = $derived($contextUsage.contextMax || 0);
   const userMax = $derived(Number($settings?.context_length) || 0);
-  const max = $derived(userMax > 0 ? userMax : storeMax);
+  const max = $derived(userMax > 0 ? userMax : storeMax > 0 ? storeMax : 128000);
   const ratio = $derived(Math.min(1, used / max));
   const dashOffset = $derived(circumference * (1 - ratio));
   const isHigh = $derived(ratio >= 0.85);

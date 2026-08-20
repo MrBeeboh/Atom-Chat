@@ -55,7 +55,7 @@ else
   echo ""
   echo "  Quick start with llama.cpp on Intel GPU (SYCL build recommended):"
   echo "    source /opt/intel/oneapi/setvars.sh   # Linux oneAPI"
-  echo "    llama-server -m /path/to/model.gguf --port 8080 --n-gpu-layers 99"
+  echo "    llama-server -m /path/to/model.gguf --port 8080 --n-gpu-layers all --flash-attn on --split-mode layer --tensor-split 0.50,0.50 --device SYCL0,SYCL1 --parallel 1"
   echo ""
   echo "  Or install LM Studio and enable its local server (port 1234)."
 fi

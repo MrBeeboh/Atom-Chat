@@ -86,6 +86,132 @@ if ! echo "${LLAMA_BIN}" | grep -qi sycl; then
   echo "[ATOM] Tip: On Intel Arc, use a SYCL-enabled llama.cpp build for GPU speed (see TROUBLESHOOTING.md). Set LLAMA_SERVER_BIN if needed."
 fi
 
+# --- Arc Pro B70 / Intel SYCL defaults ---------------------------------------
+# ATOM takes both cards: layer-split 50/50 + Flash Attention (Xe2 XMX).
+# --parallel 1 keeps the full KV for one conversation (auto was 4 slots).
+# On launch, other apps' local models are unloaded first (see free_other_local_models).
+# Skip GPU flags: ATOM_SKIP_B70_FLAGS=1
+# Skip ejecting others: ATOM_SKIP_UNLOAD_OTHERS=1
+# One card only: ATOM_LLAMA_SPLIT=none ATOM_LLAMA_DEVICE=SYCL0
+# Tensor parallel instead of layer: ATOM_LLAMA_SPLIT=tensor
+apply_b70_runtime_env() {
+  if [ -n "${ATOM_SKIP_B70_FLAGS:-}" ]; then
+    return
+  fi
+  # Keep both Level Zero GPUs visible so --device SYCL0/SYCL1 works.
+  export ONEAPI_DEVICE_SELECTOR="${ONEAPI_DEVICE_SELECTOR:-level_zero:gpu}"
+  export ZES_ENABLE_SYSMAN="${ZES_ENABLE_SYSMAN:-1}"
+  export UR_L0_ENABLE_RELAXED_ALLOCATION_LIMITS="${UR_L0_ENABLE_RELAXED_ALLOCATION_LIMITS:-1}"
+  export GGML_SYCL_ENABLE_FLASH_ATTN="${GGML_SYCL_ENABLE_FLASH_ATTN:-1}"
+  export GGML_SYCL_ENABLE_OPT="${GGML_SYCL_ENABLE_OPT:-1}"
+  if [ -n "${ATOM_SYCL_FA_ONEDNN:-}" ]; then
+    export GGML_SYCL_FA_ONEDNN="${ATOM_SYCL_FA_ONEDNN}"
+  fi
+}
+
+llama_has() {
+  printf '%s' "${LLAMA_HELP}" | grep -qE -- "$1"
+}
+
+build_llama_gpu_flags() {
+  LLAMA_GPU_FLAGS=()
+  if [ -n "${ATOM_SKIP_B70_FLAGS:-}" ]; then
+    if llama_has 'n-gpu-layers'; then
+      LLAMA_GPU_FLAGS+=(--n-gpu-layers "${ATOM_N_GPU_LAYERS:-99}")
+    fi
+    return
+  fi
+
+  local ngl
+  if llama_has "or 'all'"; then
+    ngl="${ATOM_N_GPU_LAYERS:-all}"
+  else
+    ngl="${ATOM_N_GPU_LAYERS:-999}"
+  fi
+  if llama_has 'n-gpu-layers'; then
+    LLAMA_GPU_FLAGS+=(--n-gpu-layers "$ngl")
+  fi
+
+  if llama_has 'flash-attn \[on'; then
+    LLAMA_GPU_FLAGS+=(--flash-attn "${ATOM_FLASH_ATTN:-on}")
+  elif llama_has 'flash-attn'; then
+    LLAMA_GPU_FLAGS+=(--flash-attn)
+  fi
+
+  local is_sycl=0
+  if echo "${LLAMA_BIN}" | grep -qi sycl || printf '%s' "${LLAMA_HELP}" | grep -qi SYCL; then
+    is_sycl=1
+  fi
+
+  local have_two=0
+  if [ "$is_sycl" = 1 ] && printf '%s' "${SYCL_DEVICE_LIST}" | grep -q 'SYCL1:'; then
+    have_two=1
+  fi
+
+  local split="${ATOM_LLAMA_SPLIT:-}"
+  if [ -z "$split" ]; then
+    if [ "$have_two" = 1 ]; then
+      split=layer
+    else
+      split=none
+    fi
+  fi
+  if llama_has 'split-mode'; then
+    LLAMA_GPU_FLAGS+=(--split-mode "$split")
+  fi
+
+  if [ "$split" = "none" ]; then
+    if [ "$is_sycl" = 1 ] && llama_has '--device <dev'; then
+      LLAMA_GPU_FLAGS+=(--device "${ATOM_LLAMA_DEVICE:-SYCL0}")
+    elif llama_has 'main-gpu'; then
+      LLAMA_GPU_FLAGS+=(--main-gpu "${ATOM_LLAMA_GPU:-0}")
+    fi
+  else
+    if [ "$is_sycl" = 1 ] && llama_has '--device <dev'; then
+      LLAMA_GPU_FLAGS+=(--device "${ATOM_LLAMA_DEVICE:-SYCL0,SYCL1}")
+    fi
+    if llama_has 'tensor-split'; then
+      LLAMA_GPU_FLAGS+=(--tensor-split "${ATOM_TENSOR_SPLIT:-0.50,0.50}")
+    fi
+  fi
+
+  if llama_has '--parallel N'; then
+    LLAMA_GPU_FLAGS+=(--parallel "${ATOM_LLAMA_PARALLEL:-1}")
+  fi
+
+  if [ -n "${ATOM_UBATCH:-}" ] && llama_has 'ubatch-size'; then
+    LLAMA_GPU_FLAGS+=(--ubatch-size "${ATOM_UBATCH}")
+  fi
+  if [ -n "${ATOM_BATCH:-}" ] && llama_has 'batch-size'; then
+    LLAMA_GPU_FLAGS+=(--batch-size "${ATOM_BATCH}")
+  fi
+  if llama_has 'ctx-size'; then
+    # 0 = GGUF n_ctx_train (this model's max). Never default to 32768.
+    local ctx="${ATOM_CTX:-0}"
+    if [ "$ctx" = "32768" ]; then
+      ctx=0
+    fi
+    LLAMA_GPU_FLAGS+=(--ctx-size "$ctx")
+  fi
+  if [ "${ATOM_KV_QUANT:-}" = "1" ] && llama_has 'cache-type-k'; then
+    LLAMA_GPU_FLAGS+=(--cache-type-k q8_0 --cache-type-v q8_0)
+  fi
+}
+
+apply_b70_runtime_env
+LLAMA_HELP="$("${LLAMA_BIN}" --help 2>&1 || true)"
+SYCL_DEVICE_LIST=""
+if echo "${LLAMA_BIN}" | grep -qi sycl || printf '%s' "${LLAMA_HELP}" | grep -qi SYCL; then
+  SYCL_DEVICE_LIST="$("${LLAMA_BIN}" --list-devices 2>/dev/null || true)"
+fi
+build_llama_gpu_flags
+if [ "${#LLAMA_GPU_FLAGS[@]}" -gt 0 ]; then
+  echo "[ATOM] llama GPU flags: ${LLAMA_GPU_FLAGS[*]}"
+fi
+if [ -z "${ATOM_SKIP_B70_FLAGS:-}" ]; then
+  echo "[ATOM] SYCL env: ONEAPI_DEVICE_SELECTOR=${ONEAPI_DEVICE_SELECTOR:-unset} ZES_ENABLE_SYSMAN=${ZES_ENABLE_SYSMAN:-unset} UR_L0_ENABLE_RELAXED_ALLOCATION_LIMITS=${UR_L0_ENABLE_RELAXED_ALLOCATION_LIMITS:-unset}"
+fi
+
 # Pick smallest .gguf under these trees (loads faster; avoids auto-picking a 30B+ first from sort order).
 pick_smallest_gguf() {
     local line
@@ -105,20 +231,163 @@ llama_ready() {
         || curl -sS --max-time 3 "http://127.0.0.1:8080/models" >/dev/null 2>&1
 }
 
+pid_listening_on() {
+  local port="$1"
+  ss -H -ltnp "sport = :${port}" 2>/dev/null | grep -oP 'pid=\K[0-9]+' | head -1 || true
+}
+
+llama_server_pids() {
+  ps -C llama-server -o pid= 2>/dev/null | tr -d ' ' | awk 'NF' || true
+}
+
+pid_is_in_tree() {
+  local pid="$1"
+  local root="$2"
+  local cur="$pid"
+  local pp
+  [ -z "$root" ] && return 1
+  while [ -n "$cur" ] && [ "$cur" != 0 ]; do
+    if [ "$cur" = "$root" ]; then
+      return 0
+    fi
+    pp="$(ps -o ppid= -p "$cur" 2>/dev/null | tr -d ' ' || true)"
+    if [ -z "$pp" ] || [ "$pp" = "$cur" ]; then
+      break
+    fi
+    cur="$pp"
+  done
+  return 1
+}
+
+# Unload every other local inference holder so both B70s are free for ATOM.
+# Keeps the llama-server tree on :8080 (ATOM's backend and its loaded-model children).
+free_other_local_models() {
+  if [ -n "${ATOM_SKIP_UNLOAD_OTHERS:-}" ]; then
+    echo "[ATOM] Skipping unload of other apps (ATOM_SKIP_UNLOAD_OTHERS=1)"
+    return
+  fi
+
+  echo "[ATOM] Unloading other apps' local models (both GPUs for ATOM)..."
+
+  local lms_bin=""
+  if command -v lms >/dev/null 2>&1; then
+    lms_bin="$(command -v lms)"
+  elif [ -x "$HOME/.lmstudio/bin/lms" ]; then
+    lms_bin="$HOME/.lmstudio/bin/lms"
+  fi
+  if [ -n "$lms_bin" ]; then
+    if timeout 20 "$lms_bin" unload --all >/dev/null 2>&1; then
+      echo "[ATOM] LM Studio: unloaded"
+    else
+      echo "[ATOM] LM Studio: unload skipped (none loaded, or lms timed out)"
+    fi
+  fi
+
+  if command -v ollama >/dev/null 2>&1; then
+    local names
+    names="$(timeout 10 ollama ps 2>/dev/null | awk 'NR > 1 && $1 != "" && $1 != "NAME" { print $1 }')"
+    if [ -n "$names" ]; then
+      while IFS= read -r name; do
+        [ -z "$name" ] && continue
+        timeout 20 ollama stop "$name" >/dev/null 2>&1 && echo "[ATOM] Ollama: stopped $name" || true
+      done <<< "$names"
+    fi
+  fi
+
+  if ss -H -ltn "sport = :8188" 2>/dev/null | grep -q .; then
+    curl -sS --max-time 5 -X POST "http://127.0.0.1:8188/free" \
+      -H "Content-Type: application/json" \
+      -d '{"unload_models":true,"free_memory":true}' >/dev/null 2>&1 \
+      || curl -sS --max-time 5 -X POST "http://127.0.0.1:8188/api/free" \
+        -H "Content-Type: application/json" \
+        -d '{"unload_models":true,"free_memory":true}' >/dev/null 2>&1 \
+      || true
+    echo "[ATOM] ComfyUI: asked to unload models"
+  fi
+
+  local keep
+  keep="$(pid_listening_on 8080)"
+  local pid
+  local killed=0
+  for pid in $(llama_server_pids); do
+    [ -z "$pid" ] && continue
+    if [ -n "$keep" ] && pid_is_in_tree "$pid" "$keep"; then
+      continue
+    fi
+    echo "[ATOM] Stopping other llama-server PID $pid"
+    kill -TERM "$pid" 2>/dev/null || true
+    killed=1
+  done
+  if [ "$killed" = 1 ]; then
+    local i
+    for i in 1 2 3 4 5 6 7 8 9 10; do
+      local leftover=0
+      for pid in $(llama_server_pids); do
+        [ -z "$pid" ] && continue
+        if [ -n "$keep" ] && pid_is_in_tree "$pid" "$keep"; then
+          continue
+        fi
+        leftover=1
+        break
+      done
+      [ "$leftover" = 0 ] && break
+      sleep 0.5
+    done
+    for pid in $(llama_server_pids); do
+      [ -z "$pid" ] && continue
+      if [ -n "$keep" ] && pid_is_in_tree "$pid" "$keep"; then
+        continue
+      fi
+      echo "[ATOM] Killing leftover llama-server PID $pid"
+      kill -KILL "$pid" 2>/dev/null || true
+    done
+  fi
+}
+
+free_other_local_models
+
+probe_running_n_ctx() {
+  python3 - <<'PY' 2>/dev/null || echo 0
+import json, urllib.request
+try:
+    with urllib.request.urlopen("http://127.0.0.1:8080/props", timeout=2) as r:
+        d = json.load(r)
+    gs = d.get("default_generation_settings") or {}
+    print(int(gs.get("n_ctx") or 0))
+except Exception:
+    print(0)
+PY
+}
+
 # Check if llama-server is already running on 8080
 if llama_ready; then
+    running_ctx="$(probe_running_n_ctx | tr -d '[:space:]')"
+    if [ "$running_ctx" = "32768" ]; then
+        echo "[ATOM] Port 8080 is capped at 32768 — restarting with --ctx-size 0 (this model's trained max)"
+        systemctl --user stop llama-server.service 2>/dev/null || true
+        pid="$(pid_listening_on 8080)"
+        if [ -n "$pid" ]; then
+            kill -TERM "$pid" 2>/dev/null || true
+            sleep 1
+            kill -KILL "$pid" 2>/dev/null || true
+        fi
+    fi
+fi
+
+if llama_ready; then
     echo "[ATOM] llama-server already running on port 8080"
+    echo "[ATOM] (B70 flags above apply only after you stop that process and relaunch)"
 else
     echo "[ATOM] Starting llama-server..."
 
     ATOM_MODELS_DIR="${ATOM_MODELS_DIR:-$HOME/.lmstudio/models}"
     # Prefer router mode: no GGUF in VRAM until the app calls /models/load (Arena loads one at a time).
     ROUTER=0
-    if [ -z "${MODEL:-}" ] && [ -z "${GGUF_PATH:-}" ] && [ -d "$ATOM_MODELS_DIR" ] && "${LLAMA_BIN}" --help 2>&1 | grep -qE 'models-dir'; then
+    if [ -z "${MODEL:-}" ] && [ -z "${GGUF_PATH:-}" ] && [ -d "$ATOM_MODELS_DIR" ] && llama_has 'models-dir'; then
         ROUTER=1
     fi
     ROUTER_EXTRA=()
-    if [ "$ROUTER" = 1 ] && "${LLAMA_BIN}" --help 2>&1 | grep -qE 'no-models-autoload'; then
+    if [ "$ROUTER" = 1 ] && llama_has 'no-models-autoload'; then
         ROUTER_EXTRA=(--no-models-autoload)
     fi
 
@@ -133,13 +402,19 @@ else
     if [ "$ROUTER" = 1 ]; then
         echo "[ATOM] Router: --models-dir $ATOM_MODELS_DIR --models-max 1 --no-models-autoload (nothing preloaded into VRAM)"
         : >>"$ROOT/llama-server.log"
-        nohup "$LLAMA_BIN" --models-dir "$ATOM_MODELS_DIR" --models-max 1 "${ROUTER_EXTRA[@]}" --n-gpu-layers 99 --port 8080 --host 0.0.0.0 >>"$ROOT/llama-server.log" 2>&1 &
+        {
+          echo "[ATOM] $(date -Iseconds) start router ${LLAMA_GPU_FLAGS[*]}"
+        } >>"$ROOT/llama-server.log"
+        nohup "$LLAMA_BIN" --models-dir "$ATOM_MODELS_DIR" --models-max 1 "${ROUTER_EXTRA[@]}" "${LLAMA_GPU_FLAGS[@]}" --port 8080 --host 0.0.0.0 >>"$ROOT/llama-server.log" 2>&1 &
         LLAMA_PID=$!
         disown || true
     elif [ -n "$MODEL" ] && [ -f "$MODEL" ]; then
         echo "[ATOM] Using model (explicit or smallest GGUF): $MODEL"
         : >>"$ROOT/llama-server.log"
-        nohup "$LLAMA_BIN" -m "$MODEL" --port 8080 --n-gpu-layers 99 --host 0.0.0.0 >>"$ROOT/llama-server.log" 2>&1 &
+        {
+          echo "[ATOM] $(date -Iseconds) start -m $MODEL ${LLAMA_GPU_FLAGS[*]}"
+        } >>"$ROOT/llama-server.log"
+        nohup "$LLAMA_BIN" -m "$MODEL" "${LLAMA_GPU_FLAGS[@]}" --port 8080 --host 0.0.0.0 >>"$ROOT/llama-server.log" 2>&1 &
         LLAMA_PID=$!
         disown || true
     else
@@ -174,13 +449,13 @@ else
 fi
 
 # Start voice server if present (prefer project venv so deps match setup.sh)
-if [ -f voice-server/app.py ]; then
-    if [ -x voice-server/.venv/bin/python ]; then
-        VOICE_PY="voice-server/.venv/bin/python"
+if [ -f "$ROOT/voice-server/app.py" ]; then
+    if [ -x "$ROOT/voice-server/.venv/bin/python" ]; then
+        VOICE_PY="$ROOT/voice-server/.venv/bin/python"
     else
         VOICE_PY="python3"
     fi
-    (cd voice-server && nohup "$VOICE_PY" -m uvicorn app:app --host 0.0.0.0 --port 8765 >> ../voice-server.log 2>&1 &)
+    (cd "$ROOT/voice-server" && nohup "$VOICE_PY" -m uvicorn app:app --host 0.0.0.0 --port 8765 >> "$ROOT/voice-server.log" 2>&1 &)
 fi
 
 # Start search proxy

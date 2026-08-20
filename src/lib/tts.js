@@ -4,7 +4,6 @@
 import { get } from 'svelte/store';
 import { requestDeepInfraKokoroSpeech } from '$lib/api.js';
 import {
-  openMicActive,
   ttsActiveMessageId,
   ttsEngine,
   ttsError,
@@ -37,12 +36,12 @@ export function browserTtsSupported() {
 }
 
 export function getDeepinfraTtsKey() {
-  const fromLs = typeof localStorage !== 'undefined' ? (localStorage.getItem('deepinfraApiKey') ?? '').trim() : '';
-  return (
-    fromLs ||
-    (typeof import.meta !== 'undefined' && import.meta.env?.VITE_DEEPINFRA_API_KEY) ||
-    ''
-  ).trim();
+  const fromEnv =
+    typeof import.meta !== 'undefined' && typeof import.meta.env?.VITE_DEEPINFRA_API_KEY === 'string'
+      ? import.meta.env.VITE_DEEPINFRA_API_KEY.trim()
+      : '';
+  if (fromEnv) return fromEnv;
+  return typeof localStorage !== 'undefined' ? (localStorage.getItem('deepinfraApiKey') ?? '').trim() : '';
 }
 
 /** @returns {boolean} */
@@ -238,12 +237,13 @@ export function isTtsBusy() {
 }
 
 /**
- * Open mic always speaks replies. Typed chat only speaks when the speaker toggle is on.
+ * Auto-speak only when Speak is on. Live Talk turns Speak on when it starts;
+ * if the user then turns Speak off, that mute is honored for the next reply.
  * Eve roleplay uses its own voice path.
  */
 export function shouldAutoSpeakReply(opts = {}) {
   if (opts.roleplayActive ?? get(voiceRoleplaySessionActive)) return false;
-  return !!(opts.readAloudEnabled ?? get(ttsReadAloudEnabled)) || !!(opts.openMicActive ?? get(openMicActive));
+  return !!(opts.readAloudEnabled ?? get(ttsReadAloudEnabled));
 }
 
 export function shouldReadAloudContent(content, modelId = '') {
@@ -318,6 +318,7 @@ async function speakKokoro(text, opts = {}) {
     let nextFetch = fetchKokoroBlob(chunks[0], opts);
     for (let i = 0; i < chunks.length; i++) {
       if (gen !== ttsGeneration) return;
+      if (opts.requireSpeakToggle && !get(ttsReadAloudEnabled)) return;
       const blob = await nextFetch;
       if (gen !== ttsGeneration) return;
       ttsPreparing.set(false);
@@ -339,6 +340,7 @@ export async function speakPlainText(text, opts = {}) {
   const trimmed = (text || '').trim();
   if (!trimmed) throw new Error('Nothing to read aloud.');
   stopTts();
+  if (opts.requireSpeakToggle && !get(ttsReadAloudEnabled)) return;
   const engine = opts.engine ?? get(ttsEngine);
   const useKokoro = engine === 'kokoro' && kokoroTtsAvailable();
   const browserOpts = {
@@ -352,6 +354,7 @@ export async function speakPlainText(text, opts = {}) {
       await speakKokoro(trimmed, {
         kokoroVoice: opts.kokoroVoice ?? get(ttsKokoroVoice),
         rate: opts.rate ?? get(ttsRate),
+        requireSpeakToggle: opts.requireSpeakToggle,
       });
       opts.onEnd?.();
       return;
@@ -371,6 +374,10 @@ export async function speakPlainText(text, opts = {}) {
     opts.onError?.(err);
     throw err;
   }
+  if (opts.requireSpeakToggle && !get(ttsReadAloudEnabled)) {
+    opts.onEnd?.();
+    return;
+  }
   speakBrowser(trimmed, browserOpts);
 }
 
@@ -386,6 +393,7 @@ export function maybeReadAloudAssistantReply(content, messageId = '', modelId = 
     kokoroVoice: get(ttsKokoroVoice),
     rate: get(ttsRate),
     engine: get(ttsEngine),
+    requireSpeakToggle: true,
     onEnd: () => {
       if (!messageId || get(ttsActiveMessageId) === messageId) ttsActiveMessageId.set(null);
     },

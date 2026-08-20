@@ -3,7 +3,10 @@
  * @description Model-family detection and default load/generation settings.
  * LM Studio load API keys: context_length, eval_batch_size, flash_attention, offload_kv_cache_to_gpu.
  * Exports getDefaultsForModel(), BATCH_SIZE_MIN/MAX, and family defaults used by IntelPanel and API.
+ * Local context: 0 means the model's trained max (GGUF n_ctx_train). Never the old 32k cap.
  */
+
+import { LOCAL_LLAMA_CTX_SIZE, resolveLocalContextLength } from '$lib/localHardwareConfig.js';
 
 /** Logical batch size bounds (same doubling/halving idea as max_tokens) */
 export const BATCH_SIZE_MIN = 64;
@@ -13,7 +16,7 @@ export const BATCH_SIZE_MAX = 4096;
 const FAMILY_DEFAULTS = {
   qwen: {
     name: 'Qwen / Qwen2',
-    context_length: 32768,
+    context_length: LOCAL_LLAMA_CTX_SIZE,
     eval_batch_size: 512,
     flash_attention: true,
     offload_kv_cache_to_gpu: true,
@@ -27,7 +30,7 @@ const FAMILY_DEFAULTS = {
   },
   llama: {
     name: 'Llama',
-    context_length: 4096,
+    context_length: LOCAL_LLAMA_CTX_SIZE,
     eval_batch_size: 512,
     flash_attention: true,
     offload_kv_cache_to_gpu: true,
@@ -41,7 +44,7 @@ const FAMILY_DEFAULTS = {
   },
   phi: {
     name: 'Phi',
-    context_length: 4096,
+    context_length: LOCAL_LLAMA_CTX_SIZE,
     eval_batch_size: 256,
     flash_attention: true,
     offload_kv_cache_to_gpu: true,
@@ -55,7 +58,7 @@ const FAMILY_DEFAULTS = {
   },
   mistral: {
     name: 'Mistral',
-    context_length: 32768,
+    context_length: LOCAL_LLAMA_CTX_SIZE,
     eval_batch_size: 512,
     flash_attention: true,
     offload_kv_cache_to_gpu: true,
@@ -69,7 +72,7 @@ const FAMILY_DEFAULTS = {
   },
   gemma: {
     name: 'Gemma',
-    context_length: 8192,
+    context_length: LOCAL_LLAMA_CTX_SIZE,
     eval_batch_size: 512,
     flash_attention: true,
     offload_kv_cache_to_gpu: true,
@@ -83,7 +86,7 @@ const FAMILY_DEFAULTS = {
   },
   minicpm: {
     name: 'MiniCPM-V',
-    context_length: 32768,
+    context_length: LOCAL_LLAMA_CTX_SIZE,
     eval_batch_size: 512,
     flash_attention: true,
     offload_kv_cache_to_gpu: true,
@@ -97,7 +100,7 @@ const FAMILY_DEFAULTS = {
   },
   deepseek: {
     name: 'DeepSeek',
-    context_length: 32768,
+    context_length: LOCAL_LLAMA_CTX_SIZE,
     eval_batch_size: 512,
     flash_attention: true,
     offload_kv_cache_to_gpu: true,
@@ -111,7 +114,7 @@ const FAMILY_DEFAULTS = {
   },
   codellama: {
     name: 'Code Llama',
-    context_length: 16384,
+    context_length: LOCAL_LLAMA_CTX_SIZE,
     eval_batch_size: 512,
     flash_attention: true,
     offload_kv_cache_to_gpu: true,
@@ -125,7 +128,7 @@ const FAMILY_DEFAULTS = {
   },
   default: {
     name: 'Default',
-    context_length: 4096,
+    context_length: LOCAL_LLAMA_CTX_SIZE,
     eval_batch_size: 512,
     flash_attention: true,
     offload_kv_cache_to_gpu: true,
@@ -225,6 +228,7 @@ export function getDefaultsForModel(modelId, hardware = {}, hfOverrides = {}) {
   const maxCpu = hardware?.cpuLogicalCores ?? 256;
   const cpuThreads = Math.min(maxCpu, d.cpu_threads ?? maxCpu);
   const merged = { ...d, family, cpu_threads: cpuThreads };
-  if (typeof hfOverrides.context_length === 'number') merged.context_length = hfOverrides.context_length;
+  const modelMax = typeof hfOverrides.context_length === 'number' ? hfOverrides.context_length : undefined;
+  merged.context_length = resolveLocalContextLength(merged.context_length, modelMax);
   return merged;
 }

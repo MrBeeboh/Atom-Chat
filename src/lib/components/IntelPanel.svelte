@@ -19,6 +19,7 @@
     confirm,
   } from '$lib/stores.js';
   import { BATCH_SIZE_MIN, BATCH_SIZE_MAX } from '$lib/modelDefaults.js';
+  import { LOCAL_CONTEXT_UI_MAX, LOCAL_LLAMA_CTX_SIZE, LOCAL_MAX_TOKENS_UI_MAX, resolveLocalContextLength, resolveLocalMaxTokens } from '$lib/localHardwareConfig.js';
   import { getModelIcon, getQuantization, modelIconOverrides } from '$lib/modelIcons.js';
   import { loadModel } from '$lib/api.js';
   import { fetchOptimalSettingsWithDelay, askModelForOptimalSettings, resolveHfModelId, getHfModelUrl, getHfSearchUrl } from '$lib/hfOptimize.js';
@@ -26,7 +27,7 @@
   import ThinkingAtom from '$lib/components/ThinkingAtom.svelte';
 
   let settingsVal = $state({});
-  let contextLength = $state(4096);
+  let contextLength = $state(LOCAL_LLAMA_CTX_SIZE);
   let temperature = $state(0.7);
   let maxTokens = $state(4096);
   let topP = $state(0.95);
@@ -44,7 +45,7 @@
   });
 
   const DEFAULTS = {
-    context_length: 4096,
+    context_length: LOCAL_LLAMA_CTX_SIZE,
     eval_batch_size: 512,
     flash_attention: true,
     offload_kv_cache_to_gpu: true,
@@ -89,7 +90,7 @@
   $effect(() => {
     const unsub = settings.subscribe((s) => {
       settingsVal = s ?? {};
-      contextLength = s?.context_length ?? 4096;
+      contextLength = resolveLocalContextLength(s?.context_length);
       evalBatchSize = s?.eval_batch_size ?? DEFAULTS.eval_batch_size;
       flashAttention = s?.flash_attention ?? DEFAULTS.flash_attention;
       offloadKvToGpu = s?.offload_kv_cache_to_gpu ?? DEFAULTS.offload_kv_cache_to_gpu;
@@ -120,7 +121,7 @@
       return acc + Math.ceil((text?.length ?? 0) / 4);
     }, 0)
   );
-  const CONTEXT_CAPACITY_MAX = 131072;
+  const CONTEXT_CAPACITY_MAX = LOCAL_CONTEXT_UI_MAX;
   const contextPercent = $derived(
     contextLength > 0 ? Math.min(100, Math.round((estimatedContextUsed / contextLength) * 100)) : 0
   );
@@ -136,7 +137,7 @@
   }
   function onMaxTokensInput(e) {
     const v = parseInt(e.target.value, 10);
-    if (Number.isFinite(v)) maxTokens = Math.max(64, Math.min(131072, v));
+    if (Number.isFinite(v)) maxTokens = resolveLocalMaxTokens(v);
   }
   function onTopPInput(e) {
     const v = parseFloat(e.target.value);
@@ -148,7 +149,7 @@
   }
   function onContextInput(e) {
     const v = parseInt(e.target.value, 10);
-    if (Number.isFinite(v)) contextLength = Math.max(512, Math.min(131072, v));
+    if (Number.isFinite(v)) contextLength = Math.max(0, Math.min(LOCAL_CONTEXT_UI_MAX, v));
   }
   function onRepeatPenaltyInput(e) {
     const v = parseFloat(e.target.value);
@@ -583,24 +584,24 @@
               style="background: var(--ui-input-bg); accent-color: var(--ui-accent);" />
           </div>
           <div class="param-row">
-            <div class="flex justify-between text-xs mb-0.5"><span>Max tokens<InfoTooltip text="Maximum number of tokens the model can generate in one response. Higher = longer answers (50 JSON Q&A pairs ≈ 5000 tokens). Most models support up to 8192–32768. Uses more VRAM at higher values."><span class="ml-0.5 w-3 h-3 rounded-full border inline-flex items-center justify-center text-[8px] cursor-help opacity-60 hover:opacity-100" style="border-color: var(--ui-border);">i</span></InfoTooltip></span><span class="font-mono">{maxTokens}</span></div>
+            <div class="flex justify-between text-xs mb-0.5"><span>Max tokens<InfoTooltip text="Maximum number of tokens the model can generate in one response. Higher = longer answers. This is not the context window."><span class="ml-0.5 w-3 h-3 rounded-full border inline-flex items-center justify-center text-[8px] cursor-help opacity-60 hover:opacity-100" style="border-color: var(--ui-border);">i</span></InfoTooltip></span><span class="font-mono">{maxTokens}</span></div>
             <input
               type="range"
               min="64"
-              max="32768"
+              max={LOCAL_MAX_TOKENS_UI_MAX}
               step="64"
               value={maxTokens}
               oninput={onMaxTokensInput}
               class="w-full h-1.5 rounded-full"
               style="background: var(--ui-input-bg); accent-color: var(--ui-accent);" />
-            <div class="flex justify-between text-[10px] mt-0.5" style="color: var(--ui-text-secondary);"><span>64</span><span>32768</span></div>
+            <div class="flex justify-between text-[10px] mt-0.5" style="color: var(--ui-text-secondary);"><span>64</span><span>{LOCAL_MAX_TOKENS_UI_MAX}</span></div>
           </div>
           <div class="param-row">
-            <div class="flex justify-between text-xs mb-0.5"><span>Context<InfoTooltip text="Max context length in tokens. Higher = more history but more VRAM."><span class="ml-0.5 w-3 h-3 rounded-full border inline-flex items-center justify-center text-[8px] cursor-help opacity-60 hover:opacity-100" style="border-color: var(--ui-border);">i</span></InfoTooltip></span><span class="font-mono">{contextLength}</span></div>
+            <div class="flex justify-between text-xs mb-0.5"><span>Context<InfoTooltip text="Context window in tokens. 0 / model max = the GGUF training length for this model. ATOM does not cap this at 32768."><span class="ml-0.5 w-3 h-3 rounded-full border inline-flex items-center justify-center text-[8px] cursor-help opacity-60 hover:opacity-100" style="border-color: var(--ui-border);">i</span></InfoTooltip></span><span class="font-mono">{contextLength > 0 ? contextLength : 'model max'}</span></div>
             <input
               type="range"
-              min="512"
-              max="131072"
+              min="0"
+              max={LOCAL_CONTEXT_UI_MAX}
               step="1024"
               value={contextLength}
               oninput={onContextInput}

@@ -14,7 +14,7 @@ That's it. Pick a model, start a chat.
 ## What you need
 
 - **Node.js 18+** — [nodejs.org](https://nodejs.org)
-- **llama.cpp** — `llama-server` on `localhost:8080` (default in Settings). **Intel Arc / Intel GPU:** use a [SYCL-enabled build](https://github.com/ggml-org/llama.cpp/blob/master/docs/backend/SYCL.md) (`GGML_SYCL`); the UI only talks HTTP and does not pick the GPU backend. `./scripts/start-atom.sh` prefers `llama-server-sycl` on your `PATH`, or set `LLAMA_SERVER_BIN`.
+- **llama.cpp** — `llama-server` on `localhost:8080` (default in Settings). **Intel Arc / Intel GPU:** use a [SYCL-enabled build](https://github.com/ggml-org/llama.cpp/blob/master/docs/backend/SYCL.md) (`GGML_SYCL`); the UI only talks HTTP and does not pick the GPU backend. `./scripts/start-atom.sh` prefers `llama-server-sycl` on your `PATH`, or set `LLAMA_SERVER_BIN`. Dual Arc Pro B70: both cards, and other local models are unloaded on launch — see `TROUBLESHOOTING.md`.
 - Any OpenAI-compatible server (LM Studio, Ollama, etc.) also works if you change the URL in Settings.
 
 Optional: Python 3 for voice input, hardware metrics, and model unloading helpers.
@@ -63,6 +63,19 @@ The **Settings panel** (`Ctrl+,`) controls:
 - Voice server URL
 - Web search (Brave API key or local proxy)
 - Theme (Studio / Pitch Black / Light)
+- Desktop files: Documents read/write, plus allowlisted OpenSCAD / slice jobs
+
+## Desktop files and print jobs
+
+ATOM talks to a local host on this machine only (`127.0.0.1`). It can list, read, and write **text** under `~/Documents`. Writes need one approval per launch.
+
+There is **no shell**. 3D-print actions are named jobs:
+
+- `export_scad` — OpenSCAD → STL under Documents
+- `slice_print` — `~/Documents/3d_Printing/PRINTS/slice_print.py` (OrcaSlicer + Moonraker upload). Always **stages**; never starts
+- `start_print` — starts a staged gcode. The UI asks **every time** (heaters / motion)
+
+Optional env: `ATOM_OPENSCAD`, `ATOM_PYTHON`, `ATOM_MOONRAKER_URL` (default `http://192.168.0.18:7125`).
 
 ## Arena
 

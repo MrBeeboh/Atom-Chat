@@ -1,14 +1,15 @@
 <script>
   import { fly } from 'svelte/transition';
   import { backOut, quintOut } from 'svelte/easing';
-  import { globalDefault, updateGlobalDefault, selectedModelId, models, presetDefaultModels, lmStudioBaseUrl, voiceServerUrl, micDeviceId, lmStudioUnloadHelperUrl, localModelDirs, deepSeekApiKey, grokApiKey, cerebrasApiKey, togetherApiKey, deepinfraApiKey, braveApiKey, settingsFocus, ttsEngine, ttsKokoroVoice, ttsVoiceUri, ttsRate, ttsVolume } from '$lib/stores.js';
+  import { onMount } from 'svelte';
+  import { globalDefault, updateGlobalDefault, selectedModelId, models, presetDefaultModels, lmStudioBaseUrl, voiceServerUrl, micDeviceId, lmStudioUnloadHelperUrl, localModelDirs, deepSeekApiKey, grokApiKey, cerebrasApiKey, togetherApiKey, deepinfraApiKey, braveApiKey, settingsFocus, ttsEngine, ttsKokoroVoice, ttsVoiceUri, ttsRate, ttsVolume, confirm } from '$lib/stores.js';
   import { refreshConnectionAndModels } from '$lib/connectionSetup.js';
   import { syncBraveKeyToProxy } from '$lib/duckduckgo.js';
   import { modelSelectorPrimaryLine, invalidateCloudModelCache } from '$lib/api.js';
   import { groupModelsForSelector } from '$lib/modelGroups.js';
   import { KOKORO_VOICES, listBrowserVoices, plainTextForSpeech, speakPlainText, stopTts, browserTtsSupported, warmUpKokoroTts, unlockAudioPlayback } from '$lib/tts.js';
   import { enumerateAudioInputs, requestMicPermissionForLabels } from '$lib/micAccess.js';
-  import { onMount } from 'svelte';
+  import { fetchDesktopHostStatus, grantDesktopWrites, grantDesktopJobs } from '$lib/desktopHost.js';
 
   let { onclose } = $props();
 
@@ -90,6 +91,39 @@
   let ttsVoices = $state(/** @type {SpeechSynthesisVoice[]} */ ([]));
 
   const hasDeepinfraForTts = $derived(!!($deepinfraApiKey?.trim() || (typeof import.meta !== 'undefined' && import.meta.env?.VITE_DEEPINFRA_API_KEY)));
+  let desktopHost = $state(/** @type {{ ok?: boolean, root?: string, writesGranted?: boolean, jobsGranted?: boolean, jobs?: { openscad?: string|null, python?: string|null, slice_print?: string|null, moonraker?: string|null } }} */ ({ ok: false }));
+
+  onMount(() => {
+    let cancelled = false;
+    fetchDesktopHostStatus().then((s) => {
+      if (!cancelled) desktopHost = s;
+    });
+    return () => {
+      cancelled = true;
+    };
+  });
+
+  async function grantDesktopWritesNow() {
+    const allowed = await confirm({
+      title: 'Allow writes this session',
+      message: `ATOM can write files under ${desktopHost.root || 'Documents'} until you quit the app.`,
+      confirmLabel: 'Allow writes',
+      cancelLabel: 'Not now',
+    });
+    if (!allowed) return;
+    desktopHost = await grantDesktopWrites();
+  }
+
+  async function grantDesktopJobsNow() {
+    const allowed = await confirm({
+      title: 'Allow OpenSCAD and slice this session',
+      message: `ATOM can run OpenSCAD and slice_print.py (stage/upload only) until you quit the app. Starting a print still needs a separate confirm each time.`,
+      confirmLabel: 'Allow slice jobs',
+      cancelLabel: 'Not now',
+    });
+    if (!allowed) return;
+    desktopHost = await grantDesktopJobs();
+  }
 
   async function testReadAloudVoice() {
     if (ttsTesting) return;
@@ -238,6 +272,32 @@
             <textarea id="settings-local-model-dirs" rows="3" bind:value={$localModelDirs} onblur={onApiKeyBlur} placeholder="/home/you/extra-models" class="w-full rounded-lg px-3 py-2 text-sm font-mono" style="border: 1px solid var(--ui-border); background-color: var(--ui-input-bg); color: var(--ui-text-primary);"></textarea>
             <p class="text-xs mt-1" style="color: var(--ui-text-secondary);">One absolute path per line. ATOM already scans ~/.lmstudio/models, ~/models, ~/.cache/llama.cpp, and ~/Downloads.</p>
           </div>
+        </div>
+      </details>
+
+      <details class="rounded-lg overflow-hidden group" style="border: 1px solid var(--ui-border);">
+        <summary class="px-4 py-3 cursor-pointer list-none text-sm font-medium transition-colors" style="background-color: var(--ui-bg-sidebar); border-bottom: 1px solid var(--ui-border); color: var(--ui-text-primary);">Desktop files</summary>
+        <div class="px-4 py-3 space-y-2" style="background-color: var(--ui-bg-main);">
+          {#if desktopHost.ok}
+            <p class="text-sm" style="color: var(--ui-text-primary);">ATOM can use your Documents folder from chat.</p>
+            <p class="text-xs font-mono break-all" style="color: var(--ui-text-secondary);">{desktopHost.root}</p>
+            <p class="text-xs" style="color: var(--ui-text-secondary);">Reads are allowed. Writes, OpenSCAD, and slice/upload each need one approval per ATOM launch. Starting a print always asks again.</p>
+            {#if desktopHost.writesGranted}
+              <p class="text-xs" style="color: var(--ui-text-primary);">Writes are allowed this session.</p>
+            {:else}
+              <button type="button" class="text-xs px-2.5 py-1.5 rounded-lg font-medium" style="border: 1px solid var(--ui-border); color: var(--ui-text-primary);" onclick={grantDesktopWritesNow}>Allow writes now</button>
+            {/if}
+            {#if desktopHost.jobsGranted}
+              <p class="text-xs" style="color: var(--ui-text-primary);">OpenSCAD and slice/upload are allowed this session. Print start still confirms each time.</p>
+            {:else}
+              <button type="button" class="text-xs px-2.5 py-1.5 rounded-lg font-medium" style="border: 1px solid var(--ui-border); color: var(--ui-text-primary);" onclick={grantDesktopJobsNow}>Allow slice jobs now</button>
+            {/if}
+            <p class="text-xs font-mono break-all" style="color: var(--ui-text-secondary);">OpenSCAD: {desktopHost.jobs?.openscad || 'not found'}</p>
+            <p class="text-xs font-mono break-all" style="color: var(--ui-text-secondary);">slice_print.py: {desktopHost.jobs?.slice_print || 'not found'}</p>
+            <p class="text-xs font-mono break-all" style="color: var(--ui-text-secondary);">Moonraker: {desktopHost.jobs?.moonraker || 'not set'}</p>
+          {:else}
+            <p class="text-xs" style="color: var(--ui-text-secondary);">Desktop host is not running. Start ATOM with <code style="background: color-mix(in srgb, var(--ui-border) 40%, transparent); padding: 0 4px; border-radius: 3px;">npm run dev</code> or <code style="background: color-mix(in srgb, var(--ui-border) 40%, transparent); padding: 0 4px; border-radius: 3px;">npm run start</code>.</p>
+          {/if}
         </div>
       </details>
 

@@ -15,6 +15,14 @@ db.version(1).stores({
 export const conversationsTable = db.conversations;
 export const messagesTable = db.messages;
 
+/** Keep message order stable when several rows are written in the same millisecond. */
+let lastMessageCreatedAt = 0;
+function nextMessageCreatedAt() {
+  const now = Date.now();
+  lastMessageCreatedAt = now <= lastMessageCreatedAt ? lastMessageCreatedAt + 1 : now;
+  return lastMessageCreatedAt;
+}
+
 /**
  * @param {string} [model]
  * @returns {Promise<string>} new conversation id
@@ -88,7 +96,7 @@ export async function listPinnedConversations() {
 
 /**
  * @param {string} conversationId
- * @param {{ role: string, content: string|Array, stats?: Object, modelId?: string, imageRefs?: Array<{ image_id: string }>, imageUrls?: string[], videoUrls?: string[] }} message
+ * @param {{ role: string, content: string|Array, stats?: Object, modelId?: string, imageRefs?: Array<{ image_id: string }>, imageUrls?: string[], videoUrls?: string[], tool_calls?: Array, tool_call_id?: string, desktopActions?: Array }} message
  */
 export async function addMessage(conversationId, message) {
   const id = `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -104,7 +112,10 @@ export async function addMessage(conversationId, message) {
     imageRefs: message.imageRefs ?? null,
     imageUrls: Array.isArray(imageUrls) ? [...imageUrls] : null,
     videoUrls: Array.isArray(videoUrls) ? [...videoUrls] : null,
-    createdAt: Date.now(),
+    tool_calls: message.tool_calls ?? null,
+    tool_call_id: message.tool_call_id ?? null,
+    desktopActions: Array.isArray(message.desktopActions) ? [...message.desktopActions] : null,
+    createdAt: nextMessageCreatedAt(),
   });
   return id;
 }

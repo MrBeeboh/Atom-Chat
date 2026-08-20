@@ -54,7 +54,7 @@ body,
   mix-blend-mode: overlay;
 }
 
-.atom-shell > * {
+.atom-shell > *:not(.fixed) {
   position: relative;
   z-index: 1;
 }

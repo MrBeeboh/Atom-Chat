@@ -33,8 +33,8 @@ describe('resolveSpeechVoice', () => {
 });
 
 describe('shouldAutoSpeakReply', () => {
-  it('speaks during open mic even if the speaker toggle is off', () => {
-    expect(shouldAutoSpeakReply({ readAloudEnabled: false, openMicActive: true, roleplayActive: false })).toBe(true);
+  it('does not speak when Speak is off, even during live talk', () => {
+    expect(shouldAutoSpeakReply({ readAloudEnabled: false, openMicActive: true, roleplayActive: false })).toBe(false);
   });
 
   it('speaks typed chat only when read-aloud is on', () => {
@@ -48,9 +48,9 @@ describe('shouldAutoSpeakReply', () => {
 });
 
 describe('deepinfraInferenceUrl', () => {
-  it('points at the DeepInfra Kokoro path', () => {
-    const url = deepinfraInferenceUrl('/v1/inference/Kokoro-82M/tts');
-    expect(url).toMatch(/\/v1\/inference\/Kokoro-82M\/tts$/);
+  it('points at the DeepInfra OpenAI speech path', () => {
+    const url = deepinfraInferenceUrl('/v1/audio/speech');
+    expect(url).toMatch(/\/v1\/audio\/speech$/);
   });
 });
 

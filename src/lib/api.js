@@ -15,6 +15,7 @@ import {
   getModelTypeTag,
   invalidateCloudModelCache,
 } from '$lib/cloudCatalog.js';
+import { mergeToolCallDeltas, finalizeToolCalls } from '$lib/desktopHost.js';
 
 export { CLOUD_PROVIDERS, getModelTypeTag, invalidateCloudModelCache };
 
@@ -35,11 +36,12 @@ function viteEnvStr(key) {
 }
 
 function localStorageOrVite(storageKey, viteName) {
+  const fromEnv = viteEnvStr(viteName);
+  if (fromEnv) return fromEnv;
   if (typeof localStorage !== 'undefined') {
-    const fromLs = (localStorage.getItem(storageKey) ?? '').trim();
-    if (fromLs) return fromLs;
+    return (localStorage.getItem(storageKey) ?? '').trim();
   }
-  return viteEnvStr(viteName);
+  return '';
 }
 
 let lastResolvedLmBase = '';
@@ -192,13 +194,13 @@ export async function checkLmStudioConnection() {
     }
   };
   try {
-    if (await tryFetch(`${base}/api/v1/models`)) return true;
-  } catch (_) { }
-  try {
     if (await tryFetch(`${base}/models`)) return true;
   } catch (_) { }
   try {
-    return await tryFetch(`${base}/v1/models`);
+    if (await tryFetch(`${base}/v1/models`)) return true;
+  } catch (_) { }
+  try {
+    return await tryFetch(`${base}/api/v1/models`);
   } catch {
     return false;
   }
@@ -495,18 +497,6 @@ async function getLocalModelsFromServer() {
   const ctrl = new AbortController();
   const to = setTimeout(() => ctrl.abort(), LOCAL_MODELS_TIMEOUT_MS);
   try {
-    const res = await fetch(`${rest}/models`, { signal: ctrl.signal });
-    if (res.ok) {
-      const data = await res.json();
-      const rawModels = Array.isArray(data.models) ? data.models : [];
-      const rawData = Array.isArray(data.data) ? data.data : [];
-      const rawTop = Array.isArray(data) ? data : [];
-      const combined = [...rawModels, ...rawData, ...(rawModels.length || rawData.length ? [] : rawTop)];
-      if (combined.length > 0) {
-        const llms = mergeUniqueModelItems(combined.filter((m) => m && m.type !== 'embedding'));
-        if (llms.length > 0) return llms;
-      }
-    }
     const routerRes = await fetch(`${base}/models`, { signal: ctrl.signal });
     if (routerRes.ok) {
       const ct = routerRes.headers.get('content-type') || '';
@@ -518,7 +508,16 @@ async function getLocalModelsFromServer() {
       }
     }
     const fallback = await fetch(`${openai}/models`, { signal: ctrl.signal });
-    if (!fallback.ok) return [];
+    if (!fallback.ok) {
+      const restRes = await fetch(`${rest}/models`, { signal: ctrl.signal });
+      if (!restRes.ok) return [];
+      const data = await restRes.json();
+      const rawModels = Array.isArray(data.models) ? data.models : [];
+      const rawData = Array.isArray(data.data) ? data.data : [];
+      const rawTop = Array.isArray(data) ? data : [];
+      const combined = [...rawModels, ...rawData, ...(rawModels.length || rawData.length ? [] : rawTop)];
+      return mergeUniqueModelItems(combined.filter((m) => m && m.type !== 'embedding'));
+    }
     const data = await fallback.json();
     const fromData = Array.isArray(data.data) ? data.data : [];
     const fromModels = Array.isArray(data.models) ? data.models : [];
@@ -552,6 +551,10 @@ async function getLocalModels() {
  */
 export async function probeLmsRestModelsList() {
   if (lmsRestModelsListSupported !== null) return lmsRestModelsListSupported;
+  if (llamaRouterModelsSupported === true) {
+    lmsRestModelsListSupported = false;
+    return false;
+  }
   const base = getLmStudioBase();
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), 4000);
@@ -727,7 +730,9 @@ export async function loadModel(modelId, loadConfig = {}) {
       );
     }
     const body = { model: modelId };
-    if (loadConfig.context_length != null) body.context_length = loadConfig.context_length;
+    if (loadConfig.context_length != null && Number(loadConfig.context_length) > 0) {
+      body.context_length = loadConfig.context_length;
+    }
     if (loadConfig.eval_batch_size != null) body.eval_batch_size = loadConfig.eval_batch_size;
     if (loadConfig.flash_attention != null) body.flash_attention = loadConfig.flash_attention;
     if (loadConfig.offload_kv_cache_to_gpu != null) body.offload_kv_cache_to_gpu = loadConfig.offload_kv_cache_to_gpu;
@@ -1091,7 +1096,7 @@ export async function requestDeepInfraImageGeneration({
     height: Math.max(128, Math.min(2048, Number(height) || 1024)),
   };
   if (negative_prompt != null && String(negative_prompt).trim() !== '') body.negative_prompt = String(negative_prompt).trim();
-  const url = `${DEEPINFRA_INFERENCE_BASE}/${encodeURIComponent(modelId)}`;
+  const url = `${DEEPINFRA_INFERENCE_BASE}/${modelId}`;
   const ctrl = new AbortController();
   const to = setTimeout(() => ctrl.abort(), CLOUD_REQUEST_TIMEOUT_MS);
   try {
@@ -1473,15 +1478,18 @@ async function streamGrokResponsesApi({ model, messages, options = {}, onChunk, 
  * @param {() => void} [opts.onDone] - Called when stream ends ([DONE] line or connection closed). Use to clear busy UI immediately.
  * @param {(ref: { image_id: string }) => void} [opts.onImageRef] - (Grok only) Called when a <render_searched_image image_id="..."> is found in the stream.
  * @param {AbortSignal} [opts.signal] - AbortSignal to cancel the stream
- * @returns {Promise<{ usage?: object, elapsedMs: number, aborted?: boolean }>}
+ * @param {Array} [opts.tools] - OpenAI-style tools (local Documents host, etc.)
+ * @returns {Promise<{ usage?: object, elapsedMs: number, aborted?: boolean, finishReason?: string|null, toolCalls?: Array }>}
  */
-export async function streamChatCompletion({ model, messages, options = {}, onChunk, onUsage, onDone, onImageRef, signal }) {
+export async function streamChatCompletion({ model, messages, options = {}, onChunk, onUsage, onDone, onImageRef, signal, tools }) {
   if (isGrokModel(model)) {
     return streamGrokResponsesApi({ model, messages, options, onChunk, onUsage, onDone, onImageRef, signal });
   }
   const startTime = Date.now();
   let usage = null;
   let doneCalled = false;
+  let finishReason = null;
+  const toolAcc = [];
   const callOnDone = () => {
     if (!doneCalled) {
       doneCalled = true;
@@ -1509,6 +1517,7 @@ export async function streamChatCompletion({ model, messages, options = {}, onCh
     max_tokens: maxTokens,
     ...(options.top_p != null && { top_p: options.top_p }),
     ...(options.stop?.length && { stop: options.stop }),
+    ...(Array.isArray(tools) && tools.length ? { tools, tool_choice: options.tool_choice || 'auto' } : {}),
   };
   if (!isCloud) {
     if (options.top_k != null) streamBody.top_k = options.top_k;
@@ -1578,7 +1587,13 @@ export async function streamChatCompletion({ model, messages, options = {}, onCh
               const parsed = JSON.parse(payload);
               const choice = parsed.choices?.[0];
               if (choice?.delta?.content) onChunk(choice.delta.content);
+              if (choice?.delta?.tool_calls) mergeToolCallDeltas(toolAcc, choice.delta.tool_calls);
+              if (Array.isArray(choice?.message?.tool_calls) && choice.message.tool_calls.length) {
+                toolAcc.length = 0;
+                mergeToolCallDeltas(toolAcc, choice.message.tool_calls.map((c, index) => ({ ...c, index })));
+              }
               if (choice?.finish_reason != null) {
+                finishReason = choice.finish_reason;
                 callOnDone();
                 streamEnded = true;
               }
@@ -1596,14 +1611,27 @@ export async function streamChatCompletion({ model, messages, options = {}, onCh
       }
     } catch (readErr) {
       if (readErr?.name === 'AbortError') {
-        return { usage, elapsedMs: Date.now() - startTime, aborted: true };
+        return { usage, elapsedMs: Date.now() - startTime, aborted: true, finishReason, toolCalls: finalizeToolCalls(toolAcc) };
       }
       throw readErr;
     }
-    return { usage, elapsedMs: Date.now() - startTime };
+    return { usage, elapsedMs: Date.now() - startTime, finishReason, toolCalls: finalizeToolCalls(toolAcc) };
   } catch (err) {
     if (err?.name === 'AbortError') {
-      return { usage, elapsedMs: Date.now() - startTime, aborted: true };
+      return { usage, elapsedMs: Date.now() - startTime, aborted: true, finishReason, toolCalls: finalizeToolCalls(toolAcc) };
+    }
+    const msg = err?.message || '';
+    if (Array.isArray(tools) && tools.length && !options._retriedWithoutTools && /tool|jinja|system message must be at the beginning/i.test(msg)) {
+      return streamChatCompletion({
+        model,
+        messages,
+        options: { ...options, _retriedWithoutTools: true },
+        onChunk,
+        onUsage,
+        onDone,
+        onImageRef,
+        signal,
+      });
     }
     throw err;
   } finally {
@@ -1654,20 +1682,20 @@ export function deepinfraInferenceUrl(path) {
  * @returns {Promise<Blob>}
  */
 export async function requestDeepInfraKokoroSpeech({ apiKey, text, voice = 'af_bella', speed = 1 }) {
-  const key = (apiKey || '').trim();
+  const key = (apiKey || '').trim() || viteEnvStr('VITE_DEEPINFRA_API_KEY');
   if (!key) throw new Error('DeepInfra API key is required for Kokoro TTS.');
-  const res = await fetch(deepinfraInferenceUrl('/v1/inference/Kokoro-82M/tts'), {
+  const res = await fetch(deepinfraInferenceUrl('/v1/audio/speech'), {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${key}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
+      model: 'hexgrad/Kokoro-82M',
       input: text,
       voice,
       speed: Math.max(0.5, Math.min(2, Number(speed) || 1)),
       response_format: 'wav',
-      sample_rate: 24000,
     }),
   });
   if (!res.ok) {

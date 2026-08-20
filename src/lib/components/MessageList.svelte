@@ -11,7 +11,13 @@
   let listEl = $state(/** @type {HTMLDivElement | null} */ (null));
   let scrollRoot = $state(/** @type {HTMLElement | null} */ (null));
 
-  let msgs = $derived($activeMessages);
+  let msgs = $derived(
+    $activeMessages.filter((m) => {
+      if (m.role === 'tool') return false;
+      if (m.role === 'assistant' && m.tool_calls?.length && !String(m.content || '').trim()) return false;
+      return true;
+    }),
+  );
 
   function scrollToBottom(smooth = false) {
     tick().then(() => {
@@ -36,7 +42,7 @@
 </script>
 
 <ScrollToBottomButton {scrollRoot} />
-<div class="chat-message-list max-w-[min(44rem,92%)] mx-auto py-6 md:py-8 px-3 md:px-4 w-full" bind:this={listEl}>
+<div class="chat-message-list max-w-[min(52rem,92%)] mx-auto py-6 md:py-8 px-3 md:px-4 w-full" bind:this={listEl}>
   <div class="space-y-6 md:space-y-8">
     {#each msgs as msg, i (msg.id)}
       <div class="message-entrance" in:fly={{ y: 16, duration: 400, easing: quintOut }}>

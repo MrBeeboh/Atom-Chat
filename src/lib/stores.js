@@ -7,6 +7,7 @@
 import { writable, derived, get } from 'svelte/store';
 import { detectHardware } from '$lib/hardware.js';
 import { getRecommendedSettingsForModel } from '$lib/modelDefaults.js';
+import { LOCAL_LLAMA_CTX_SIZE, migrateLocalContextSettings } from '$lib/localHardwareConfig.js';
 
 /**
  * Read optional secrets from `.env.local` (Vite `VITE_*`). Gitignored; keeps keys in your project folder.
@@ -29,11 +30,12 @@ function readViteEnv(key) {
 }
 
 function apiKeyFromStorageOrEnv(storageKey, envName) {
+  const fromEnv = readViteEnv(envName);
+  if (fromEnv) return fromEnv;
   if (typeof localStorage !== 'undefined') {
-    const fromLs = (localStorage.getItem(storageKey) ?? '').trim();
-    if (fromLs) return fromLs;
+    return (localStorage.getItem(storageKey) ?? '').trim();
   }
-  return readViteEnv(envName);
+  return '';
 }
 
 /** Persist API key to localStorage; skip null/undefined so a bad bind cannot wipe stored keys. */
@@ -57,7 +59,7 @@ export const pendingDroppedFiles = writable(null);
 /** Loaded LM Studio model list { id }[] */
 export const models = writable([]);
 
-export const contextUsage = writable({ promptTokens: 0, contextMax: 128000 });
+export const contextUsage = writable({ promptTokens: 0, contextMax: 0 });
 export const summarizeAndContinueTrigger = writable(0);
 
 /** Hardware detected on startup (CPU logical cores; GPU not available from browser). */
@@ -422,7 +424,7 @@ const DEFAULT_SETTINGS = {
   audio_enabled: readBool('audio_enabled', true),
   audio_clicks: readBool('audio_clicks', true),
   audio_volume: readNum('audio_volume', 0.25),
-  context_length: 4096,
+  context_length: LOCAL_LLAMA_CTX_SIZE,
   eval_batch_size: 512,
   flash_attention: true,
   offload_kv_cache_to_gpu: true,
@@ -438,14 +440,14 @@ function loadGlobalDefault() {
     const raw = localStorage.getItem('globalDefault');
     if (raw) {
       const p = JSON.parse(raw);
-      return typeof p === 'object' && p !== null ? p : {};
+      return typeof p === 'object' && p !== null ? migrateLocalContextSettings(p) : {};
     }
     const byLayout = localStorage.getItem('settingsByLayout');
     if (byLayout) {
       const parsed = JSON.parse(byLayout);
       const cockpit = parsed?.cockpit ?? parsed?.default ?? parsed?.flow ?? {};
       if (typeof cockpit === 'object' && cockpit !== null && Object.keys(cockpit).length > 0) {
-        return cockpit;
+        return migrateLocalContextSettings(cockpit);
       }
     }
   } catch (_) { }
@@ -465,7 +467,12 @@ function loadPerModelOverrides() {
     const raw = localStorage.getItem('perModelOverrides');
     if (!raw) return {};
     const p = JSON.parse(raw);
-    return typeof p === 'object' && p !== null ? p : {};
+    if (typeof p !== 'object' || p === null) return {};
+    const next = {};
+    for (const [id, settings] of Object.entries(p)) {
+      next[id] = migrateLocalContextSettings(settings);
+    }
+    return next;
   } catch {
     return {};
   }

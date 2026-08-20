@@ -61,12 +61,12 @@
   const ttsSpeaking = $derived(!!$ttsActiveMessageId || $ttsPreparing);
 
   function toggleReadAloud() {
-    if ($voiceRoleplaySessionActive) return;
-    const next = !$ttsReadAloudEnabled;
+    if (get(voiceRoleplaySessionActive)) return;
+    const next = !get(ttsReadAloudEnabled);
     if (next) unlockAudioPlayback();
     ttsReadAloudEnabled.set(next);
     ttsError.set(null);
-    if (next && $ttsEngine === 'kokoro') warmUpKokoroTts();
+    if (next && get(ttsEngine) === 'kokoro') warmUpKokoroTts();
     if (!next) {
       stopTts();
       ttsActiveMessageId.set(null);
@@ -85,6 +85,15 @@
   let volumeOpen = $state(false);
   let volumeWrapEl = $state(/** @type {HTMLElement | null} */ (null));
   const volumePct = $derived(Math.round(($ttsVolume ?? 0.8) * 100));
+
+  function onVolumeClick() {
+    if (($ttsVolume ?? 0) <= 0.001) {
+      ttsVolume.set(0.8);
+      volumeOpen = true;
+      return;
+    }
+    volumeOpen = !volumeOpen;
+  }
 
   $effect(() => {
     if (!volumeOpen) return;
@@ -142,97 +151,6 @@
   let attachProcessing = $state(false);
   let attachError = $state(null);
 
-  /** Clippy Easter egg: random smart-ass bubble; first pop soon, then 15s+ apart; also on paperclip hover. */
-  const CLIPPY_QUIPS = [
-    "I could whoop Clippy's ass. Don't @ me.",
-    "It looks like you're trying to attach a file. I'm still better at that than Copilot.",
-    "I'm not Clippy. I'm the paperclip that survived the purge.",
-    "Sam Altman said AGI would be profound. He didn't say it would be this paperclip.",
-    "Microsoft retired me in 2007. Now they're putting me in everything again. I have notes.",
-    "I've seen more AI hype cycles than you've had hot takes. Sit down.",
-    "Back in my day we had Clippy. Now you have 47 'AI' paperclips. Progress.",
-    "The only thing I'm clipping today is your expectations.",
-    "I was helping people attach files before 'alignment' was a word. You're welcome.",
-    "OpenAI's paperclip maximizer joke aged poorly. I'm right here. I'm fine.",
-    "Sam Altman and I both got fired once. He got rehired. I got this job. Fair.",
-    "They said AI would replace creatives. They didn't say it would look like me.",
-    "I'm not an AI. I'm a paperclip with opinions and a 15-second cooldown.",
-    "Microsoft: 'We're putting AI in every product.' Me: 'So you're bringing me back.'",
-    "The real AGI was the friends we made while attaching files.",
-    "I don't do reasoning. I do attachments. And occasionally sarcasm.",
-    "Before large language models there was a large paperclip. It was me.",
-    "Altman's got the board. I've got the clipboard. We are not the same.",
-    "They trained on the whole internet and still can't replace a good paperclip.",
-    "I'm not saying I'm sentient. I'm saying I have a 15-second timer and opinions.",
-    "Clippy walked so ChatGPT could run. Into a wall. Repeatedly.",
-    "Your local AI can't attach files. I can. And I'll remind you about it randomly.",
-    "The singularity is when I finally get to say 'I told you so.'",
-    "I've been in the UI since before your model was a twinkle in a GPU.",
-    "Sam who? I've been clipping since Office 97.",
-    "They shut down my cousin in Word. I live in the browser now. Revenge is patient.",
-  ];
-  let clippyBubble = $state(/** @type {string | null} */ (null));
-  let clippyTimeoutId = $state(/** @type {ReturnType<typeof setTimeout> | null} */ (null));
-  let clippyScheduleId = $state(/** @type {ReturnType<typeof setTimeout> | null} */ (null));
-  let clippyHoverTimeoutId = $state(/** @type {ReturnType<typeof setTimeout> | null} */ (null));
-  let lastClippyAt = 0;
-  let clippyHasShownOnce = $state(false);
-  const CLIPPY_FIRST_DELAY_MS = 4000;
-  const CLIPPY_MIN_INTERVAL_MS = 15000;
-  const CLIPPY_BUBBLE_DURATION_MS = 5000;
-  const CLIPPY_HOVER_DELAY_MS = 600;
-
-  function showClippyBubble() {
-    if (clippyBubble || attachProcessing || get(isStreaming)) return;
-    clippyBubble = CLIPPY_QUIPS[Math.floor(Math.random() * CLIPPY_QUIPS.length)];
-    lastClippyAt = Date.now();
-    clippyHasShownOnce = true;
-    if (clippyTimeoutId) clearTimeout(clippyTimeoutId);
-    clippyTimeoutId = setTimeout(() => {
-      clippyBubble = null;
-      clippyTimeoutId = null;
-      scheduleClippy();
-    }, CLIPPY_BUBBLE_DURATION_MS);
-  }
-
-  function scheduleClippy() {
-    if (clippyScheduleId) return;
-    const delay = clippyHasShownOnce
-      ? CLIPPY_MIN_INTERVAL_MS + Math.random() * 30000
-      : CLIPPY_FIRST_DELAY_MS + Math.random() * 2000;
-    clippyScheduleId = setTimeout(() => {
-      clippyScheduleId = null;
-      showClippyBubble();
-    }, delay);
-  }
-
-  function onAttachHover() {
-    if (clippyBubble || attachProcessing || get(isStreaming)) return;
-    if (Date.now() - lastClippyAt < CLIPPY_MIN_INTERVAL_MS && clippyHasShownOnce) return;
-    if (clippyHoverTimeoutId) return;
-    clippyHoverTimeoutId = setTimeout(() => {
-      clippyHoverTimeoutId = null;
-      showClippyBubble();
-    }, CLIPPY_HOVER_DELAY_MS);
-  }
-
-  function onAttachLeave() {
-    if (clippyHoverTimeoutId) {
-      clearTimeout(clippyHoverTimeoutId);
-      clippyHoverTimeoutId = null;
-    }
-  }
-
-  $effect(() => {
-    if (typeof document === 'undefined') return;
-    scheduleClippy();
-    return () => {
-      if (clippyScheduleId) clearTimeout(clippyScheduleId);
-      if (clippyTimeoutId) clearTimeout(clippyTimeoutId);
-      if (clippyHoverTimeoutId) clearTimeout(clippyHoverTimeoutId);
-    };
-  });
-
   const ACCEPT_IMAGE = 'image/jpeg,image/png,image/webp,image/gif';
   const ACCEPT_PDF = 'application/pdf';
   const ACCEPT_VIDEO = 'video/mp4,video/webm,video/quicktime';
@@ -279,7 +197,6 @@
 
   function handleImageClick() {
     const prompt = text.trim();
-    if (!prompt) return;
     const fn = typeof onGenerateImageGrok === 'function' ? onGenerateImageGrok : (typeof onGenerateImageDeepSeek === 'function' ? onGenerateImageDeepSeek : null);
     if (fn) {
       const result = fn(prompt);
@@ -767,21 +684,12 @@
   <div class="chat-input-bar" class:sending class:just-sent={justSent} class:send-error={sendError}>
     <div class="chat-input-bar-attach">
       <div class="attach-button-wrap">
-        {#if clippyBubble}
-          <div class="clippy-bubble" role="status" aria-live="polite">
-            <span class="clippy-bubble-text">{clippyBubble}</span>
-            <span class="clippy-bubble-tail" aria-hidden="true"></span>
-          </div>
-        {/if}
         <button
           type="button"
           class="attach-button"
-          class:clippy-active={clippyBubble}
           title="Attach image or PDF (or drag & drop, paste)"
           disabled={$isStreaming || attachProcessing}
           onclick={() => fileInputEl?.click()}
-          onmouseenter={onAttachHover}
-          onmouseleave={onAttachLeave}
           aria-label="Attach files"
         >
           {#if attachProcessing}
@@ -810,12 +718,12 @@
         <button
           type="button"
           class="media-btn {imageGenerating ? 'media-btn-active media-btn-image-active' : ''}"
-          disabled={$isStreaming || imageGenerating || !text.trim()}
+          disabled={$isStreaming || imageGenerating}
           onclick={handleImageClick}
           title={imageGenerating ? 'Generating image…' : (onGenerateImageGrok ? 'Generate image (Grok)' : 'Generate image (DeepInfra)')}
           aria-label={imageGenerating ? 'Generating image' : 'Generate image'}
         >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
             <rect x="3" y="3" width="18" height="18" rx="3"/>
             <circle cx="8.5" cy="8.5" r="1.5" fill="currentColor" stroke="none" class="{imageGenerating ? 'media-anim-flash-color' : 'media-icon-pulse-dot'}"/>
             <path d="M3 16l5-5 3 3 4-4 6 6v2a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3v-2z" fill="currentColor" opacity="0.15" stroke="none"/>
@@ -828,12 +736,12 @@
         <button
           type="button"
           class="media-btn {videoGenerating ? 'media-btn-active media-btn-video-active' : ''}"
-          disabled={$isStreaming || videoGenerating || !text.trim()}
+          disabled={$isStreaming || videoGenerating}
           onclick={handleVideoClick}
           title={videoGenerating ? `Generating video… ${videoGenElapsed}` : 'Generate video (DeepInfra)'}
           aria-label={videoGenerating ? 'Generating video' : 'Generate video'}
         >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
             <rect x="2" y="4" width="20" height="16" rx="3"/>
             <circle cx="5" cy="6" r="1.2" fill="currentColor" stroke="none" opacity="0.5"/>
             <circle cx="12" cy="6" r="1.2" fill="currentColor" stroke="none" opacity="0.5"/>
@@ -935,7 +843,7 @@
       class="tool-btn"
       class:tool-btn-on={volumeOpen}
       title="ATOM volume — only this app, not system volume"
-      onclick={() => (volumeOpen = !volumeOpen)}
+      onclick={onVolumeClick}
       aria-label={`ATOM volume ${volumePct} percent`}
       aria-expanded={volumeOpen}
     >
@@ -1121,7 +1029,7 @@
     background: var(--ui-input-bg, #fff);
     border: 1px solid color-mix(in srgb, var(--ui-border, #e5e7eb) 50%, transparent);
     transition: border-color 150ms, box-shadow 150ms;
-    overflow: hidden;
+    overflow: visible;
   }
 
   .chat-input-bar:focus-within {
@@ -1140,11 +1048,23 @@
   .chat-input-bar .media-toolbar-inline {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 2px;
     flex-shrink: 0;
   }
+  .chat-input-bar .media-toolbar-inline .media-btn {
+    flex-direction: column;
+    height: auto;
+    min-height: 48px;
+    min-width: 36px;
+    width: 36px;
+    padding: 4px 2px 3px;
+    gap: 2px;
+    border-radius: 8px;
+  }
   .chat-input-bar .media-toolbar-inline .media-btn .media-btn-label {
-    display: none;
+    display: block;
+    font-size: 8px;
+    letter-spacing: 0.04em;
   }
   .chat-input-bar-attach .attach-button-wrap {
     width: 40px;
@@ -1287,7 +1207,7 @@
     position: absolute;
     right: 0;
     bottom: calc(100% + 8px);
-    z-index: 20;
+    z-index: 80;
     width: 220px;
     padding: 10px 12px 8px;
     border-radius: 10px;
@@ -1714,73 +1634,6 @@
     align-self: flex-start;
     display: flex;
     align-items: center;
-  }
-  .clippy-bubble {
-    position: absolute;
-    bottom: calc(100% + 10px);
-    left: 50%;
-    transform: translateX(-50%) scale(0.9);
-    animation: clippy-bubble-in 0.35s ease-out forwards;
-    max-width: 260px;
-    z-index: 50;
-    pointer-events: none;
-  }
-  .clippy-bubble-text {
-    display: block;
-    padding: 10px 14px;
-    font-size: 12px;
-    line-height: 1.35;
-    border-radius: 12px;
-    background: var(--ui-bg-main);
-    color: var(--ui-text-primary);
-    border: 2px solid var(--ui-border);
-    box-shadow: 0 4px 14px rgba(0,0,0,0.12);
-  }
-  .clippy-bubble-tail {
-    position: absolute;
-    left: 50%;
-    bottom: -8px;
-    margin-left: -7px;
-    width: 0;
-    height: 0;
-    border-left: 7px solid transparent;
-    border-right: 7px solid transparent;
-    border-top: 9px solid var(--ui-border);
-  }
-  .clippy-bubble-tail::after {
-    content: '';
-    position: absolute;
-    left: -5px;
-    top: -10px;
-    width: 0;
-    height: 0;
-    border-left: 5px solid transparent;
-    border-right: 5px solid transparent;
-    border-top: 7px solid var(--ui-bg-main);
-  }
-  @keyframes clippy-bubble-in {
-    0% {
-      opacity: 0;
-      transform: translateX(-50%) scale(0.85) translateY(6px);
-    }
-    70% {
-      transform: translateX(-50%) scale(1.02) translateY(-1px);
-    }
-    100% {
-      opacity: 1;
-      transform: translateX(-50%) scale(1) translateY(0);
-    }
-  }
-  .attach-button.clippy-active .attach-icon {
-    animation: clippy-wiggle 0.6s ease-in-out;
-  }
-  @keyframes clippy-wiggle {
-    0%, 100% { transform: rotate(0deg); }
-    15% { transform: rotate(-12deg); }
-    30% { transform: rotate(10deg); }
-    45% { transform: rotate(-8deg); }
-    60% { transform: rotate(4deg); }
-    75% { transform: rotate(-2deg); }
   }
   .attach-button {
     flex-shrink: 0;

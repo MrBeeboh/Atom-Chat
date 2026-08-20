@@ -60,6 +60,24 @@
   const videoUrls = $derived(
     Array.isArray(message.videoUrls) ? message.videoUrls : [],
   );
+  const desktopActions = $derived(
+    Array.isArray(message.desktopActions) ? message.desktopActions : [],
+  );
+  const desktopActionLabel = $derived.by(() => {
+    if (!desktopActions.length) return '';
+    const reads = desktopActions.filter((a) => a.name === 'read_file' || a.name === 'list_dir').length;
+    const writes = desktopActions.filter((a) => a.name === 'write_file').length;
+    const exports = desktopActions.filter((a) => a.name === 'export_scad').length;
+    const slices = desktopActions.filter((a) => a.name === 'slice_print').length;
+    const starts = desktopActions.filter((a) => a.name === 'start_print').length;
+    const parts = [];
+    if (reads) parts.push(`${reads} read${reads === 1 ? '' : 's'}`);
+    if (writes) parts.push(`${writes} write${writes === 1 ? '' : 's'}`);
+    if (exports) parts.push(`${exports} STL export${exports === 1 ? '' : 's'}`);
+    if (slices) parts.push(`${slices} slice${slices === 1 ? '' : 's'}`);
+    if (starts) parts.push(`${starts} print start${starts === 1 ? '' : 's'}`);
+    return parts.length ? `Documents: ${parts.join(', ')}` : '';
+  });
   const parts = $derived(
     isAssistant && content ? splitThinkingAndAnswer(content) : [],
   );
@@ -232,7 +250,12 @@
           >
         </div>
       {/if}
-      {#if !content && $isStreaming}
+      {#if message.toolStatus}
+        <div class="flex items-center gap-3 py-2" aria-label="Using Documents">
+          <ThinkingAtom size={32} />
+          <span class="thinking-label text-xs font-medium" style="color: var(--ui-text-secondary);">Documents: {message.toolStatus}</span>
+        </div>
+      {:else if !content && $isStreaming}
         <div class="flex items-center gap-3 py-2" aria-label="Thinking">
           <ThinkingAtom size={32} />
           <span class="thinking-label text-xs font-medium" style="color: var(--ui-text-secondary);">Reasoning…</span>
@@ -269,6 +292,9 @@
             </div>
           {/if}
         </div>
+      {/if}
+      {#if desktopActionLabel}
+        <p class="mt-2 text-[10px]" style="color: var(--ui-text-secondary);">{desktopActionLabel}</p>
       {/if}
       {#if isAssistant && imageRefs.length}
         <div

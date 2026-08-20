@@ -47,3 +47,14 @@ export function splitThinkingAndAnswer(raw) {
   if (tail) parts.push({ type: 'answer', html: renderMarkdown(tail) });
   return parts;
 }
+
+/**
+ * Drop hidden chain-of-thought so follow-up API turns stay small.
+ * The UI still shows thinking from stored message content.
+ * @param {string} raw
+ * @returns {string}
+ */
+export function stripThinkingBlocks(raw) {
+  if (!raw || typeof raw !== 'string') return raw;
+  return raw.replace(/<(?:think|reasoning|thought)>[\s\S]*?<\/(?:think|reasoning|thought)>/gi, '').trim();
+}
