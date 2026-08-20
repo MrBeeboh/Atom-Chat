@@ -2,8 +2,10 @@
  * xAI Grok Voice Agent (Eve, etc.) — WebSocket realtime speech-to-speech.
  * Browser auth via ephemeral client secret; mic PCM16 in, assistant audio out.
  */
-import { ttsVolume } from '$lib/stores.js';
+import { get } from 'svelte/store';
+import { ttsVolume, micDeviceId } from '$lib/stores.js';
 import { getPlaybackVolume } from '$lib/tts.js';
+import { acquireMicStream } from '$lib/micAccess.js';
 
 const REALTIME_MODEL = 'grok-voice-latest';
 const WS_URL = `wss://api.x.ai/v1/realtime?model=${REALTIME_MODEL}`;
@@ -389,12 +391,10 @@ export class GrokVoiceSession {
   async startMic() {
     if (this.micActive) return;
     await this._initAudio();
-    this.mediaStream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-      },
+    this.mediaStream = await acquireMicStream(get(micDeviceId), {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
     });
     const ctxRate = this.audioContext.sampleRate;
     this.source = this.audioContext.createMediaStreamSource(this.mediaStream);

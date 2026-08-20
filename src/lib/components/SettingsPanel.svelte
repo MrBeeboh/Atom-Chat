@@ -1,12 +1,14 @@
 <script>
   import { fly } from 'svelte/transition';
   import { backOut, quintOut } from 'svelte/easing';
-  import { globalDefault, updateGlobalDefault, selectedModelId, models, presetDefaultModels, lmStudioBaseUrl, voiceServerUrl, lmStudioUnloadHelperUrl, localModelDirs, deepSeekApiKey, grokApiKey, cerebrasApiKey, togetherApiKey, deepinfraApiKey, braveApiKey, settingsFocus, ttsEngine, ttsKokoroVoice, ttsVoiceUri, ttsRate, ttsVolume } from '$lib/stores.js';
+  import { globalDefault, updateGlobalDefault, selectedModelId, models, presetDefaultModels, lmStudioBaseUrl, voiceServerUrl, micDeviceId, lmStudioUnloadHelperUrl, localModelDirs, deepSeekApiKey, grokApiKey, cerebrasApiKey, togetherApiKey, deepinfraApiKey, braveApiKey, settingsFocus, ttsEngine, ttsKokoroVoice, ttsVoiceUri, ttsRate, ttsVolume } from '$lib/stores.js';
   import { refreshConnectionAndModels } from '$lib/connectionSetup.js';
   import { syncBraveKeyToProxy } from '$lib/duckduckgo.js';
   import { modelSelectorPrimaryLine, invalidateCloudModelCache } from '$lib/api.js';
   import { groupModelsForSelector } from '$lib/modelGroups.js';
   import { KOKORO_VOICES, listBrowserVoices, plainTextForSpeech, speakPlainText, stopTts, browserTtsSupported, warmUpKokoroTts, unlockAudioPlayback } from '$lib/tts.js';
+  import { enumerateAudioInputs, requestMicPermissionForLabels } from '$lib/micAccess.js';
+  import { onMount } from 'svelte';
 
   let { onclose } = $props();
 
@@ -63,6 +65,27 @@
   let apiDetailsEl = $state(/** @type {HTMLDetailsElement | null} */ (null));
   let readAloudDetailsEl = $state(/** @type {HTMLDetailsElement | null} */ (null));
   let readAloudOpen = $state(false);
+  /** @type {Array<{ deviceId: string, label: string }>} */
+  let audioInputs = $state([]);
+  let micDevicesLoading = $state(false);
+
+  async function refreshMicDevices() {
+    micDevicesLoading = true;
+    try {
+      audioInputs = await enumerateAudioInputs();
+      const needsLabels = audioInputs.length > 0 && audioInputs.every((d) => /^Microphone \d+$/.test(d.label));
+      if (needsLabels) {
+        await requestMicPermissionForLabels();
+        audioInputs = await enumerateAudioInputs();
+      }
+    } finally {
+      micDevicesLoading = false;
+    }
+  }
+
+  onMount(() => {
+    refreshMicDevices();
+  });
   let ttsTesting = $state(false);
   let ttsVoices = $state(/** @type {SpeechSynthesisVoice[]} */ ([]));
 
@@ -124,6 +147,13 @@
       readAloudDetailsEl.open = true;
       readAloudDetailsEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }
+    if (focus === 'microphone' && connectionDetailsEl) {
+      connectionDetailsEl.open = true;
+      connectionDetailsEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      refreshMicDevices();
+      const select = connectionDetailsEl.querySelector('#settings-mic-device');
+      if (select instanceof HTMLSelectElement) select.focus();
+    }
     settingsFocus.set(null);
   });
 
@@ -170,6 +200,38 @@
             <label for="settings-voice-url" class="block text-xs font-medium mb-1" style="color: var(--ui-text-secondary);">Voice server URL</label>
             <input id="settings-voice-url" type="url" bind:value={$voiceServerUrl} placeholder="http://localhost:8765" class="w-full rounded-lg px-3 py-2 text-sm font-mono" style="border: 1px solid var(--ui-border); background-color: var(--ui-input-bg); color: var(--ui-text-primary);" />
             <p class="text-xs mt-1" style="color: var(--ui-text-secondary);">Mic/voice. Default port 8765; see voice-server/README.</p>
+          </div>
+          <div>
+            <div class="flex items-center justify-between gap-2 mb-1">
+              <label for="settings-mic-device" class="block text-xs font-medium" style="color: var(--ui-text-secondary);">Microphone</label>
+              <button
+                type="button"
+                class="text-xs px-2 py-0.5 rounded-md"
+                style="color: var(--ui-accent); border: 1px solid color-mix(in srgb, var(--ui-accent) 35%, transparent);"
+                disabled={micDevicesLoading}
+                onclick={refreshMicDevices}
+              >
+                {micDevicesLoading ? 'Scanning…' : 'Refresh'}
+              </button>
+            </div>
+            <select
+              id="settings-mic-device"
+              bind:value={$micDeviceId}
+              class="w-full rounded-lg px-3 py-2 text-sm"
+              style="border: 1px solid var(--ui-border); background-color: var(--ui-input-bg); color: var(--ui-text-primary);"
+            >
+              <option value="">System default</option>
+              {#each audioInputs as dev (dev.deviceId)}
+                <option value={dev.deviceId}>{dev.label}</option>
+              {/each}
+            </select>
+            <p class="text-xs mt-1" style="color: var(--ui-text-secondary);">
+              {#if audioInputs.length === 0 && !micDevicesLoading}
+                No microphones detected. Plug one in and click Refresh, or check OS sound settings.
+              {:else}
+                Pick the mic ATOM should use for Talk and Dictate. If you see “device not found”, try another input here.
+              {/if}
+            </p>
           </div>
           <div>
             <label for="settings-local-model-dirs" class="block text-xs font-medium mb-1" style="color: var(--ui-text-secondary);">Extra GGUF folders</label>

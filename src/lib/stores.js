@@ -159,6 +159,14 @@ if (typeof localStorage !== 'undefined') {
   voiceServerUrl.subscribe((v) => localStorage.setItem('voiceServerUrl', v ?? ''));
 }
 
+/** Preferred microphone deviceId from enumerateDevices; empty = system default. */
+const getStoredMicDeviceId = () =>
+  typeof localStorage !== 'undefined' ? localStorage.getItem('micDeviceId') || '' : '';
+export const micDeviceId = writable(getStoredMicDeviceId());
+if (typeof localStorage !== 'undefined') {
+  micDeviceId.subscribe((v) => localStorage.setItem('micDeviceId', v ?? ''));
+}
+
 /** Unload helper URL (Python SDK server at e.g. http://localhost:8766). When set, eject uses POST /unload-all. */
 const getStoredUnloadHelperUrl = () => (typeof localStorage !== 'undefined' ? localStorage.getItem('lmStudioUnloadHelperUrl') : null) || '';
 export const lmStudioUnloadHelperUrl = writable(getStoredUnloadHelperUrl());

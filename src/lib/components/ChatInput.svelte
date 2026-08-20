@@ -1,13 +1,14 @@
 <script>
   import { get } from 'svelte/store';
   import { tick, onMount } from 'svelte';
-  import { isStreaming, voiceServerUrl, pendingDroppedFiles, insertChatPrompt, webSearchForNextMessage, webSearchInProgress, webSearchConnected, layout, braveApiKey, openMicActive, ttsReadAloudEnabled, ttsActiveMessageId, ttsPreparing, ttsError, ttsVolume, voiceRoleplaySessionActive, settingsOpen, settingsFocus, ttsEngine } from '$lib/stores.js';
+  import { isStreaming, voiceServerUrl, micDeviceId, pendingDroppedFiles, insertChatPrompt, webSearchForNextMessage, webSearchInProgress, webSearchConnected, layout, braveApiKey, openMicActive, ttsReadAloudEnabled, ttsActiveMessageId, ttsPreparing, ttsError, ttsVolume, voiceRoleplaySessionActive, settingsOpen, settingsFocus, ttsEngine } from '$lib/stores.js';
   import ThinkingAtom from '$lib/components/ThinkingAtom.svelte';
   import { COCKPIT_SENDING, COCKPIT_SEARCHING, pickWitty } from '$lib/cockpitCopy.js';
   import { warmUpSearchConnection, syncBraveKeyToProxy } from '$lib/duckduckgo.js';
   import { pdfToImageDataUrls } from '$lib/pdfToImages.js';
   import { videoToFrames } from '$lib/videoToFrames.js';
   import { isUsefulTranscript, recordUntilSilence, sleep, waitUntilReplySpoken } from '$lib/openMic.js';
+  import { acquireMicStream, createMediaRecorder, micErrorMessage } from '$lib/micAccess.js';
   import { isTtsBusy, stopTts, warmUpKokoroTts, unlockAudioPlayback } from '$lib/tts.js';
 
   let { onSend, onStop, onGenerateImageGrok, onGenerateImageDeepSeek, onGenerateVideoDeepSeek, imageGenerating = false, videoGenerating = false, videoGenElapsed = '', placeholder: placeholderOverride = undefined } = $props();
@@ -502,10 +503,10 @@
         voiceError = `Voice server error (${healthRes.status}). Restart ATOM from the desktop icon.`;
         return;
       }
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await acquireMicStream(get(micDeviceId));
       voiceStream = stream;
       recordingChunks = [];
-      const rec = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+      const rec = createMediaRecorder(stream);
       mediaRecorder = rec;
       rec.ondataavailable = (e) => { if (e.data.size > 0) recordingChunks.push(e.data); };
       rec.onstop = async () => {
@@ -518,7 +519,7 @@
           voiceProcessing = false;
           return;
         }
-        const blob = new Blob(recordingChunks, { type: 'audio/webm' });
+        const blob = new Blob(recordingChunks, { type: rec.mimeType || 'audio/webm' });
         try {
           const form = new FormData();
           form.append('audio', blob, 'audio.webm');
@@ -542,7 +543,7 @@
       voiceProcessing = true;
       recordingTimerId = setTimeout(() => stopRecording(), MAX_RECORDING_MS);
     } catch (e) {
-      voiceError = e?.message || 'Microphone access denied or unavailable';
+      voiceError = micErrorMessage(e);
     }
   }
 
@@ -614,7 +615,7 @@
   }
 
   async function acquireOpenMicStream() {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const stream = await acquireMicStream(get(micDeviceId));
     voiceStream = stream;
     return stream;
   }
@@ -637,7 +638,7 @@
     try {
       await acquireOpenMicStream();
     } catch (e) {
-      voiceError = e?.message || 'Microphone access denied or unavailable';
+      voiceError = micErrorMessage(e);
       return;
     }
     const gen = ++openMicGen;
@@ -656,7 +657,7 @@
           await acquireOpenMicStream();
         } catch (e) {
           if (gen !== openMicGen) break;
-          voiceError = e?.message || 'Microphone access denied or unavailable';
+          voiceError = micErrorMessage(e);
           break;
         }
       }
@@ -1062,6 +1063,15 @@
   {#if voiceError}
     <div class="voice-error" role="alert">
       <span>{voiceError}</span>
+      {#if /microphone|mic/i.test(voiceError)}
+        <button
+          type="button"
+          class="voice-error-settings"
+          onclick={() => { settingsFocus.set('microphone'); settingsOpen.set(true); }}
+        >
+          Settings
+        </button>
+      {/if}
       <button type="button" class="voice-error-dismiss" onclick={() => (voiceError = null)} aria-label="Dismiss">×</button>
     </div>
   {/if}
@@ -1674,6 +1684,20 @@
   }
   .voice-error-dismiss:hover {
     color: var(--ui-text-primary);
+  }
+  .voice-error-settings {
+    flex-shrink: 0;
+    border: 0;
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    background: color-mix(in srgb, var(--ui-accent) 14%, transparent);
+    color: var(--ui-accent);
+    cursor: pointer;
+  }
+  .voice-error-settings:hover {
+    filter: brightness(1.08);
   }
   .hidden-file-input {
     position: absolute;
