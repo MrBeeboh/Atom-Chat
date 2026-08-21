@@ -30,6 +30,8 @@ import {
   ARENA_CONTESTANT_SYSTEM_PROMPT,
   ARENA_CONTESTANT_MAX_TOKENS,
   ARENA_CONTESTANT_BREVITY_RULE,
+  appendNoThink,
+  visibleContestantText,
 } from './arenaLogic.js';
 
 // ---------- parseQuestionsAndAnswers ----------
@@ -372,8 +374,18 @@ describe('Arena contestant brevity', () => {
   });
 
   it('caps default contestant generation well below chat defaults', () => {
-    expect(ARENA_CONTESTANT_MAX_TOKENS).toBeLessThanOrEqual(256);
+    expect(ARENA_CONTESTANT_MAX_TOKENS).toBeLessThanOrEqual(512);
     expect(ARENA_CONTESTANT_MAX_TOKENS).toBeGreaterThanOrEqual(64);
+  });
+
+  it('appendNoThink adds the Qwen switch once', () => {
+    expect(appendNoThink('Hello')).toContain('/no_think');
+    expect(appendNoThink('Hello\n\n/no_think')).toBe('Hello\n\n/no_think');
+  });
+
+  it('visibleContestantText hides streaming think dumps', () => {
+    expect(visibleContestantText('<think>long essay')).toBe('');
+    expect(visibleContestantText('<think>essay</think>\nFinal Answer: 4')).toBe('Final Answer: 4');
   });
 });
 
@@ -466,6 +478,15 @@ describe('stripThinkBlocks', () => {
 
   it('handles multi-line think blocks', () => {
     expect(stripThinkBlocks('<think>\nline 1\nline 2\n</think>\nResult')).toBe('Result');
+  });
+
+  it('drops an unclosed think block (mid-stream)', () => {
+    expect(stripThinkBlocks('<think>still going')).toBe('');
+    expect(stripThinkBlocks('Answer first\n<think>more')).toBe('Answer first');
+  });
+
+  it('strips reasoning/thought tags', () => {
+    expect(stripThinkBlocks('<reasoning>secret</reasoning>Visible')).toBe('Visible');
   });
 
   it('passes through text without think blocks', () => {

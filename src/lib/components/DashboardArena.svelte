@@ -103,6 +103,8 @@
     ARENA_CONTESTANT_SYSTEM_PROMPT,
     ARENA_CONTESTANT_MAX_TOKENS,
     ARENA_CONTESTANT_BREVITY_RULE,
+    appendNoThink,
+    visibleContestantText,
     JUDGE_LOADING_LINES,
     ARENA_BUILD_LOADING_LINES,
     ARENA_LOADING_MODEL_LINES,
@@ -274,7 +276,6 @@
       if (!isCloudModel(judgeId)) {
         try {
           await ensureLocalModelLoaded(judgeId);
-          await new Promise((r) => setTimeout(r, 400));
         } catch (loadErr) {
           // Legacy llama-server (single model, no /models/load) or busy backend:
           // continue anyway — the completion below talks to whatever is serving /v1,
@@ -282,7 +283,7 @@
           console.warn("[Arena Builder] judge load skipped:", loadErr?.message || loadErr);
         }
       } else {
-        await new Promise((r) => setTimeout(r, 300));
+        await new Promise((r) => setTimeout(r, 50));
       }
       let webContext = "";
       if (get(arenaBuilderInternetEnabled)) {
@@ -311,19 +312,34 @@
         webContext,
         difficultyLevel,
       });
+      if (messages[1]) messages[1] = { ...messages[1], content: appendNoThink(messages[1].content) };
+      const buildMaxTokens = Math.min(1536, 160 + questionCount * 72);
       const { content } = await requestChatCompletion({
         model: judgeId,
         messages,
-        options: { temperature: 0.1, max_tokens: 8192 },
+        options: {
+          temperature: 0.2,
+          max_tokens: buildMaxTokens,
+          enable_thinking: false,
+          request_timeout_ms: 90_000,
+        },
       });
       timestamps.generation_end = Date.now();
       let parsed = parseGeneratedQuestionSet(content);
       if (!parsed || parsed.questions.length === 0) {
         const repairMessages = buildArenaJsonRepairPrompt(content);
+        if (repairMessages[1]) {
+          repairMessages[1] = { ...repairMessages[1], content: appendNoThink(repairMessages[1].content) };
+        }
         const { content: repaired } = await requestChatCompletion({
           model: judgeId,
           messages: repairMessages,
-          options: { temperature: 0.2, max_tokens: 8192 },
+          options: {
+            temperature: 0.1,
+            max_tokens: buildMaxTokens,
+            enable_thinking: false,
+            request_timeout_ms: 60_000,
+          },
         });
         parsed = parseGeneratedQuestionSet(repaired);
       }
@@ -853,8 +869,6 @@
   }
 
   // ---------- Stream / send ----------
-  const ARENA_TIMEOUT_MS = 600000; // spec: timeout for judge model (10 min)
-
   async function prepareArenaResidentPlan(selected, judgeId) {
     const modelIds = [...(selected || []).map((s) => s.modelId), judgeId].filter(Boolean);
     let vramTotalGb = 0;
@@ -950,7 +964,7 @@
         : ARENA_CONTESTANT_MAX_TOKENS;
     const messages = [
       { role: "system", content: ARENA_CONTESTANT_SYSTEM_PROMPT },
-      { role: "user", content: question },
+      { role: "user", content: appendNoThink(question) },
     ];
 
     if (!isCloudModel(modelId)) {
@@ -974,88 +988,82 @@
     let elapsedMs = 0;
     lastSampleAt = Date.now();
     lastSampleTokens = 0;
-    const genTimeoutMs = Math.max(60_000, Number($arenaRequestTimeoutSeconds || 360) * 1000);
-    let lastErr = null;
-    for (let attempt = 1; attempt <= 2; attempt++) {
-      const controller = new AbortController();
-      aborters[slot] = controller;
-      const timeoutId = setTimeout(() => controller.abort(), genTimeoutMs);
-      try {
-        const result = await streamChatCompletion({
-          model: modelId,
-          messages,
-          options: {
-            temperature: slotOpts.temperature,
-            max_tokens: contestantMaxTokens,
-            top_p: slotOpts.top_p,
-            top_k: slotOpts.top_k,
-            repeat_penalty: slotOpts.repeat_penalty,
-            presence_penalty: slotOpts.presence_penalty,
-            frequency_penalty: slotOpts.frequency_penalty,
-            stop: slotOpts.stop?.length ? slotOpts.stop : undefined,
-            ttl: slotOpts.model_ttl_seconds,
-            enable_thinking: false,
-            request_timeout_ms: $arenaRequestTimeoutSeconds * 1000,
-          },
-          signal: controller.signal,
-          onDone() {
-            setRunning(slot, false);
-          },
-          onChunk(chunk) {
-            fullContent += chunk;
-            if (detectLoop(fullContent)) {
-              controller.abort();
-              return;
-            }
-            const estTokens = Math.max(1, Math.ceil(fullContent.length / 4));
-            liveTokens.set(estTokens);
-            const now = Date.now();
-            if (now - lastSampleAt >= 1000) {
-              const rate = (estTokens - lastSampleTokens) / ((now - lastSampleAt) / 1000);
-              if (rate >= 0) pushTokSample(rate);
-              lastSampleAt = now;
-              lastSampleTokens = estTokens;
-            }
-            updateMessage(slot, assistantMsgId, { content: fullContent, modelId });
-          },
-          onUsage(u) {
-            usage = u;
-          },
-        });
-        elapsedMs = result.elapsedMs ?? Math.round(performance.now() - startMs);
-        if (result.usage) usage = result.usage;
-        if ($settings.audio_enabled && !result?.aborted)
-          playComplete($settings.audio_volume);
-        lastErr = null;
-        break;
-      } catch (err) {
-        lastErr = err;
-        clearTimeout(timeoutId);
-        if (err?.name === "AbortError") {
-          if (attempt === 1) {
-            fullContent = "";
-            updateMessage(slot, assistantMsgId, { content: "", modelId });
-            continue;
+    const genTimeoutMs = Math.max(45_000, Number($arenaRequestTimeoutSeconds || 120) * 1000);
+    const controller = new AbortController();
+    aborters[slot] = controller;
+    const timeoutId = setTimeout(() => controller.abort(), genTimeoutMs);
+    try {
+      const result = await streamChatCompletion({
+        model: modelId,
+        messages,
+        options: {
+          temperature: slotOpts.temperature,
+          max_tokens: contestantMaxTokens,
+          top_p: slotOpts.top_p,
+          top_k: slotOpts.top_k,
+          repeat_penalty: slotOpts.repeat_penalty,
+          presence_penalty: slotOpts.presence_penalty,
+          frequency_penalty: slotOpts.frequency_penalty,
+          stop: slotOpts.stop?.length ? slotOpts.stop : undefined,
+          ttl: slotOpts.model_ttl_seconds,
+          enable_thinking: false,
+          request_timeout_ms: genTimeoutMs,
+        },
+        signal: controller.signal,
+        onDone() {
+          setRunning(slot, false);
+        },
+        onChunk(chunk) {
+          fullContent += chunk;
+          const visible = visibleContestantText(fullContent);
+          if (visible && detectLoop(visible)) {
+            controller.abort();
+            return;
           }
-          setSlotError(slot, "Timeout after retry. This round is not scored 0 (technical failure).");
-          updateMessage(slot, assistantMsgId, { content: "", stats: { technical_failure: true }, modelId });
-          return { technicalFailure: true, latency_ms: Math.round(performance.now() - startMs), token_count: null, timestamp: Date.now() };
-        }
+          const estTokens = Math.max(1, Math.ceil((visible || fullContent).length / 4));
+          liveTokens.set(estTokens);
+          const now = Date.now();
+          if (now - lastSampleAt >= 1000) {
+            const rate = (estTokens - lastSampleTokens) / ((now - lastSampleAt) / 1000);
+            if (rate >= 0) pushTokSample(rate);
+            lastSampleAt = now;
+            lastSampleTokens = estTokens;
+          }
+          updateMessage(slot, assistantMsgId, { content: visible, modelId });
+        },
+        onUsage(u) {
+          usage = u;
+        },
+      });
+      elapsedMs = result.elapsedMs ?? Math.round(performance.now() - startMs);
+      if (result.usage) usage = result.usage;
+      fullContent = visibleContestantText(fullContent);
+      if ($settings.audio_enabled && !result?.aborted && fullContent)
+        playComplete($settings.audio_volume);
+      if (result?.aborted && !fullContent) {
+        setSlotError(slot, "Timed out with no answer. This round is not scored 0.");
+        updateMessage(slot, assistantMsgId, { content: "", stats: { technical_failure: true }, modelId });
+        return { technicalFailure: true, latency_ms: elapsedMs, token_count: null, timestamp: Date.now() };
+      }
+    } catch (err) {
+      fullContent = visibleContestantText(fullContent);
+      if (err?.name === "AbortError" && fullContent) {
+        elapsedMs = Math.round(performance.now() - startMs);
+      } else if (err?.name === "AbortError") {
+        setSlotError(slot, "Timed out with no answer. This round is not scored 0.");
+        updateMessage(slot, assistantMsgId, { content: "", stats: { technical_failure: true }, modelId });
+        return { technicalFailure: true, latency_ms: Math.round(performance.now() - startMs), token_count: null, timestamp: Date.now() };
+      } else {
         setSlotError(slot, err?.message || "Failed to get response.");
         updateMessage(slot, assistantMsgId, { content: sanitizeContestantResponse(fullContent) || "", stats: null, modelId });
         return undefined;
-      } finally {
-        clearTimeout(timeoutId);
-        if (aborters[slot] === controller) {
-          setRunning(slot, false);
-          aborters[slot] = null;
-        }
       }
-    }
-    if (lastErr) {
-      setSlotError(slot, lastErr?.message || "Failed to get response.");
-      updateMessage(slot, assistantMsgId, { content: sanitizeContestantResponse(fullContent) || "", stats: null, modelId });
-      return undefined;
+    } finally {
+      clearTimeout(timeoutId);
+      if (aborters[slot] === controller) {
+        setRunning(slot, false);
+        aborters[slot] = null;
+      }
     }
 
     // --- Sanitize: strip any judge-pattern lines the model may have hallucinated ---
@@ -1656,19 +1664,25 @@
           numericPrecision: arenaNumericPrecision,
         });
     chatError.set(null);
+    const judgeTimeoutMs = Math.min(120_000, Math.max(30_000, Number($arenaRequestTimeoutSeconds || 90) * 1000));
     const controller = new AbortController();
     aborters["A"] = controller;
-    const judgeTimeoutId = setTimeout(() => controller.abort(), ARENA_TIMEOUT_MS);
+    const judgeTimeoutId = setTimeout(() => controller.abort(), judgeTimeoutMs);
     let fullContent = "";
     const judgeOpts = getSettingsForSlot("A");
+    const judgeMessages = messages.map((m, i) =>
+      i === messages.length - 1 && m?.role === "user"
+        ? { ...m, content: appendNoThink(m.content) }
+        : m,
+    );
     try {
       arenaTransitionPhase = "scoring";
       await streamChatCompletion({
         model: judgeId,
-        messages,
+        messages: judgeMessages,
         options: {
           temperature: useDeterministicJudge ? 0 : judgeOpts.temperature,
-          max_tokens: judgeOpts.max_tokens,
+          max_tokens: Math.min(512, Number(judgeOpts.max_tokens) || 512),
           top_p: judgeOpts.top_p,
           top_k: judgeOpts.top_k,
           repeat_penalty: judgeOpts.repeat_penalty,
@@ -1676,7 +1690,8 @@
           frequency_penalty: judgeOpts.frequency_penalty,
           stop: judgeOpts.stop?.length ? judgeOpts.stop : undefined,
           ttl: judgeOpts.model_ttl_seconds,
-          request_timeout_ms: $arenaRequestTimeoutSeconds * 1000,
+          enable_thinking: false,
+          request_timeout_ms: judgeTimeoutMs,
         },
         signal: controller.signal,
         onChunk(chunk) {

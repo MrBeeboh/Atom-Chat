@@ -15,8 +15,8 @@
 export const ARENA_CONTESTANT_SYSTEM_PROMPT =
   'Give the answer only. Start with "Final Answer: " and the answer on that line. You may add one short sentence of explanation after it, or nothing. No background, lists, proofs, tutorials, or extra sections. Do not think out loud. Do not discuss evaluation.';
 
-/** Default generation cap so contestants cannot write a white paper. Slot override still wins. */
-export const ARENA_CONTESTANT_MAX_TOKENS = 256;
+/** Default generation cap once thinking is off. Slot override still wins. */
+export const ARENA_CONTESTANT_MAX_TOKENS = 384;
 
 /** Always prepended to the contestant user message (hidden from the UI bubble). */
 export const ARENA_CONTESTANT_BREVITY_RULE =
@@ -333,8 +333,26 @@ export function migrateOldQuestionsAndAnswers(oldQuestions, oldAnswers) {
  */
 export function stripThinkBlocks(text) {
   if (!text || typeof text !== 'string') return text || '';
-  // Remove <think>...</think> blocks (greedy, handles multi-line)
-  return text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+  let out = text.replace(/<(?:think|reasoning|thought)>[\s\S]*?<\/(?:think|reasoning|thought)>/gi, '');
+  out = out.replace(/<(?:think|reasoning|thought)>[\s\S]*$/i, '');
+  return out.trim();
+}
+
+/** Visible contestant text: drop think/reasoning blocks, including an unclosed one mid-stream. */
+export function visibleContestantText(text) {
+  return stripThinkBlocks(text);
+}
+
+/** Qwen3 / llama.cpp: `/no_think` in the last user turn turns off chain-of-thought. */
+export function appendNoThink(content) {
+  if (content == null) return '/no_think';
+  if (Array.isArray(content)) {
+    const has = content.some((p) => typeof p?.text === 'string' && /\/no_think\b/i.test(p.text));
+    return has ? content : [...content, { type: 'text', text: '/no_think' }];
+  }
+  const s = String(content);
+  if (/\/no_think\b/i.test(s)) return s;
+  return `${s.trimEnd()}\n\n/no_think`;
 }
 
 /**
@@ -977,7 +995,7 @@ export function buildArenaQuestionGenerationPrompt({ categories = [], questionCo
       ? categories.map((c) => c.trim()).filter(Boolean).join(', ')
       : 'general knowledge';
   const systemContent =
-    'You are generating a set of quiz questions for an AI model competition. Output ONLY a valid JSON array. Each element must have exactly "question" and "answer" keys (strings). No markdown, no code fence, no explanation—only the raw JSON array.';
+    'You are generating a set of quiz questions. Output ONLY a valid JSON array. Each element must have exactly "question" and "answer" keys (strings). No markdown, no code fence, no <think>, no chain-of-thought, no explanation—only the raw JSON array. Keep each question and answer to one short sentence.';
   const difficultyInstructions = {
     1: 'Difficulty level 1 (easiest): Questions should be solvable by most capable models. Straightforward, widely known facts or simple reasoning.',
     2: 'Difficulty level 2: Moderately easy. Clear questions with well-established answers; may require a bit of reasoning or common knowledge.',

@@ -13,6 +13,22 @@
 // LM Studio still works if you change the URL in Settings → Connection.
 const DEFAULT_BASE = typeof import.meta !== 'undefined' && import.meta.env?.DEV ? '/api/llama' : 'http://localhost:8080';
 
+function applyThinkingOff(body, options) {
+  if (!body || options?.enable_thinking !== false) return body;
+  body.enable_thinking = false;
+  body.reasoning_format = 'none';
+  body.chat_template_kwargs = { ...(body.chat_template_kwargs || {}), enable_thinking: false };
+  return body;
+}
+
+/** Assistant text only — never chain-of-thought / reasoning channels. */
+function extractAssistantDeltaText(choice) {
+  const d = choice?.delta;
+  if (!d || typeof d !== 'object') return '';
+  if (typeof d.content === 'string' && d.content) return d.content;
+  return '';
+}
+
 function viteEnvStr(key) {
   const map = {
     VITE_LM_STUDIO_BASE_URL: import.meta.env.VITE_LM_STUDIO_BASE_URL,
@@ -1392,34 +1408,30 @@ export async function requestChatCompletion({ model, messages, options = {} }) {
     ...(lmsHasRestModels && options.presence_penalty != null && { presence_penalty: options.presence_penalty }),
     ...(lmsHasRestModels && options.frequency_penalty != null && { frequency_penalty: options.frequency_penalty }),
   };
+  applyThinkingOff(body, options);
   const fetchOpts = { method: 'POST', headers, body: JSON.stringify(body) };
-  if (isCloud) {
-    const ctrl = new AbortController();
-    const to = setTimeout(() => ctrl.abort(), CLOUD_REQUEST_TIMEOUT_MS);
-    fetchOpts.signal = ctrl.signal;
-    try {
-      const res = await fetch(url, fetchOpts);
-      clearTimeout(to);
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(parseChatApiError(res.status, text, model));
-      }
-      const data = await res.json();
-      const content = data.choices?.[0]?.message?.content ?? '';
-      return { content: String(content).trim(), usage: data.usage };
-    } catch (err) {
-      clearTimeout(to);
-      throw err;
+  const timeoutMs = options.request_timeout_ms
+    ? Math.max(15_000, Number(options.request_timeout_ms) || 0)
+    : isCloud
+      ? CLOUD_REQUEST_TIMEOUT_MS
+      : 120_000;
+  const ctrl = new AbortController();
+  const to = setTimeout(() => ctrl.abort(), timeoutMs);
+  fetchOpts.signal = ctrl.signal;
+  try {
+    const res = await fetch(url, fetchOpts);
+    clearTimeout(to);
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(parseChatApiError(res.status, text, model));
     }
+    const data = await res.json();
+    const content = data.choices?.[0]?.message?.content ?? '';
+    return { content: String(content).trim(), usage: data.usage };
+  } catch (err) {
+    clearTimeout(to);
+    throw err;
   }
-  const res = await fetch(url, fetchOpts);
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(parseChatApiError(res.status, text, model));
-  }
-  const data = await res.json();
-  const content = data.choices?.[0]?.message?.content ?? '';
-  return { content: String(content).trim(), usage: data.usage };
 }
 
 /** Regex to extract <render_searched_image image_id="..." size="..."> from stream deltas (Grok image search). */
@@ -1653,8 +1665,8 @@ export async function streamChatCompletion({ model, messages, options = {}, onCh
     max_tokens: maxTokens,
     ...(options.top_p != null && { top_p: options.top_p }),
     ...(options.stop?.length && { stop: options.stop }),
-    ...(options.enable_thinking === false && { chat_template_kwargs: { enable_thinking: false } }),
   };
+  applyThinkingOff(streamBody, options);
   if (!isCloud) {
     if (options.top_k != null) streamBody.top_k = options.top_k;
     if (options.repeat_penalty != null) streamBody.repeat_penalty = options.repeat_penalty;
@@ -1722,8 +1734,10 @@ export async function streamChatCompletion({ model, messages, options = {}, onCh
             try {
               const parsed = JSON.parse(payload);
               const choice = parsed.choices?.[0];
-              if (choice?.delta?.content) onChunk(choice.delta.content);
-              if (choice?.finish_reason != null) {
+              const piece = extractAssistantDeltaText(choice);
+              if (piece) onChunk(piece);
+              const fr = choice?.finish_reason;
+              if (fr && fr !== 'null') {
                 callOnDone();
                 streamEnded = true;
               }
