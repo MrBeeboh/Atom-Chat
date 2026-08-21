@@ -68,14 +68,14 @@ export async function resizeImageDataUrlsForVision(dataUrls) {
 }
 
 /**
- * True if this model is Qwen-VL 4B or 8B — those work with full-size images; skip resize to preserve quality.
+ * True if this model is Qwen-VL — those work better with full-size images; skip aggressive resize.
  * @param {string} [modelId]
  * @returns {boolean}
  */
 export function shouldSkipImageResizeForVision(modelId) {
   if (!modelId || typeof modelId !== 'string') return false;
   const lower = modelId.toLowerCase();
-  return /qwen.*vl.*(4b|8b)|(4b|8b).*qwen.*vl/.test(lower);
+  return /qwen.*vl|qwen3\.5.*vl|qwen3[-.]?vl/.test(lower);
 }
 
 /**

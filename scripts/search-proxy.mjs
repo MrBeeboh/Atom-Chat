@@ -4,6 +4,7 @@ import cors from 'cors';
 import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { scanLocalGgufModels } from './local-disk-models.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CONFIG_DIR = join(__dirname, '..', 'config');
@@ -27,6 +28,17 @@ let BRAVE_API_KEY = loadApiKey();
 
 app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', search_available: !!BRAVE_API_KEY, timestamp: new Date().toISOString() });
+});
+
+/** List .gguf files on disk (works in production builds, not only Vite dev). */
+app.get('/api/atom-local-disk-models', (req, res) => {
+    try {
+        const models = scanLocalGgufModels();
+        res.json({ models });
+    } catch (err) {
+        console.error('[search-proxy] disk models scan:', err.message);
+        res.status(500).json({ error: 'Disk scan failed', models: [] });
+    }
 });
 
 app.post('/api/set-key', (req, res) => {

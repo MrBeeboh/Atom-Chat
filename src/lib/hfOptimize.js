@@ -23,7 +23,7 @@ function delay(ms) {
 const QUANT_SUFFIXES = /\.(Q[2-8]_[KQ]?[SML]?|Q[2-8]_0|F16|F32)(\.gguf)?$/i;
 
 /** Known GGUF uploaders whose repos typically have llama.cpp examples with optimal params */
-const GGUF_AUTHORS = ['TheBloke', 'bartowski', 'QuantFactory'];
+const GGUF_AUTHORS = ['TheBloke', 'bartowski', 'QuantFactory', 'DavidAU', 'mradermacher', 'MaziyarPanahi'];
 
 /**
  * Resolve LM Studio model ID to Hugging Face repo ID.
