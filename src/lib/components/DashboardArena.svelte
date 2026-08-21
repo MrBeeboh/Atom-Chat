@@ -101,6 +101,8 @@
     isCloudModel,
     sanitizeContestantResponse,
     ARENA_CONTESTANT_SYSTEM_PROMPT,
+    ARENA_CONTESTANT_MAX_TOKENS,
+    ARENA_CONTESTANT_BREVITY_RULE,
     JUDGE_LOADING_LINES,
     ARENA_BUILD_LOADING_LINES,
     ARENA_LOADING_MODEL_LINES,
@@ -941,6 +943,11 @@
     // contestants because they may contain old toxic "Arena contestant" text from
     // localStorage that causes models to hallucinate scoring patterns.
     const slotOpts = getSettingsForSlot(slot);
+    const overrideMax = get(arenaSlotOverrides)?.[slot]?.max_tokens;
+    const contestantMaxTokens =
+      Number.isFinite(Number(overrideMax)) && Number(overrideMax) > 0
+        ? Math.min(100000, Number(overrideMax))
+        : ARENA_CONTESTANT_MAX_TOKENS;
     const messages = [
       { role: "system", content: ARENA_CONTESTANT_SYSTEM_PROMPT },
       { role: "user", content: question },
@@ -979,7 +986,7 @@
           messages,
           options: {
             temperature: slotOpts.temperature,
-            max_tokens: slotOpts.max_tokens,
+            max_tokens: contestantMaxTokens,
             top_p: slotOpts.top_p,
             top_k: slotOpts.top_k,
             repeat_penalty: slotOpts.repeat_penalty,
@@ -987,6 +994,7 @@
             frequency_penalty: slotOpts.frequency_penalty,
             stop: slotOpts.stop?.length ? slotOpts.stop : undefined,
             ttl: slotOpts.model_ttl_seconds,
+            enable_thinking: false,
             request_timeout_ms: $arenaRequestTimeoutSeconds * 1000,
           },
           signal: controller.signal,
@@ -1142,12 +1150,10 @@
     liveTokens.set(0);
     isStreaming.set(true);
     try {
-      let rulesPrefix = (typeof contestRules === "string"
-        ? contestRules
-        : ""
-      ).trim()
-        ? contestRules.trim() + "\n\n---\n\n"
-        : "";
+      let rulesPrefix = ARENA_CONTESTANT_BREVITY_RULE + "\n\n";
+      if ((typeof contestRules === "string" ? contestRules : "").trim()) {
+        rulesPrefix += contestRules.trim() + "\n\n---\n\n";
+      }
       if (arenaNumericPrecision != null) {
         const precisionLine =
           arenaNumericPrecision === 0
@@ -2569,7 +2575,7 @@
             <textarea
               class="w-full px-3 py-2 rounded-lg border text-xs resize-y max-h-[200px]"
               style="border-color: var(--ui-border); background-color: var(--ui-input-bg); color: var(--ui-text-primary);"
-              placeholder="Sent with every question."
+              placeholder="Optional extra rules. Contestants already get: answer first, optional one-sentence explanation."
               rows="3"
               bind:value={contestRules}
             ></textarea>

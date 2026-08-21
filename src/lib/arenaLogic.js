@@ -13,7 +13,14 @@
  * Cached/persisted system prompts are IGNORED for contestants — only this is used.
  */
 export const ARENA_CONTESTANT_SYSTEM_PROMPT =
-  'Answer the question directly and concisely. Follow any instructions or constraints given. Do not discuss how you would be evaluated. End your response with "Final Answer: " followed by your concise answer.';
+  'Give the answer only. Start with "Final Answer: " and the answer on that line. You may add one short sentence of explanation after it, or nothing. No background, lists, proofs, tutorials, or extra sections. Do not think out loud. Do not discuss evaluation.';
+
+/** Default generation cap so contestants cannot write a white paper. Slot override still wins. */
+export const ARENA_CONTESTANT_MAX_TOKENS = 256;
+
+/** Always prepended to the contestant user message (hidden from the UI bubble). */
+export const ARENA_CONTESTANT_BREVITY_RULE =
+  'Reply in at most 3 lines. First line: Final Answer: <answer>. Optional second line: one short sentence. Stop.';
 
 export const ARENA_SYSTEM_PROMPT_TEMPLATES = [
   { name: '—', prompt: '' },
@@ -23,7 +30,7 @@ export const ARENA_SYSTEM_PROMPT_TEMPLATES = [
   { name: 'Creative', prompt: 'You are a creative writer. Use vivid language and varied structure. Be engaging and original.' },
   {
     name: 'Arena contestant',
-    prompt: 'Answer the question directly and concisely. Follow any instructions or constraints given. Do not discuss how you would be evaluated. End your response with "Final Answer: " followed by your concise answer.',
+    prompt: ARENA_CONTESTANT_SYSTEM_PROMPT,
   },
   {
     name: 'Arena judge',

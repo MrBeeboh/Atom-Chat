@@ -27,6 +27,9 @@ import {
   pickJudgeModel,
   isCloudModel,
   sanitizeContestantResponse,
+  ARENA_CONTESTANT_SYSTEM_PROMPT,
+  ARENA_CONTESTANT_MAX_TOKENS,
+  ARENA_CONTESTANT_BREVITY_RULE,
 } from './arenaLogic.js';
 
 // ---------- parseQuestionsAndAnswers ----------
@@ -358,6 +361,19 @@ describe('sanitizeContestantResponse', () => {
   it('preserves clean responses unchanged', () => {
     const text = 'The longest palindromic substring can be found using Manacher\'s algorithm.\n\nFinal Answer: Manacher\'s algorithm';
     expect(sanitizeContestantResponse(text)).toBe(text);
+  });
+});
+
+describe('Arena contestant brevity', () => {
+  it('asks for the answer first and forbids essays', () => {
+    expect(ARENA_CONTESTANT_SYSTEM_PROMPT).toMatch(/Final Answer:/);
+    expect(ARENA_CONTESTANT_SYSTEM_PROMPT.toLowerCase()).toMatch(/one short sentence/);
+    expect(ARENA_CONTESTANT_BREVITY_RULE.toLowerCase()).toMatch(/at most 3 lines/);
+  });
+
+  it('caps default contestant generation well below chat defaults', () => {
+    expect(ARENA_CONTESTANT_MAX_TOKENS).toBeLessThanOrEqual(256);
+    expect(ARENA_CONTESTANT_MAX_TOKENS).toBeGreaterThanOrEqual(64);
   });
 });
 

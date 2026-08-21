@@ -1653,6 +1653,7 @@ export async function streamChatCompletion({ model, messages, options = {}, onCh
     max_tokens: maxTokens,
     ...(options.top_p != null && { top_p: options.top_p }),
     ...(options.stop?.length && { stop: options.stop }),
+    ...(options.enable_thinking === false && { chat_template_kwargs: { enable_thinking: false } }),
   };
   if (!isCloud) {
     if (options.top_k != null) streamBody.top_k = options.top_k;
