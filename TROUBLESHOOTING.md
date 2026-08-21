@@ -37,6 +37,9 @@ If the model dropdown is empty or says "Cannot connect":
 6. **Still no models**  
    If the list still does not load, the server at that URL is likely down or not OpenAI-compatible.
 
+7. **Arena local models timeout / score 0**  
+   Restart ATOM so llama-server starts with `--models-max 4` (or set `ATOM_MODELS_MAX`). Arena keeps the largest locals that fit in VRAM loaded and only swaps smaller ones. An old server left running with `--models-max 1` will still evict after every load. Generation timeout is the Arena Execution setting (default 360s) and starts after the model is already loaded. Technical timeouts are not scored as zeros.
+
 ## Voice (mic) not working
 
 - Voice server runs on port **8765** (see `voice-server/README.md`).

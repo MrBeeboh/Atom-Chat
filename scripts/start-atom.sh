@@ -108,6 +108,7 @@ llama_ready() {
 # Check if llama-server is already running on 8080
 if llama_ready; then
     echo "[ATOM] llama-server already running on port 8080"
+    echo "[ATOM] Arena needs --models-max > 1 to keep locals loaded. If that process was started with --models-max 1, stop it and re-run this script."
 else
     echo "[ATOM] Starting llama-server..."
 
@@ -121,7 +122,8 @@ else
             case ":$ATOM_MODEL_DIRS:" in *":$_extra:"*) ;; *) ATOM_MODEL_DIRS="${ATOM_MODEL_DIRS}:$_extra";; esac
         done
     fi
-    # Prefer router mode: no GGUF in VRAM until the app calls /models/load (Arena loads one at a time).
+    # Prefer router mode: no GGUF in VRAM until the app calls /models/load.
+    # Arena keeps the largest locals resident; --models-max must be >1 or each load evicts the last.
     ROUTER=0
     if [ -z "${MODEL:-}" ] && [ -z "${GGUF_PATH:-}" ] && [ -d "$ATOM_MODELS_DIR" ] && "${LLAMA_BIN}" --help 2>&1 | grep -qE 'models-dir'; then
         ROUTER=1
@@ -140,10 +142,12 @@ else
     fi
 
     if [ "$ROUTER" = 1 ]; then
-        echo "[ATOM] Router: --models-dir $ATOM_MODELS_DIR --models-max 1 --no-models-autoload (nothing preloaded into VRAM)"
+        ATOM_MODELS_MAX="${ATOM_MODELS_MAX:-4}"
+        echo "[ATOM] Router: --models-dir $ATOM_MODELS_DIR --models-max ${ATOM_MODELS_MAX} --no-models-autoload"
+        echo "[ATOM] Arena can keep multiple locals loaded (set ATOM_MODELS_MAX to change the cap)."
         echo "[ATOM] Disk scan also checks: ${ATOM_MODEL_DIRS#*:} (set ATOM_MODEL_DIRS to override)"
         : >>"$ROOT/llama-server.log"
-        nohup "$LLAMA_BIN" --models-dir "$ATOM_MODELS_DIR" --models-max 1 "${ROUTER_EXTRA[@]}" --n-gpu-layers 99 --port 8080 --host 0.0.0.0 >>"$ROOT/llama-server.log" 2>&1 &
+        nohup "$LLAMA_BIN" --models-dir "$ATOM_MODELS_DIR" --models-max "$ATOM_MODELS_MAX" "${ROUTER_EXTRA[@]}" --n-gpu-layers 99 --port 8080 --host 0.0.0.0 >>"$ROOT/llama-server.log" 2>&1 &
         LLAMA_PID=$!
         disown || true
     elif [ -n "$MODEL" ] && [ -f "$MODEL" ]; then
