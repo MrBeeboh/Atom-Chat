@@ -219,12 +219,24 @@ export function getRecommendedSettingsForModel(modelId) {
  * @param {{ context_length?: number }} [hfOverrides] - e.g. from getRecommendedFromHf()
  * @returns {typeof FAMILY_DEFAULTS.default & { family: string }}
  */
+/** Large dense models (24B+) — lower default context to reduce KV VRAM on single-GPU setups. */
+function isLargeDenseModel(modelId) {
+  if (!modelId || typeof modelId !== 'string') return false;
+  return /\b(2[4-9]|[3-9]\d)b\b/i.test(modelId) || /qwen3[.-]?8-27b/i.test(modelId);
+}
+
 export function getDefaultsForModel(modelId, hardware = {}, hfOverrides = {}) {
   const family = inferFamily(modelId);
   const d = FAMILY_DEFAULTS[family] ?? FAMILY_DEFAULTS.default;
   const maxCpu = hardware?.cpuLogicalCores ?? 256;
   const cpuThreads = Math.min(maxCpu, d.cpu_threads ?? maxCpu);
   const merged = { ...d, family, cpu_threads: cpuThreads };
-  if (typeof hfOverrides.context_length === 'number') merged.context_length = hfOverrides.context_length;
+  if (typeof hfOverrides.context_length === 'number') {
+    merged.context_length = hfOverrides.context_length;
+  } else if (isLargeDenseModel(modelId)) {
+    // 32K KV on 27B+ can crowd VRAM; 8K is enough for chat and matches Arc B70 tuning guides.
+    merged.context_length = Math.min(merged.context_length ?? 8192, 8192);
+    merged.eval_batch_size = Math.max(merged.eval_batch_size ?? 512, 2048);
+  }
   return merged;
 }

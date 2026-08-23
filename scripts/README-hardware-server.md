@@ -15,9 +15,11 @@ Server runs at **http://localhost:5000/metrics**. The app polls it every 1s when
 
 - **Flask + flask-cors** – HTTP server with CORS for the browser
 - **pynvml** – NVIDIA GPU (VRAM, utilization); primary GPU (index 0) is used
+- **Intel sysfs** – Arc / Intel GPU VRAM via `/sys/class/drm/card*/device/mem_info_vram_*`
+- **intel_gpu_top** (optional) – Intel GPU utilization when installed
 - **psutil** – CPU % and system RAM
 
-If pynvml is missing or no NVIDIA GPU, VRAM/GPU util will be 0; RAM and CPU still work.
+If no GPU bridge is available, VRAM/GPU util will be 0; RAM and CPU still work. `./scripts/start-atom.sh` starts this server automatically when Flask deps are installed.
 
 ## Custom URL
 

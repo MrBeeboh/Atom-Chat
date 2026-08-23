@@ -42,22 +42,26 @@ echo -e "${BOLD}3. Building frontend…${RESET}"
 npm run build
 echo "  ✓ Build complete (output in dist/)"
 
-# ── 4. llama.cpp / model server check ─────────────────────────────
+# ── 4. llama.cpp / GPU setup check ───────────────────────────────
 echo ""
-echo -e "${BOLD}4. Model server…${RESET}"
-if curl -s http://localhost:8080/v1/models &>/dev/null 2>&1; then
-  echo "  ✓ llama-server detected on port 8080 (recommended for Intel Arc)"
-elif curl -s http://localhost:1234/v1/models &>/dev/null 2>&1; then
-  echo "  ✓ OpenAI-compatible server detected on port 1234 (LM Studio, etc.)"
+echo -e "${BOLD}4. Model server & GPU…${RESET}"
+if [ -f "$ROOT/scripts/check-gpu-setup.sh" ]; then
+  bash "$ROOT/scripts/check-gpu-setup.sh" || true
 else
-  echo -e "  ${YELLOW}! No local model server detected on 8080 or 1234.${RESET}"
-  echo "  ATOM needs a running llama-server (or LM Studio / Ollama)."
-  echo ""
-  echo "  Quick start with llama.cpp on Intel GPU (SYCL build recommended):"
-  echo "    source /opt/intel/oneapi/setvars.sh   # Linux oneAPI"
-  echo "    llama-server -m /path/to/model.gguf --port 8080 --n-gpu-layers 99"
-  echo ""
-  echo "  Or install LM Studio and enable its local server (port 1234)."
+  if curl -s http://localhost:8080/v1/models &>/dev/null 2>&1; then
+    echo "  ✓ llama-server detected on port 8080 (recommended for Intel Arc)"
+  elif curl -s http://localhost:1234/v1/models &>/dev/null 2>&1; then
+    echo "  ✓ OpenAI-compatible server detected on port 1234 (LM Studio, etc.)"
+  else
+    echo -e "  ${YELLOW}! No local model server detected on 8080 or 1234.${RESET}"
+    echo "  ATOM needs a running llama-server (or LM Studio / Ollama)."
+    echo ""
+    echo "  Quick start with llama.cpp on Intel GPU (SYCL build recommended):"
+    echo "    source /opt/intel/oneapi/setvars.sh   # Linux oneAPI"
+    echo "    llama-server-sycl -m /path/to/model.gguf --port 8080 --n-gpu-layers 99 -ub 2048"
+    echo ""
+    echo "  Or install LM Studio and enable its local server (port 1234)."
+  fi
 fi
 
 # ── 5. Optional: voice server ────────────────────────────────────

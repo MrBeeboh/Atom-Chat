@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "start": "bash scripts/start-atom.sh",
+    "check-gpu": "bash scripts/check-gpu-setup.sh",
+    "fix-gpu": "bash scripts/fix-gpu-setup.sh",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
