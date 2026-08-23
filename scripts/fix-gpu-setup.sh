@@ -54,14 +54,37 @@ echo ""
 echo "ATOM GPU fix — Intel Arc / SYCL"
 echo "================================"
 
-REPO="$(find_atom_repo)" || {
-  echo "ERROR: Could not find ATOM repo (looked for scripts/start-atom.sh)."
-  echo "Clone it:  git clone https://github.com/MrBeeboh/Atom-Chat.git ~/atom-v2"
-  echo "Or set:    export ATOM_REPO=/path/to/atom-v2"
-  exit 1
-}
+REPO="$(find_atom_repo)" || REPO=""
+if [ -z "$REPO" ]; then
+  TARGET="${ATOM_REPO:-$HOME/atom-v2}"
+  echo "[fix] ATOM repo not found — cloning to ${TARGET}..."
+  if command -v git >/dev/null 2>&1; then
+    git clone -b cursor/fix-intel-gpu-setup-dd8d --depth 1 \
+      https://github.com/MrBeeboh/Atom-Chat.git "$TARGET" 2>/dev/null \
+      || git clone --depth 1 https://github.com/MrBeeboh/Atom-Chat.git "$TARGET"
+    REPO="$TARGET"
+  else
+    echo "ERROR: git not found. Install git or clone manually:"
+    echo "  git clone https://github.com/MrBeeboh/Atom-Chat.git ~/atom-v2"
+    exit 1
+  fi
+fi
 echo "[fix] Repo: ${REPO}"
 cd "$REPO"
+
+if [ ! -f "$REPO/scripts/llama-gpu-common.sh" ]; then
+  echo "[fix] Missing GPU scripts — fetching latest..."
+  git fetch origin cursor/fix-intel-gpu-setup-dd8d 2>/dev/null || git fetch origin 2>/dev/null || true
+  git checkout cursor/fix-intel-gpu-setup-dd8d 2>/dev/null \
+    || git merge --ff-only origin/cursor/fix-intel-gpu-setup-dd8d 2>/dev/null \
+    || true
+fi
+
+if [ ! -f "$REPO/scripts/llama-gpu-common.sh" ]; then
+  echo "ERROR: scripts/llama-gpu-common.sh missing. Run:"
+  echo "  cd $REPO && git fetch origin && git checkout cursor/fix-intel-gpu-setup-dd8d"
+  exit 1
+fi
 
 # shellcheck source=scripts/llama-gpu-common.sh
 . "$REPO/scripts/llama-gpu-common.sh"
