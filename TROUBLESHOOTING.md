@@ -2,6 +2,26 @@
 
 Quick checks when something stops working (e.g. after fixing voice or internet).
 
+## Slow tokens/sec on Intel Arc (7–10 tok/s on 27B)
+
+Expected on Arc Pro B70 with SYCL + Q4_K_M: **~20–22 tok/s** for Qwen3.5-27B. If you see 7–10 tok/s:
+
+1. **Run diagnostics:** `npm run check-gpu` or `./scripts/check-gpu-setup.sh`
+2. **Force restart with SYCL:** `ATOM_RESTART_LLAMA=1 ./scripts/start-atom.sh`
+3. **Use a SYCL build:** `llama-server-sycl` or set `LLAMA_SERVER_BIN` to your SYCL binary
+4. **Avoid Q8 on Arc** until llama.cpp ≥ fix for Q8 SYCL reorder — Q8 was ~5 tok/s; use **Q4_K_M**
+5. **Check `llama-server.log`** in the repo root for `SYCL` / `Level Zero` (not CPU-only)
+6. **Stale server on 8080:** ATOM now auto-restarts llama-server missing `-ngl` flags; set `ATOM_RESTART_LLAMA=1` to force
+
+Tuning env vars (set before `./scripts/start-atom.sh`):
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `ATOM_LLAMA_NGL` | 99 | GPU layers (full offload) |
+| `ATOM_LLAMA_CTX` | 8192 | Context size |
+| `ATOM_LLAMA_UBATCH` | 2048 | Micro-batch (B70 sweet spot) |
+| `SYCL_CACHE_PERSISTENT` | 0 | Avoid B70 SYCL cache crashes |
+
 ## Models not loading (llama.cpp / LM Studio)
 
 If the model dropdown is empty or says "Cannot connect":
