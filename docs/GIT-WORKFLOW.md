@@ -1,8 +1,11 @@
 # Git Workflow (Source of Truth + Local Real-Time Testing)
 
-This project uses **GitHub (`origin`) as the source of truth** and your local folder (`C:\CURSOR\lm-studio-ui`) as the live test environment.
+This project uses **Cursor Origin (`origin`) as the source of truth** and your local folder (`C:\CURSOR\AtomUI`) as the live test environment.
 
-You always test locally (for example with `npm run dev`), but you do code changes on short-lived branches and only merge to `master` when verified.
+Remote: `https://origin.cursor.com/MrBeeboh/Atom-Chat.git`  
+Browse: `https://cursor.com/codebase/MrBeeboh/Atom-Chat`
+
+You always test locally (for example with `npm run dev`), but you do code changes on short-lived branches and only merge to `main` when verified.
 
 ## One-time setup (already applied in this repo)
 
@@ -13,9 +16,15 @@ These repo-local settings are enabled:
 - `push.autosetupremote=true`
 - `rebase.autostash=true`
 
+Sign in to Origin before the first push/pull:
+
+```bash
+origin auth login
+```
+
 ## Daily workflow
 
-### 1) Sync local `master`
+### 1) Sync local `main`
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\sync-master.ps1
@@ -54,9 +63,9 @@ powershell -ExecutionPolicy Bypass -File .\scripts\finish-work.ps1
 
 This will:
 
-1. Sync `master`
-2. Fast-forward merge your branch into `master`
-3. Push `master` to GitHub
+1. Sync `main`
+2. Fast-forward merge your branch into `main`
+3. Push `main` to Origin
 4. Delete your local feature branch
 
 ## Recovery rule (important)
@@ -76,8 +85,8 @@ git log --oneline --graph --decorate -20
 
 ## Golden rules
 
-- `origin/master` is the official truth.
-- Never do new work directly on `master`.
+- `origin/main` on Origin is the official truth.
+- Never do new work directly on `main`.
 - One branch per task.
 - Commit and push frequently.
-- Merge to `master` only after local testing passes.
+- Merge to `main` only after local testing passes.

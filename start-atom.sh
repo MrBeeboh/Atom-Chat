@@ -12,12 +12,12 @@ NC='\033[0m'
 
 echo -e "${GREEN}Starting ATOM UI...${NC}"
 
-# --- Auto-sync from GitHub on launch (set ATOM_SKIP_SYNC=1 to disable) -------
+# --- Auto-sync from Origin on launch (set ATOM_SKIP_SYNC=1 to disable) -------
 # Never blocks launch: offline, local edits, or a diverged branch all fall
 # through to starting the current version.
 if [ -z "${ATOM_SKIP_SYNC:-}" ] && [ -d .git ] && command -v git >/dev/null 2>&1; then
     SYNC_BRANCH="${ATOM_SYNC_BRANCH:-main}"
-    echo -e "${GREEN}Checking GitHub for updates (origin/$SYNC_BRANCH)...${NC}"
+    echo -e "${GREEN}Checking Origin for updates (origin/$SYNC_BRANCH)...${NC}"
     if git fetch --quiet origin "$SYNC_BRANCH" 2>/dev/null; then
         LOCAL_REF="$(git rev-parse HEAD 2>/dev/null || true)"
         REMOTE_REF="$(git rev-parse "origin/$SYNC_BRANCH" 2>/dev/null || true)"
@@ -43,7 +43,7 @@ if [ -z "${ATOM_SKIP_SYNC:-}" ] && [ -d .git ] && command -v git >/dev/null 2>&1
             fi
         fi
     else
-        echo -e "${YELLOW}Offline or GitHub unreachable — starting with current version.${NC}"
+        echo -e "${YELLOW}Offline or Origin unreachable — starting with current version.${NC}"
     fi
 fi
 

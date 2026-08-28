@@ -6,13 +6,13 @@ set -e
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-# --- Auto-sync from GitHub on launch (set ATOM_SKIP_SYNC=1 to disable) -------
+# --- Auto-sync from Origin on launch (set ATOM_SKIP_SYNC=1 to disable) -------
 # Pulls the latest release branch before starting so the desktop app never
 # drifts behind the repo. Never blocks launch: offline, local edits, or a
 # diverged branch all fall through to starting the current version.
 if [ -z "${ATOM_SKIP_SYNC:-}" ] && [ -d .git ] && command -v git >/dev/null 2>&1; then
     SYNC_BRANCH="${ATOM_SYNC_BRANCH:-main}"
-    echo "[ATOM] Checking GitHub for updates (origin/$SYNC_BRANCH)..."
+    echo "[ATOM] Checking Origin for updates (origin/$SYNC_BRANCH)..."
     if git fetch --quiet origin "$SYNC_BRANCH" 2>/dev/null; then
         LOCAL_REF="$(git rev-parse HEAD 2>/dev/null || true)"
         REMOTE_REF="$(git rev-parse "origin/$SYNC_BRANCH" 2>/dev/null || true)"
@@ -39,7 +39,7 @@ if [ -z "${ATOM_SKIP_SYNC:-}" ] && [ -d .git ] && command -v git >/dev/null 2>&1
             fi
         fi
     else
-        echo "[ATOM] Offline or GitHub unreachable — starting with current version."
+        echo "[ATOM] Offline or Origin unreachable — starting with current version."
     fi
 fi
 
