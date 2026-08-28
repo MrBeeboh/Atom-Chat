@@ -48,7 +48,7 @@ Optional: Python 3 for voice input, hardware metrics, and model unloading helper
 ## Staying up to date
 
 The launchers (`npm run start`, `./start-atom.sh`, desktop icon) auto-sync from
-GitHub on every start: they fast-forward to the latest `origin/main` and re-run
+[Cursor Origin](https://cursor.com/docs/origin/git) on every start: they fast-forward to the latest `origin/main` and re-run
 `npm install` only when dependencies changed. Sync is skipped safely when you
 are offline, have local edits, or are on a different branch.
 
@@ -74,4 +74,4 @@ Switch to Arena layout to compare up to 4 models. Load a question set, click **R
 
 ## Release
 
-Download the latest `atom-chat.zip` from [Releases](https://github.com/anomalyco/atom-chat/releases). Extract and open `dist/index.html`, or serve with `npx serve dist`.
+Clone from Origin (`https://origin.cursor.com/MrBeeboh/Atom-Chat.git`), run `npm run build`, then open `dist/index.html` or serve with `npx serve dist`. Browse the repo at [cursor.com/codebase/MrBeeboh/Atom-Chat](https://cursor.com/codebase/MrBeeboh/Atom-Chat).
