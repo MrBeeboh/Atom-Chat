@@ -188,39 +188,24 @@ if [ -f scripts/search-proxy.mjs ]; then
     nohup node scripts/search-proxy.mjs >> search-proxy.log 2>&1 &
 fi
 
-# UI port: keep 5175 for this launcher so localStorage (API keys, backend URL) stays on the same
-# origin as before. Port 5173 vs 5175 are different sites to the browser — keys do not carry over.
-ATOM_UI_PORT="${ATOM_UI_PORT:-5175}"
+# UI port: default 5173 (matches vite.config.js). Override with ATOM_UI_PORT if needed.
+ATOM_UI_PORT="${ATOM_UI_PORT:-5173}"
 UI_URL="http://localhost:${ATOM_UI_PORT}/"
 
 if atom_port_in_use "$ATOM_UI_PORT"; then
-  echo "[ATOM] WARNING: port ${ATOM_UI_PORT} is already in use."
-  echo "[ATOM] Close the other ATOM/Vite window or run: set ATOM_UI_PORT=5173 && npm run start"
+  echo "[ATOM] ERROR: port ${ATOM_UI_PORT} is already in use."
+  echo "[ATOM] Stop the other Vite window or run: ATOM_CLEAN_PORTS=1 npm run start"
+  echo "[ATOM] Or try another port: ATOM_UI_PORT=5175 npm run start"
+  exit 1
 fi
 
-npm run dev -- --port "$ATOM_UI_PORT" --strictPort &
-UI_PID=$!
+echo "[ATOM] Starting UI on port ${ATOM_UI_PORT}..."
+atom_open_browser_when_ready "$ATOM_UI_PORT" &
 
-if atom_wait_for_http "$UI_URL" 40 0.5; then
-  sleep 1
-  atom_launch_url "$ATOM_UI_PORT"
-else
-  if ! kill -0 "$UI_PID" 2>/dev/null; then
-    echo "[ATOM] ERROR: Vite exited before the UI became ready on port ${ATOM_UI_PORT}."
-    echo "[ATOM] If the port is busy, try: ATOM_UI_PORT=5173 npm run start"
-    exit 1
-  fi
-  echo "[ATOM] WARNING: UI is slow to start. Open manually when ready: ${UI_URL}"
-  atom_launch_url "$ATOM_UI_PORT" || true
-fi
-
+trap 'echo ""; echo "[ATOM] Shutting down..."; exit 0' INT TERM
 echo ""
 echo "Press Ctrl+C to stop ATOM."
-trap 'echo ""; echo "[ATOM] Shutting down..."; kill $UI_PID 2>/dev/null; exit 0' INT TERM
-set +e
-wait "$UI_PID"
-UI_EXIT=$?
-if [ "$UI_EXIT" -ne 0 ]; then
-  echo "[ATOM] Dev server exited (code ${UI_EXIT}). See errors above."
-  exit "$UI_EXIT"
-fi
+echo "UI URL: ${UI_URL}"
+echo ""
+
+npm run dev -- --port "$ATOM_UI_PORT" --strictPort --host localhost

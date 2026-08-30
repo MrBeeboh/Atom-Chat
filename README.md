@@ -40,8 +40,8 @@ Optional: Python 3 for voice input, hardware metrics, and model unloading helper
 | Command | Description |
 |---------|-------------|
 | `npm run dev` | Dev server on port 5173 (no voice/search) |
-| `npm run start` | Full stack — voice + search + UI (port 5175; opens browser) |
-| `start_atom_ui.bat` | **Windows:** same as `npm run start`, native launcher |
+| `npm run start` | Full stack on Linux — `./start-atom.sh` (voice + search + UI, port 5173) |
+| `start_atom_ui.bat` | Windows launcher only |
 | `npm run build` | Production build → `dist/` |
 | `npm run preview` | Serve production build locally |
 | `./setup.sh` | Install deps, build, detect LM Studio |

@@ -3,28 +3,41 @@
 
 atom_open_browser() {
   local url="$1"
-  if command -v xdg-open >/dev/null 2>&1; then
-    xdg-open "$url" >/dev/null 2>&1 &
-    return 0
+
+  if [ -z "${DISPLAY:-}" ] && [ -z "${WAYLAND_DISPLAY:-}" ]; then
+    echo "[ATOM] No graphical session detected (DISPLAY unset). Open manually: $url"
+    return 1
   fi
+
+  if command -v xdg-open >/dev/null 2>&1; then
+    if xdg-open "$url" >/dev/null 2>&1 & then
+      disown 2>/dev/null || true
+      return 0
+    fi
+  fi
+
+  for opener in sensible-browser x-www-browser firefox chromium chromium-browser google-chrome brave-browser; do
+    if command -v "$opener" >/dev/null 2>&1; then
+      "$opener" "$url" >/dev/null 2>&1 &
+      disown 2>/dev/null || true
+      return 0
+    fi
+  done
+
   if command -v open >/dev/null 2>&1; then
     open "$url" >/dev/null 2>&1 &
     return 0
   fi
+
   case "${OSTYPE:-}" in
     msys*|cygwin*|mingw*)
-      cmd.exe /c start "" "$url" >/dev/null 2>&1 &
-      return 0
+      if command -v cmd.exe >/dev/null 2>&1; then
+        cmd.exe /c start "" "$url" >/dev/null 2>&1 &
+        return 0
+      fi
       ;;
   esac
-  if [ -n "${WINDIR:-}" ] && command -v cmd.exe >/dev/null 2>&1; then
-    cmd.exe /c start "" "$url" >/dev/null 2>&1 &
-    return 0
-  fi
-  if command -v wslview >/dev/null 2>&1; then
-    wslview "$url" >/dev/null 2>&1 &
-    return 0
-  fi
+
   return 1
 }
 
@@ -63,7 +76,17 @@ atom_launch_url() {
   if atom_open_browser "$url"; then
     echo "Opening browser..."
   else
-    echo "Could not auto-open a browser on this system."
+    echo "Could not auto-open a browser."
     echo "Open this URL manually: ${url}"
+  fi
+}
+
+atom_open_browser_when_ready() {
+  local port="$1"
+  local url="http://localhost:${port}/"
+  if atom_wait_for_http "$url" 60 0.5; then
+    atom_launch_url "$port"
+  else
+    echo "[ATOM] UI is slow to start. When Vite is ready, open: ${url}"
   fi
 }

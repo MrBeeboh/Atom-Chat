@@ -89,8 +89,13 @@ if [ -f "$DESKTOP_FILE" ]; then
   if [ -d "$HOME/Desktop" ] || [ -d "$HOME/.local/share/applications" ]; then
     DEST="$HOME/.local/share/applications/ATOM.desktop"
     mkdir -p "$HOME/.local/share/applications"
-    sed "s|/home/mike/atom-chat|$ROOT|g" "$DESKTOP_FILE" > "$DEST"
-    chmod +x "$DEST"
+    sed "s|__ATOM_ROOT__|$ROOT|g" "$DESKTOP_FILE" > "$DEST"
+    chmod +x "$DEST" "$ROOT/start-atom.sh"
+    if [ -d "$HOME/Desktop" ]; then
+      cp "$DEST" "$HOME/Desktop/ATOM.desktop"
+      chmod +x "$HOME/Desktop/ATOM.desktop"
+      echo "  ✓ Desktop shortcut copied to $HOME/Desktop/ATOM.desktop"
+    fi
     echo "  ✓ Desktop launcher created ($DEST)"
   else
     echo "  - No Desktop directory — skipping. To create manually:"

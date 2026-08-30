@@ -16,5 +16,5 @@ function run(cmd, args) {
 if (platform() === 'win32') {
   run('cmd.exe', ['/c', path.join(root, 'start_atom_ui.bat')]);
 } else {
-  run('bash', [path.join(root, 'scripts', 'start-atom.sh')]);
+  run('bash', [path.join(root, 'start-atom.sh')]);
 }
