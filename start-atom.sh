@@ -4,6 +4,8 @@
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$PROJECT_DIR" || exit 1
+# shellcheck source=scripts/atom-launcher-lib.sh
+. "$PROJECT_DIR/scripts/atom-launcher-lib.sh"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -85,25 +87,24 @@ if [ -d "voice-server" ] && [ -f "voice-server/app.py" ] && check_port 8765; the
 fi
 
 # Vite
-echo -e "${GREEN}Starting Vite (5173)...${NC}"
-npm run dev &
+ATOM_UI_PORT="${ATOM_UI_PORT:-5173}"
+UI_URL="http://localhost:${ATOM_UI_PORT}/"
+echo -e "${GREEN}Starting Vite (${ATOM_UI_PORT})...${NC}"
+npm run dev -- --port "$ATOM_UI_PORT" --strictPort &
 VITE_PID=$!
-# Wait for Vite to respond (lsof can miss it on some systems)
-for i in 1 2 3 4 5 6 7 8 9 10; do
-    sleep 1
-    if curl -s -o /dev/null -w "%{http_code}" http://localhost:5173/ 2>/dev/null | grep -q 200; then
-        break
-    fi
-    if [ "$i" -eq 10 ]; then
-        echo -e "${RED}ERROR: Vite did not respond on 5173 after 10s${NC}"
+
+if atom_wait_for_http "$UI_URL" 20 1; then
+    atom_launch_url "$ATOM_UI_PORT"
+else
+    if ! kill -0 "$VITE_PID" 2>/dev/null; then
+        echo -e "${RED}ERROR: Vite did not start on ${ATOM_UI_PORT}.${NC}"
         kill $SEARCH_PID 2>/dev/null
         exit 1
     fi
-done
+    echo -e "${YELLOW}WARNING: UI is slow to start. Open manually: ${UI_URL}${NC}"
+    atom_launch_url "$ATOM_UI_PORT" || true
+fi
 
-echo ""
-echo -e "${GREEN}✓ ATOM UI running: http://localhost:5173${NC}"
-xdg-open http://localhost:5173 2>/dev/null &
 echo -e "Press Ctrl+C to stop"
 trap 'echo -e "\n${YELLOW}Shutting down...${NC}"; kill $VITE_PID $SEARCH_PID $VOICE_PID 2>/dev/null; exit 0' INT TERM
-wait
+wait "$VITE_PID"

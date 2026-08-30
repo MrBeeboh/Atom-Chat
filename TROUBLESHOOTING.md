@@ -2,6 +2,23 @@
 
 Quick checks when something stops working (e.g. after fixing voice or internet).
 
+## App won't open in the browser / launcher closes immediately
+
+**Windows (desktop shortcut or `.bat`):**
+
+- Use **`start_atom_ui.bat`** or **`START-EVERYTHING.bat`** in the repo root (double-click or desktop shortcut).
+- These open the browser with `start http://localhost:5175/` and leave Vite running in a minimized window.
+- If the launcher window closes too fast, run the `.bat` from a Command Prompt so you can read errors.
+- To stop everything: **`kill_atom_ui.bat`**.
+
+**Linux / Git Bash (`npm run start` or `./scripts/start-atom.sh`):**
+
+- The launcher waits for Vite, prints the URL, and opens the browser (`xdg-open` on Linux, `cmd /c start` on Windows Git Bash).
+- If port **5175** is busy, try: `ATOM_UI_PORT=5173 npm run start`
+- Keep the terminal open — closing it stops the dev server.
+
+**Port summary** (see table below): full stack uses **5175** via `npm run start` / `start_atom_ui.bat`; plain `npm run dev` uses **5173**.
+
 ## Models not loading (llama.cpp / LM Studio)
 
 If the model dropdown is empty or says "Cannot connect":

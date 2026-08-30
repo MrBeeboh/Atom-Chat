@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # ATOM - llama.cpp launcher (one double-click)
 
-set -e
-
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
+# shellcheck source=atom-launcher-lib.sh
+. "$ROOT/scripts/atom-launcher-lib.sh"
 
 # --- Auto-sync from GitHub on launch (set ATOM_SKIP_SYNC=1 to disable) -------
 # Pulls the latest release branch before starting so the desktop app never
@@ -191,17 +191,36 @@ fi
 # UI port: keep 5175 for this launcher so localStorage (API keys, backend URL) stays on the same
 # origin as before. Port 5173 vs 5175 are different sites to the browser — keys do not carry over.
 ATOM_UI_PORT="${ATOM_UI_PORT:-5175}"
+UI_URL="http://localhost:${ATOM_UI_PORT}/"
+
+if atom_port_in_use "$ATOM_UI_PORT"; then
+  echo "[ATOM] WARNING: port ${ATOM_UI_PORT} is already in use."
+  echo "[ATOM] Close the other ATOM/Vite window or run: set ATOM_UI_PORT=5173 && npm run start"
+fi
+
 npm run dev -- --port "$ATOM_UI_PORT" --strictPort &
 UI_PID=$!
 
-# Open browser once dev server responds (use localhost, not 127.0.0.1, so origin matches bookmarks)
-for i in $(seq 1 40); do
-    if curl -s --max-time 1 "http://localhost:${ATOM_UI_PORT}/" >/dev/null 2>&1; then
-        (sleep 1; xdg-open "http://localhost:${ATOM_UI_PORT}/" 2>/dev/null) &
-        break
-    fi
-    sleep 0.5
-done
+if atom_wait_for_http "$UI_URL" 40 0.5; then
+  sleep 1
+  atom_launch_url "$ATOM_UI_PORT"
+else
+  if ! kill -0 "$UI_PID" 2>/dev/null; then
+    echo "[ATOM] ERROR: Vite exited before the UI became ready on port ${ATOM_UI_PORT}."
+    echo "[ATOM] If the port is busy, try: ATOM_UI_PORT=5173 npm run start"
+    exit 1
+  fi
+  echo "[ATOM] WARNING: UI is slow to start. Open manually when ready: ${UI_URL}"
+  atom_launch_url "$ATOM_UI_PORT" || true
+fi
 
-trap 'kill $UI_PID 2>/dev/null; exit 0' INT TERM
-wait $UI_PID
+echo ""
+echo "Press Ctrl+C to stop ATOM."
+trap 'echo ""; echo "[ATOM] Shutting down..."; kill $UI_PID 2>/dev/null; exit 0' INT TERM
+set +e
+wait "$UI_PID"
+UI_EXIT=$?
+if [ "$UI_EXIT" -ne 0 ]; then
+  echo "[ATOM] Dev server exited (code ${UI_EXIT}). See errors above."
+  exit "$UI_EXIT"
+fi
