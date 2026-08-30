@@ -2,8 +2,8 @@
 Version=1.0
 Type=Application
 Name=ATOM Chat
-Comment=Atom Chat — local AI chat (not Atom Code)
-Exec=bash -c "cd /home/mike/atom-chat && ./scripts/start-atom.sh"
+Comment=Atom Chat — local AI chat
+Exec=bash -c 'for d in /home/mike/atom-chat /home/mike/Atom-Chat /home/mike/atom-v2 "$HOME/atom-chat" "$HOME/Atom-Chat"; do if [ -x "$d/scripts/start-atom.sh" ]; then cd "$d" && exec "$d/scripts/start-atom.sh"; fi; done; echo "ATOM Chat not found under ~/atom-chat"; echo "Press Enter"; read'
 Path=/home/mike/atom-chat
 Terminal=true
 Icon=utilities-terminal

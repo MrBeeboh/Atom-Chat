@@ -1,55 +1,106 @@
 #!/usr/bin/env bash
-# Atom Chat launcher (Linux Mint desktop + npm run start)
-# Starts voice (8765), search proxy (5174), UI (5175), opens browser.
+# Atom Chat launcher (Linux Mint desktop icon + npm run start)
+# Voice (8765) + search (5174) + Vite. Keeps the terminal open if something fails
+# so the red error is readable instead of a flash.
+
+hold() {
+  echo ""
+  echo "ATOM stopped. Full log: ${LOG:-$ROOT/atom-start.log}"
+  if [ -t 0 ]; then
+    echo "Press Enter to close this window."
+    read -r _ || true
+  else
+    sleep 8
+  fi
+}
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-cd "$ROOT"
+cd "$ROOT" || { echo "Cannot open $ROOT"; hold; exit 1; }
+LOG="$ROOT/atom-start.log"
+{
+  echo "========== $(date -Iseconds) =========="
+  echo "cwd=$ROOT"
+  echo "user=$(whoami)  DISPLAY=${DISPLAY:-<empty>}"
+} >>"$LOG"
 
-# --- Auto-sync from Origin (git remote named "origin") -----------------------
+echo "[ATOM] Atom Chat — $ROOT"
+echo "[ATOM] Log: $LOG"
+
+if ! command -v node >/dev/null 2>&1; then
+  echo "[ATOM] ERROR: Node.js is not on PATH. Install Node 18+ then try again." | tee -a "$LOG"
+  hold
+  exit 1
+fi
+if ! command -v npm >/dev/null 2>&1; then
+  echo "[ATOM] ERROR: npm is not on PATH." | tee -a "$LOG"
+  hold
+  exit 1
+fi
+
+if [ ! -d "$ROOT/node_modules/vite" ]; then
+  echo "[ATOM] Installing npm dependencies (first run or missing node_modules)..."
+  if ! npm install --no-audit --no-fund --legacy-peer-deps >>"$LOG" 2>&1; then
+    echo "[ATOM] ERROR: npm install failed. See $LOG" | tee -a "$LOG"
+    hold
+    exit 1
+  fi
+fi
+
+# Optional Origin sync — never abort launch
 if [ -z "${ATOM_SKIP_SYNC:-}" ] && [ -d .git ] && command -v git >/dev/null 2>&1; then
   SYNC_BRANCH="${ATOM_SYNC_BRANCH:-main}"
   echo "[ATOM] Checking Origin for updates (origin/$SYNC_BRANCH)..."
-  if git fetch --quiet origin "$SYNC_BRANCH" 2>/dev/null; then
-    LOCAL_REF="$(git rev-parse HEAD 2>/dev/null || true)"
-    REMOTE_REF="$(git rev-parse "origin/$SYNC_BRANCH" 2>/dev/null || true)"
-    CUR_BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
-    if [ -n "$REMOTE_REF" ] && [ "$LOCAL_REF" != "$REMOTE_REF" ] && [ "$CUR_BRANCH" = "$SYNC_BRANCH" ] && [ -z "$(git status --porcelain 2>/dev/null)" ]; then
-      OLD_LOCK="$(git rev-parse HEAD:package-lock.json 2>/dev/null || true)"
-      if git merge --ff-only "origin/$SYNC_BRANCH" >/dev/null 2>&1; then
-        echo "[ATOM] Updated to $(git rev-parse --short HEAD)."
-        NEW_LOCK="$(git rev-parse HEAD:package-lock.json 2>/dev/null || true)"
-        if [ "$OLD_LOCK" != "$NEW_LOCK" ]; then
-          echo "[ATOM] Dependencies changed — running npm install..."
-          npm install --no-audit --no-fund --legacy-peer-deps || true
-        fi
-      fi
-    fi
-  fi
+  git fetch --quiet origin "$SYNC_BRANCH" >>"$LOG" 2>&1 || true
 fi
 
-# Voice server
+# Voice (optional)
 VOICE_DIR="$ROOT/voice-server"
-if [ -d "$VOICE_DIR" ] && [ -f "$VOICE_DIR/app.py" ]; then
-  if [ ! -x "$VOICE_DIR/.venv/bin/uvicorn" ]; then
-    echo "[ATOM] First-time voice server setup..."
-    (cd "$VOICE_DIR" && python3 -m venv .venv && .venv/bin/pip install -q -r requirements.txt) || true
-  fi
-  if [ -x "$VOICE_DIR/.venv/bin/uvicorn" ]; then
-    (cd "$VOICE_DIR" && nohup .venv/bin/uvicorn app:app --host 0.0.0.0 --port 8765 >> "$ROOT/voice-server.log" 2>&1 &)
-    disown 2>/dev/null || true
-    echo "[ATOM] Voice server on http://localhost:8765"
-  fi
+if [ -f "$VOICE_DIR/app.py" ] && [ -x "$VOICE_DIR/.venv/bin/uvicorn" ]; then
+  (cd "$VOICE_DIR" && nohup .venv/bin/uvicorn app:app --host 0.0.0.0 --port 8765 >>"$ROOT/voice-server.log" 2>&1 &)
+  echo "[ATOM] Voice server on http://localhost:8765"
 fi
 
-# Search proxy
-if [ -f "$ROOT/scripts/search-proxy.mjs" ]; then
-  nohup node "$ROOT/scripts/search-proxy.mjs" >> "$ROOT/search-proxy.log" 2>&1 &
-  disown 2>/dev/null || true
+# Search proxy (optional)
+if [ -f "$ROOT/scripts/search-proxy.mjs" ] && command -v node >/dev/null 2>&1; then
+  nohup node "$ROOT/scripts/search-proxy.mjs" >>"$ROOT/search-proxy.log" 2>&1 &
   echo "[ATOM] Search proxy on http://localhost:5174"
 fi
 
-PORT="${ATOM_UI_PORT:-5175}"
-echo "[ATOM] Starting UI on http://localhost:${PORT}/"
-(sleep 3 && xdg-open "http://localhost:${PORT}/") &
+port_free() {
+  local p="$1"
+  if command -v ss >/dev/null 2>&1; then
+    ! ss -ltn 2>/dev/null | grep -qE ":${p}[[:space:]]"
+  elif command -v lsof >/dev/null 2>&1; then
+    ! lsof -Pi :"$p" -sTCP:LISTEN -t >/dev/null 2>&1
+  else
+    return 0
+  fi
+}
 
-exec npm run dev -- --port "$PORT"
+PORT="${ATOM_UI_PORT:-}"
+if [ -z "$PORT" ]; then
+  for try in 5175 5173 5176; do
+    if port_free "$try"; then
+      PORT="$try"
+      break
+    fi
+  done
+  PORT="${PORT:-5175}"
+fi
+
+echo "[ATOM] Starting UI on http://localhost:${PORT}/"
+if [ -n "${DISPLAY:-}" ] || [ -n "${WAYLAND_DISPLAY:-}" ]; then
+  (sleep 3 && xdg-open "http://localhost:${PORT}/" >>"$LOG" 2>&1) &
+fi
+
+echo ""
+echo "Leave this window open. Press Ctrl+C to stop."
+echo ""
+
+# Do not use exec — if Vite exits we hold the window so the red error stays.
+if ! npm run dev -- --port "$PORT" 2>>"$LOG"; then
+  echo "[ATOM] ERROR: Vite/npm exited. Last 30 lines of $LOG:" | tee -a "$LOG"
+  tail -n 30 "$LOG"
+  hold
+  exit 1
+fi
