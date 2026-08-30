@@ -2,14 +2,28 @@
 
 A local-first AI chat and model evaluation tool. Compare models head-to-head in the Arena, generate images, search the web — all from your machine. No cloud required.
 
-## Quick start
+## Quick start (Linux Mint)
 
 ```bash
-./setup.sh        # install deps, build, detect LM Studio, create desktop launcher
-npm run dev       # start dev server at http://localhost:5173
+cd /path/to/Atom-Chat    # the folder where you cloned the repo
+./setup.sh               # install deps + desktop launcher + `atom` command
+atom                     # start voice + search + UI (opens browser)
 ```
 
-That's it. Pick a model, start a chat.
+`start-atom.sh` lives **inside the repo**, not in your home folder. After `./setup.sh`, you can run `atom` from any directory.
+
+If you have not run setup yet, start from the repo folder:
+
+```bash
+cd /path/to/Atom-Chat
+ATOM_CLEAN_PORTS=1 ./start-atom.sh
+```
+
+Find the repo if you are not sure where it is:
+
+```bash
+find ~ -maxdepth 4 -name start-atom.sh 2>/dev/null
+```
 
 ## What you need
 
@@ -39,8 +53,9 @@ Optional: Python 3 for voice input, hardware metrics, and model unloading helper
 
 | Command | Description |
 |---------|-------------|
-| `npm run dev` | Dev server (no voice/search) |
-| `npm run start` | Full stack — voice server + search proxy + UI |
+| `npm run dev` | Dev server on port 5173 (no voice/search) |
+| `npm run start` | Full stack on Linux — `./start-atom.sh` (voice + search + UI, port 5173) |
+| `start_atom_ui.bat` | Windows launcher only |
 | `npm run build` | Production build → `dist/` |
 | `npm run preview` | Serve production build locally |
 | `./setup.sh` | Install deps, build, detect LM Studio |
@@ -48,7 +63,7 @@ Optional: Python 3 for voice input, hardware metrics, and model unloading helper
 ## Staying up to date
 
 The launchers (`npm run start`, `./start-atom.sh`, desktop icon) auto-sync from
-GitHub on every start: they fast-forward to the latest `origin/main` and re-run
+[Cursor Origin](https://cursor.com/docs/origin/git) on every start: they fast-forward to the latest `origin/main` and re-run
 `npm install` only when dependencies changed. Sync is skipped safely when you
 are offline, have local edits, or are on a different branch.
 
@@ -74,4 +89,4 @@ Switch to Arena layout to compare up to 4 models. Load a question set, click **R
 
 ## Release
 
-Download the latest `atom-chat.zip` from [Releases](https://github.com/anomalyco/atom-chat/releases). Extract and open `dist/index.html`, or serve with `npx serve dist`.
+Clone from Origin (`https://origin.cursor.com/MrBeeboh/Atom-Chat.git`), run `npm run build`, then open `dist/index.html` or serve with `npx serve dist`. Browse at [cursor.com/codebase/MrBeeboh/Atom-Chat](https://cursor.com/codebase/MrBeeboh/Atom-Chat).

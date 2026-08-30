@@ -1,10 +1,10 @@
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=ATOM V2
-Comment=Start ATOM Chat with voice server and UI
-Exec=bash -c "cd /home/mike/atom-v2 && ./scripts/start-atom.sh"
-Path=/home/mike/atom-v2
+Name=ATOM Chat
+Comment=Local AI chat — voice, search, and UI
+Exec=__ATOM_ROOT__/start-atom.sh
+Path=__ATOM_ROOT__
 Terminal=true
 Icon=utilities-terminal
-Categories=Development;
+Categories=Development;Network;

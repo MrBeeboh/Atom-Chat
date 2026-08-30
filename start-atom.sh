@@ -1,9 +1,11 @@
 #!/bin/bash
-# ATOM UI Launcher - run from lm-studio-ui-updated (this folder has working voice)
-# Starts: search proxy (5174) -> voice server (8765) -> Vite (5173)
+# ATOM UI launcher for Linux (Mint, etc.)
+# Starts: search proxy (5174) -> voice server (8765) -> Vite (5173) -> opens browser
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$PROJECT_DIR" || exit 1
+# shellcheck source=scripts/atom-launcher-lib.sh
+. "$PROJECT_DIR/scripts/atom-launcher-lib.sh"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -12,12 +14,10 @@ NC='\033[0m'
 
 echo -e "${GREEN}Starting ATOM UI...${NC}"
 
-# --- Auto-sync from GitHub on launch (set ATOM_SKIP_SYNC=1 to disable) -------
-# Never blocks launch: offline, local edits, or a diverged branch all fall
-# through to starting the current version.
+# --- Auto-sync from Origin on launch (set ATOM_SKIP_SYNC=1 to disable) -------
 if [ -z "${ATOM_SKIP_SYNC:-}" ] && [ -d .git ] && command -v git >/dev/null 2>&1; then
     SYNC_BRANCH="${ATOM_SYNC_BRANCH:-main}"
-    echo -e "${GREEN}Checking GitHub for updates (origin/$SYNC_BRANCH)...${NC}"
+    echo -e "${GREEN}Checking Origin for updates (origin/$SYNC_BRANCH)...${NC}"
     if git fetch --quiet origin "$SYNC_BRANCH" 2>/dev/null; then
         LOCAL_REF="$(git rev-parse HEAD 2>/dev/null || true)"
         REMOTE_REF="$(git rev-parse "origin/$SYNC_BRANCH" 2>/dev/null || true)"
@@ -43,67 +43,87 @@ if [ -z "${ATOM_SKIP_SYNC:-}" ] && [ -d .git ] && command -v git >/dev/null 2>&1
             fi
         fi
     else
-        echo -e "${YELLOW}Offline or GitHub unreachable — starting with current version.${NC}"
+        echo -e "${YELLOW}Offline or Origin unreachable — starting with current version.${NC}"
     fi
 fi
 
 check_port() {
-    if lsof -Pi :"$1" -sTCP:LISTEN -t >/dev/null 2>&1; then return 1; else return 0; fi
+    if command -v lsof >/dev/null 2>&1; then
+        lsof -Pi :"$1" -sTCP:LISTEN -t >/dev/null 2>&1 && return 1
+    elif command -v ss >/dev/null 2>&1; then
+        ss -ltn "( sport = :$1 )" 2>/dev/null | grep -q LISTEN && return 1
+    fi
+    return 0
 }
 
-cleanup() {
-    echo -e "${YELLOW}Cleaning up...${NC}"
-    pkill -f "node.*search-proxy.mjs" 2>/dev/null
-    pkill -f "vite" 2>/dev/null
-    pkill -f "python.*voice-server" 2>/dev/null
+if [ -n "${ATOM_CLEAN_PORTS:-}" ]; then
+    echo -e "${YELLOW}Clearing stuck ATOM ports (ATOM_CLEAN_PORTS=1)...${NC}"
+    pkill -f "node.*search-proxy.mjs" 2>/dev/null || true
+    pkill -f "vite" 2>/dev/null || true
+    pkill -f "python.*voice-server" 2>/dev/null || true
     for port in 5173 5174 8765; do
-        pid=$(lsof -ti :"$port" 2>/dev/null)
-        [ -n "$pid" ] && kill -9 $pid 2>/dev/null
+        if command -v lsof >/dev/null 2>&1; then
+            pid=$(lsof -ti :"$port" 2>/dev/null || true)
+            [ -n "$pid" ] && kill -9 $pid 2>/dev/null || true
+        fi
     done
-    sleep 2
-}
-cleanup
+    sleep 1
+fi
 
 # Search proxy
 if check_port 5174; then
-    echo -e "${GREEN}Starting Search Proxy (5174)...${NC}"
-    node scripts/search-proxy.mjs &
+    echo -e "${GREEN}Starting search proxy (5174)...${NC}"
+    nohup node scripts/search-proxy.mjs >>search-proxy.log 2>&1 &
     SEARCH_PID=$!
-    sleep 2
-    if ! kill -0 $SEARCH_PID 2>/dev/null; then
+    sleep 1
+    if ! kill -0 "$SEARCH_PID" 2>/dev/null; then
         echo -e "${RED}ERROR: Search proxy failed. Check: node --version${NC}"
         exit 1
     fi
+else
+    echo -e "${YELLOW}Port 5174 already in use — reusing existing search proxy.${NC}"
+    SEARCH_PID=""
 fi
 
-# Voice server (this folder has voice-server/venv)
+# Voice server
 if [ -d "voice-server" ] && [ -f "voice-server/app.py" ] && check_port 8765; then
-    echo -e "${GREEN}Starting Voice Server (8765)...${NC}"
-    ( cd voice-server && [ -f venv/bin/activate ] && . venv/bin/activate; command -v uvicorn >/dev/null && uvicorn app:app --host 0.0.0.0 --port 8765 ) &
+    echo -e "${GREEN}Starting voice server (8765)...${NC}"
+    if [ -x voice-server/.venv/bin/python ]; then
+        VOICE_PY="voice-server/.venv/bin/python"
+    elif [ -x voice-server/venv/bin/python ]; then
+        VOICE_PY="voice-server/venv/bin/python"
+    else
+        VOICE_PY="python3"
+    fi
+    nohup bash -c "cd \"$PROJECT_DIR/voice-server\" && \"$VOICE_PY\" -m uvicorn app:app --host 0.0.0.0 --port 8765" >>"$PROJECT_DIR/voice-server.log" 2>&1 &
     VOICE_PID=$!
-    sleep 2
+    sleep 1
+else
+    VOICE_PID=""
 fi
 
-# Vite
-echo -e "${GREEN}Starting Vite (5173)...${NC}"
-npm run dev &
-VITE_PID=$!
-# Wait for Vite to respond (lsof can miss it on some systems)
-for i in 1 2 3 4 5 6 7 8 9 10; do
-    sleep 1
-    if curl -s -o /dev/null -w "%{http_code}" http://localhost:5173/ 2>/dev/null | grep -q 200; then
-        break
-    fi
-    if [ "$i" -eq 10 ]; then
-        echo -e "${RED}ERROR: Vite did not respond on 5173 after 10s${NC}"
-        kill $SEARCH_PID 2>/dev/null
-        exit 1
-    fi
-done
+ATOM_UI_PORT="${ATOM_UI_PORT:-5173}"
+UI_URL="http://localhost:${ATOM_UI_PORT}/"
 
+if atom_port_in_use "$ATOM_UI_PORT"; then
+    echo -e "${RED}ERROR: port ${ATOM_UI_PORT} is already in use.${NC}"
+    echo -e "${YELLOW}Stop the other Vite window, run: ATOM_CLEAN_PORTS=1 ./start-atom.sh${NC}"
+    echo -e "${YELLOW}Or use another port: ATOM_UI_PORT=5175 ./start-atom.sh${NC}"
+    exit 1
+fi
+
+echo -e "${GREEN}Starting Vite (${ATOM_UI_PORT})...${NC}"
+atom_open_browser_when_ready "$ATOM_UI_PORT" &
+
+cleanup_children() {
+    echo -e "\n${YELLOW}Shutting down ATOM...${NC}"
+    kill "$SEARCH_PID" "$VOICE_PID" 2>/dev/null || true
+}
+trap cleanup_children INT TERM
+
+echo -e "${GREEN}Press Ctrl+C in this window to stop ATOM.${NC}"
+echo -e "${GREEN}UI URL: ${UI_URL}${NC}"
 echo ""
-echo -e "${GREEN}✓ ATOM UI running: http://localhost:5173${NC}"
-xdg-open http://localhost:5173 2>/dev/null &
-echo -e "Press Ctrl+C to stop"
-trap 'echo -e "\n${YELLOW}Shutting down...${NC}"; kill $VITE_PID $SEARCH_PID $VOICE_PID 2>/dev/null; exit 0' INT TERM
-wait
+
+# Foreground Vite keeps this terminal (and desktop launcher) alive until you stop it.
+npm run dev -- --port "$ATOM_UI_PORT" --strictPort --host localhost

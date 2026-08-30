@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
 # ATOM - llama.cpp launcher (one double-click)
 
-set -e
-
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
+# shellcheck source=atom-launcher-lib.sh
+. "$ROOT/scripts/atom-launcher-lib.sh"
 
-# --- Auto-sync from GitHub on launch (set ATOM_SKIP_SYNC=1 to disable) -------
+# --- Auto-sync from Origin on launch (set ATOM_SKIP_SYNC=1 to disable) -------
 # Pulls the latest release branch before starting so the desktop app never
 # drifts behind the repo. Never blocks launch: offline, local edits, or a
 # diverged branch all fall through to starting the current version.
 if [ -z "${ATOM_SKIP_SYNC:-}" ] && [ -d .git ] && command -v git >/dev/null 2>&1; then
     SYNC_BRANCH="${ATOM_SYNC_BRANCH:-main}"
-    echo "[ATOM] Checking GitHub for updates (origin/$SYNC_BRANCH)..."
+    echo "[ATOM] Checking Origin for updates (origin/$SYNC_BRANCH)..."
     if git fetch --quiet origin "$SYNC_BRANCH" 2>/dev/null; then
         LOCAL_REF="$(git rev-parse HEAD 2>/dev/null || true)"
         REMOTE_REF="$(git rev-parse "origin/$SYNC_BRANCH" 2>/dev/null || true)"
@@ -39,7 +39,7 @@ if [ -z "${ATOM_SKIP_SYNC:-}" ] && [ -d .git ] && command -v git >/dev/null 2>&1
             fi
         fi
     else
-        echo "[ATOM] Offline or GitHub unreachable — starting with current version."
+        echo "[ATOM] Offline or Origin unreachable — starting with current version."
     fi
 fi
 
@@ -188,20 +188,24 @@ if [ -f scripts/search-proxy.mjs ]; then
     nohup node scripts/search-proxy.mjs >> search-proxy.log 2>&1 &
 fi
 
-# UI port: keep 5175 for this launcher so localStorage (API keys, backend URL) stays on the same
-# origin as before. Port 5173 vs 5175 are different sites to the browser — keys do not carry over.
-ATOM_UI_PORT="${ATOM_UI_PORT:-5175}"
-npm run dev -- --port "$ATOM_UI_PORT" --strictPort &
-UI_PID=$!
+# UI port: default 5173 (matches vite.config.js). Override with ATOM_UI_PORT if needed.
+ATOM_UI_PORT="${ATOM_UI_PORT:-5173}"
+UI_URL="http://localhost:${ATOM_UI_PORT}/"
 
-# Open browser once dev server responds (use localhost, not 127.0.0.1, so origin matches bookmarks)
-for i in $(seq 1 40); do
-    if curl -s --max-time 1 "http://localhost:${ATOM_UI_PORT}/" >/dev/null 2>&1; then
-        (sleep 1; xdg-open "http://localhost:${ATOM_UI_PORT}/" 2>/dev/null) &
-        break
-    fi
-    sleep 0.5
-done
+if atom_port_in_use "$ATOM_UI_PORT"; then
+  echo "[ATOM] ERROR: port ${ATOM_UI_PORT} is already in use."
+  echo "[ATOM] Stop the other Vite window or run: ATOM_CLEAN_PORTS=1 npm run start"
+  echo "[ATOM] Or try another port: ATOM_UI_PORT=5175 npm run start"
+  exit 1
+fi
 
-trap 'kill $UI_PID 2>/dev/null; exit 0' INT TERM
-wait $UI_PID
+echo "[ATOM] Starting UI on port ${ATOM_UI_PORT}..."
+atom_open_browser_when_ready "$ATOM_UI_PORT" &
+
+trap 'echo ""; echo "[ATOM] Shutting down..."; exit 0' INT TERM
+echo ""
+echo "Press Ctrl+C to stop ATOM."
+echo "UI URL: ${UI_URL}"
+echo ""
+
+npm run dev -- --port "$ATOM_UI_PORT" --strictPort --host localhost

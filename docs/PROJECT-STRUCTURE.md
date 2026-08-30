@@ -2,7 +2,7 @@
 
 ## Preferred project folder
 
-- **Folder name:** The app is **ATOM UI**. Name the local folder **`AtomUI`** (no space; scripts and terminals work without extra quoting). The GitHub repo can stay `lm-studio-ui`; the local folder name is up to you.
+- **Folder name:** The app is **ATOM UI**. Name the local folder **`AtomUI`** (no space). The Origin repo is `MrBeeboh/Atom-Chat`.
 - **Location:** One folder = one project. Put it wherever you like; both are valid:
   - `C:\CURSOR\AtomUI` — keeps Cursor projects in one place
   - `C:\Users\<you>\Documents\AtomUI` or `C:\Users\<you>\source\repos\AtomUI` — under your user profile
@@ -26,7 +26,9 @@ AtomUI/                 ← repo root = project root (run npm and scripts here)
 │       ├── stores.js   ← Svelte stores
 │       ├── components/ ← Svelte UI components
 │       └── utils/      ← Shared utilities
-├── START-EVERYTHING.bat   ← Single launcher (LM Studio + Vite + browser)
+├── start_atom_ui.bat      ← Windows launcher (voice + search + UI + browser)
+├── START-EVERYTHING.bat   ← alias for start_atom_ui.bat
+├── kill_atom_ui.bat       ← stop ATOM services on Windows
 ├── kill_atom_ui.bat      ← Stop dev servers
 ├── package.json
 ├── vite.config.js
@@ -40,12 +42,12 @@ AtomUI/                 ← repo root = project root (run npm and scripts here)
 
 ## Clean clone (optional)
 
-If you want a completely fresh folder from GitHub:
+If you want a completely fresh folder from Origin:
 
-1. Commit and push your current work from this folder (so the repo is up to date).
-2. Clone into a new folder:
-   ```powershell
-   git clone https://github.com/MrBeeboh/lm-studio-ui.git C:\CURSOR\AtomUI
+1. Commit and push your current work.
+2. Clone:
+   ```bash
+   git clone https://origin.cursor.com/MrBeeboh/Atom-Chat.git ~/AtomUI
    ```
 3. Open the new folder (e.g. `C:\CURSOR\AtomUI`) in Cursor and run `npm install`.
 4. Use `START-EVERYTHING.bat` from that folder to run the app.

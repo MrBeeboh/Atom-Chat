@@ -2,6 +2,41 @@
 
 Quick checks when something stops working (e.g. after fixing voice or internet).
 
+## App won't open in the browser / launcher closes immediately (Linux Mint)
+
+**Use the Linux launcher:**
+
+```bash
+./start-atom.sh
+# or
+npm run start
+```
+
+Both run `start-atom.sh`, which keeps **Vite in the foreground** so the terminal stays open until you press Ctrl+C.
+
+**Desktop icon:**
+
+1. Re-run setup so the menu entry gets your real repo path (the old `.desktop` file pointed at `/home/mike/atom-v2`):
+   ```bash
+   ./setup.sh
+   ```
+2. Or launch from the repo: `./start-atom.sh`
+
+**Browser doesn't open:**
+
+- The script uses `xdg-open` (standard on Mint). If it fails, the URL is printed — open `http://localhost:5173/` manually.
+- Ensure you're in a graphical session (`echo $DISPLAY` should not be empty).
+
+**Everything shuts down right away:**
+
+- Usually port **5173** is already in use. Run:
+  ```bash
+  ATOM_CLEAN_PORTS=1 ./start-atom.sh
+  ```
+- Or pick another port: `ATOM_UI_PORT=5175 ./start-atom.sh`
+
+**Windows:** use `start_atom_ui.bat` instead.
+
 ## Models not loading (llama.cpp / LM Studio)
 
 If the model dropdown is empty or says "Cannot connect":
