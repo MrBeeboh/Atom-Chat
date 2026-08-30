@@ -2,14 +2,28 @@
 
 A local-first AI chat and model evaluation tool. Compare models head-to-head in the Arena, generate images, search the web — all from your machine. No cloud required.
 
-## Quick start
+## Quick start (Linux Mint)
 
 ```bash
-./setup.sh        # install deps, build, detect LM Studio, create desktop launcher
-npm run dev       # start dev server at http://localhost:5173
+cd /path/to/Atom-Chat    # the folder where you cloned the repo
+./setup.sh               # install deps + desktop launcher + `atom` command
+atom                     # start voice + search + UI (opens browser)
 ```
 
-That's it. Pick a model, start a chat.
+`start-atom.sh` lives **inside the repo**, not in your home folder. After `./setup.sh`, you can run `atom` from any directory.
+
+If you have not run setup yet, start from the repo folder:
+
+```bash
+cd /path/to/Atom-Chat
+ATOM_CLEAN_PORTS=1 ./start-atom.sh
+```
+
+Find the repo if you are not sure where it is:
+
+```bash
+find ~ -maxdepth 4 -name start-atom.sh 2>/dev/null
+```
 
 ## What you need
 

@@ -81,16 +81,30 @@ else
   echo "  - No voice-server/ directory found — skipping"
 fi
 
-# ── 6. Desktop icon ──────────────────────────────────────────────
+# ── 6. Desktop icon + command-line launcher ─────────────────────
 echo ""
-echo -e "${BOLD}6. Desktop launcher…${RESET}"
+echo -e "${BOLD}6. Desktop launcher & shell command…${RESET}"
 DESKTOP_FILE="$ROOT/ATOM.desktop"
+BIN_DIR="$HOME/.local/bin"
+mkdir -p "$BIN_DIR"
+ATOM_BIN="$BIN_DIR/atom"
+cat > "$ATOM_BIN" <<EOF
+#!/usr/bin/env bash
+exec "$ROOT/start-atom.sh" "\$@"
+EOF
+chmod +x "$ATOM_BIN" "$ROOT/start-atom.sh"
+echo "  ✓ Command installed: atom  (runs $ROOT/start-atom.sh)"
+if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
+  echo -e "  ${YELLOW}! Add ~/.local/bin to your PATH if 'atom' is not found:${RESET}"
+  echo "    echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.bashrc && source ~/.bashrc"
+fi
+
 if [ -f "$DESKTOP_FILE" ]; then
   if [ -d "$HOME/Desktop" ] || [ -d "$HOME/.local/share/applications" ]; then
     DEST="$HOME/.local/share/applications/ATOM.desktop"
     mkdir -p "$HOME/.local/share/applications"
     sed "s|__ATOM_ROOT__|$ROOT|g" "$DESKTOP_FILE" > "$DEST"
-    chmod +x "$DEST" "$ROOT/start-atom.sh"
+    chmod +x "$DEST"
     if [ -d "$HOME/Desktop" ]; then
       cp "$DEST" "$HOME/Desktop/ATOM.desktop"
       chmod +x "$HOME/Desktop/ATOM.desktop"
@@ -108,9 +122,17 @@ fi
 echo ""
 echo -e "  ${BOLD}${GREEN}✓ Setup complete!${RESET}"
 echo ""
-echo "  Starting the app:"
-echo "    npm run dev                      # dev server (no voice)"
-echo "    npm run start                    # full stack (voice + search + UI)"
-echo "    npx serve dist                   # production build (static)"
+echo "  Repo folder: $ROOT"
 echo ""
-echo "  Then open http://localhost:5173 and select a model."
+echo "  Start ATOM (from anywhere, after ~/.local/bin is on PATH):"
+echo "    atom"
+echo "    ATOM_CLEAN_PORTS=1 atom    # if port 5173 is stuck"
+echo ""
+echo "  Or from this folder:"
+echo "    ./start-atom.sh"
+echo "    npm run start"
+echo ""
+echo "  Dev only (no voice/search):"
+echo "    npm run dev"
+echo ""
+echo "  Then open http://localhost:5173 if the browser did not open automatically."
