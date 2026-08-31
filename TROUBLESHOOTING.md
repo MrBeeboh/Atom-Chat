@@ -2,6 +2,51 @@
 
 Quick checks when something stops working (e.g. after fixing voice or internet).
 
+## App won't start / browser never opens / window flashes red (Linux Mint)
+
+This is the desktop launcher, not the Svelte app itself. Symptoms: a terminal
+pops up, maybe a flash of red (`llama-server: command not found`), then
+everything closes and no browser tab appears.
+
+**Start from the repo folder:**
+
+```bash
+cd ~/atom-chat          # or wherever you cloned Atom Chat
+./start-atom.sh
+# or
+npm run start
+```
+
+`llama-server` is **optional**. ATOM talks to LM Studio on port 1234 (or any
+OpenAI-compatible URL in Settings). A missing llama binary must not abort launch.
+
+**If the window still closes immediately:**
+
+1. Open `atom-start.log` in the repo folder — the last launch is appended there.
+2. Confirm Node is on PATH: `node -v` (need 18+).
+3. Reinstall deps: `npm install`
+4. Diagnostic (does not start servers): `./start-atom.sh --check`
+
+**Desktop icon points at the wrong folder** (old copies used `/home/mike/atom-v2`):
+
+```bash
+cd ~/atom-chat && ./setup.sh
+```
+
+That rewrites `~/.local/share/applications/ATOM.desktop` and `~/Desktop/ATOM.desktop`
+to this repo, and installs an `atom` command in `~/.local/bin`.
+
+**Port already in use:**
+
+```bash
+ATOM_CLEAN_PORTS=1 ./start-atom.sh
+# or
+ATOM_UI_PORT=5175 ./start-atom.sh
+```
+
+**Browser doesn't open:** the URL is printed (`http://localhost:5173/`). Open it
+manually. `echo $DISPLAY` should not be empty in a graphical session.
+
 ## Models not loading (llama.cpp / LM Studio)
 
 If the model dropdown is empty or says "Cannot connect":

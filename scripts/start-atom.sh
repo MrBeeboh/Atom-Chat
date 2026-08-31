@@ -1,207 +1,169 @@
 #!/usr/bin/env bash
-# ATOM - llama.cpp launcher (one double-click)
+# ATOM Chat launcher (Linux Mint desktop icon, ./start-atom.sh, npm run start)
+#
+# Starts optional helpers, then Vite in the FOREGROUND so the terminal stays
+# open. Never requires llama-server (LM Studio on :1234 is enough).
+# Never uses `set -e` — a missing optional binary must not close the window.
 
-set -e
+hold() {
+  echo ""
+  echo "ATOM stopped. Full log: ${ATOM_LOG:-$ROOT/atom-start.log}"
+  if [ -t 0 ] && [ -z "${ATOM_NO_HOLD:-}" ]; then
+    echo "Press Enter to close this window."
+    read -r _ || true
+  elif [ -z "${ATOM_NO_HOLD:-}" ]; then
+    echo "(window will stay open 12s so the error is readable)"
+    sleep 12
+  fi
+}
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-cd "$ROOT"
+cd "$ROOT" || { echo "Cannot open $ROOT"; sleep 8; exit 1; }
 
-# --- Auto-sync from GitHub on launch (set ATOM_SKIP_SYNC=1 to disable) -------
-# Pulls the latest release branch before starting so the desktop app never
-# drifts behind the repo. Never blocks launch: offline, local edits, or a
-# diverged branch all fall through to starting the current version.
+ATOM_LOG="${ATOM_LOG:-$ROOT/atom-start.log}"
+export ATOM_LOG
+# shellcheck source=atom-launcher-lib.sh
+. "$ROOT/scripts/atom-launcher-lib.sh"
+
+{
+  echo "========== $(date -Iseconds) =========="
+  echo "cwd=$ROOT"
+  echo "user=$(whoami)  DISPLAY=${DISPLAY:-<empty>}  WAYLAND=${WAYLAND_DISPLAY:-<empty>}"
+  echo "node=$(command -v node 2>/dev/null || echo MISSING)  npm=$(command -v npm 2>/dev/null || echo MISSING)"
+} >>"$ATOM_LOG"
+
+atom_log "[ATOM] Atom Chat — $ROOT"
+atom_log "[ATOM] Log: $ATOM_LOG"
+
+if [ "${1:-}" = "--check" ] || [ -n "${ATOM_LAUNCHER_CHECK:-}" ]; then
+  echo "node: $(command -v node || echo MISSING)"
+  echo "npm:  $(command -v npm || echo MISSING)"
+  echo "vite modules: $([ -d "$ROOT/node_modules/vite" ] && echo ok || echo missing)"
+  echo "llama-server: $(atom_resolve_llama_bin || echo 'not installed (ok — LM Studio is enough)')"
+  echo "port 5173: $(atom_port_in_use 5173 && echo busy || echo free)"
+  echo "port 1234: $(atom_port_in_use 1234 && echo busy || echo free)"
+  echo "port 8080: $(atom_port_in_use 8080 && echo busy || echo free)"
+  exit 0
+fi
+
+if ! command -v node >/dev/null 2>&1; then
+  atom_log "[ATOM] ERROR: Node.js is not on PATH. Install Node 18+ from https://nodejs.org"
+  hold
+  exit 1
+fi
+if ! command -v npm >/dev/null 2>&1; then
+  atom_log "[ATOM] ERROR: npm is not on PATH."
+  hold
+  exit 1
+fi
+
+if [ ! -d "$ROOT/node_modules/vite" ]; then
+  atom_log "[ATOM] Installing npm dependencies (first run or missing node_modules)..."
+  if ! npm install --no-audit --no-fund --legacy-peer-deps >>"$ATOM_LOG" 2>&1; then
+    atom_log "[ATOM] ERROR: npm install failed. See $ATOM_LOG"
+    hold
+    exit 1
+  fi
+fi
+
+# Optional Origin sync — fetch only, never merge, never abort launch.
 if [ -z "${ATOM_SKIP_SYNC:-}" ] && [ -d .git ] && command -v git >/dev/null 2>&1; then
-    SYNC_BRANCH="${ATOM_SYNC_BRANCH:-main}"
-    echo "[ATOM] Checking GitHub for updates (origin/$SYNC_BRANCH)..."
-    if git fetch --quiet origin "$SYNC_BRANCH" 2>/dev/null; then
-        LOCAL_REF="$(git rev-parse HEAD 2>/dev/null || true)"
-        REMOTE_REF="$(git rev-parse "origin/$SYNC_BRANCH" 2>/dev/null || true)"
-        CUR_BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
-        if [ -z "$REMOTE_REF" ] || [ "$LOCAL_REF" = "$REMOTE_REF" ]; then
-            echo "[ATOM] Already up to date."
-        elif [ "$CUR_BRANCH" != "$SYNC_BRANCH" ]; then
-            echo "[ATOM] On branch '$CUR_BRANCH' (not '$SYNC_BRANCH') — skipping auto-sync."
-        elif [ -n "$(git status --porcelain 2>/dev/null)" ]; then
-            echo "[ATOM] Local changes detected — skipping auto-sync so nothing is overwritten."
-            echo "[ATOM] (commit or stash them, or set ATOM_SKIP_SYNC=1 to silence this check)"
-        else
-            OLD_LOCK="$(git rev-parse HEAD:package-lock.json 2>/dev/null || true)"
-            if git merge --ff-only "origin/$SYNC_BRANCH" >/dev/null 2>&1; then
-                echo "[ATOM] Updated to $(git rev-parse --short HEAD)."
-                NEW_LOCK="$(git rev-parse HEAD:package-lock.json 2>/dev/null || true)"
-                if [ "$OLD_LOCK" != "$NEW_LOCK" ]; then
-                    echo "[ATOM] Dependencies changed — running npm install..."
-                    npm install --no-audit --no-fund --legacy-peer-deps \
-                        || echo "[ATOM] WARNING: npm install failed; continuing with existing node_modules."
-                fi
-            else
-                echo "[ATOM] Local history differs from origin/$SYNC_BRANCH — skipping auto-sync (fast-forward not possible)."
-            fi
-        fi
+  SYNC_BRANCH="${ATOM_SYNC_BRANCH:-main}"
+  atom_log "[ATOM] Checking Origin for updates (origin/$SYNC_BRANCH)..."
+  if git fetch --quiet origin "$SYNC_BRANCH" >>"$ATOM_LOG" 2>&1; then
+    LOCAL_REF="$(git rev-parse HEAD 2>/dev/null || true)"
+    REMOTE_REF="$(git rev-parse "origin/$SYNC_BRANCH" 2>/dev/null || true)"
+    if [ -n "$REMOTE_REF" ] && [ "$LOCAL_REF" != "$REMOTE_REF" ]; then
+      atom_log "[ATOM] origin/$SYNC_BRANCH has new commits. Start as usual; pull when you want them."
     else
-        echo "[ATOM] Offline or GitHub unreachable — starting with current version."
+      atom_log "[ATOM] Already up to date."
     fi
-fi
-
-# Intel oneAPI on PATH (SYCL runtime). Same shell is inherited by llama-server below.
-if [ -z "${ATOM_SKIP_ONEAPI:-}" ] && [ -z "${ONEAPI_ROOT:-}" ]; then
-  for _setvars in /opt/intel/oneapi/setvars.sh "$HOME/intel/oneapi/setvars.sh"; do
-    if [ -f "$_setvars" ]; then
-      echo "[ATOM] oneAPI: sourcing ${_setvars}"
-      set +e
-      # shellcheck source=/dev/null
-      . "$_setvars" >/dev/null 2>&1
-      set -e
-      break
-    fi
-  done
-fi
-
-# Intel Arc / Data Center GPU: use a llama.cpp build with SYCL (GGML_SYCL), not a CUDA-only binary.
-# Set LLAMA_SERVER_BIN to the full path of your SYCL llama-server if it is not first on PATH.
-resolve_llama_server() {
-  if [ -n "${LLAMA_SERVER_BIN:-}" ]; then
-    if command -v "${LLAMA_SERVER_BIN}" >/dev/null 2>&1; then
-      command -v "${LLAMA_SERVER_BIN}"
-      return
-    fi
-    if [ -x "${LLAMA_SERVER_BIN}" ]; then
-      echo "${LLAMA_SERVER_BIN}"
-      return
-    fi
-    echo "[ATOM] LLAMA_SERVER_BIN is set but not executable: ${LLAMA_SERVER_BIN}" >&2
+  else
+    atom_log "[ATOM] Offline or Origin unreachable — starting with current version."
   fi
-  if command -v llama-server-sycl >/dev/null 2>&1; then
-    command -v llama-server-sycl
-    return
+fi
+
+if [ -n "${ATOM_CLEAN_PORTS:-}" ]; then
+  atom_clean_ports
+fi
+
+# Voice (optional) — never fail launch if uvicorn/python is missing.
+VOICE_DIR="$ROOT/voice-server"
+if [ -f "$VOICE_DIR/app.py" ] && ! atom_port_in_use 8765; then
+  if [ -x "$VOICE_DIR/.venv/bin/uvicorn" ]; then
+    (cd "$VOICE_DIR" && nohup .venv/bin/uvicorn app:app --host 127.0.0.1 --port 8765 >>"$ROOT/voice-server.log" 2>&1 &)
+    atom_log "[ATOM] Voice server on http://localhost:8765"
+  elif [ -x "$VOICE_DIR/venv/bin/uvicorn" ]; then
+    (cd "$VOICE_DIR" && nohup venv/bin/uvicorn app:app --host 127.0.0.1 --port 8765 >>"$ROOT/voice-server.log" 2>&1 &)
+    atom_log "[ATOM] Voice server on http://localhost:8765"
+  else
+    atom_log "[ATOM] Voice server skipped (no venv). Run ./setup.sh to enable mic input."
   fi
-  command -v llama-server 2>/dev/null || echo llama-server
+fi
+
+# Search proxy (optional)
+if [ -f "$ROOT/scripts/search-proxy.mjs" ] && ! atom_port_in_use 5174; then
+  nohup node "$ROOT/scripts/search-proxy.mjs" >>"$ROOT/search-proxy.log" 2>&1 &
+  atom_log "[ATOM] Search proxy on http://localhost:5174"
+fi
+
+# llama-server is OPTIONAL. The user typically uses LM Studio on :1234.
+# Never invoke a missing binary (that was the red-text flash + closed window).
+if [ "${ATOM_START_LLAMA:-auto}" != "0" ] && ! atom_port_in_use 8080; then
+  if LLAMA_BIN="$(atom_resolve_llama_bin)"; then
+    atom_log "[ATOM] Starting llama-server ($LLAMA_BIN) on :8080 (optional)..."
+    nohup "$LLAMA_BIN" --port 8080 --host 127.0.0.1 >>"$ROOT/llama-server.log" 2>&1 &
+  else
+    atom_log "[ATOM] No llama-server on PATH — skipping (LM Studio / cloud APIs still work)."
+  fi
+elif atom_port_in_use 8080; then
+  atom_log "[ATOM] Port 8080 already in use — leaving it alone."
+fi
+
+PORT="$(atom_pick_ui_port)"
+UI_URL="http://localhost:${PORT}/"
+
+if atom_port_in_use "$PORT"; then
+  if atom_http_ok "$UI_URL"; then
+    atom_log "[ATOM] UI already running at $UI_URL — opening browser."
+    atom_open_browser "$UI_URL" || true
+    if [ -t 0 ] && [ -z "${ATOM_NO_HOLD:-}" ]; then
+      echo "ATOM is already running. This window can be closed."
+      read -r _ || true
+    fi
+    exit 0
+  fi
+  atom_log "[ATOM] ERROR: port ${PORT} is in use but is not serving ATOM."
+  atom_log "[ATOM] Stop the other process, or run: ATOM_CLEAN_PORTS=1 ./start-atom.sh"
+  atom_log "[ATOM] Or pick another port: ATOM_UI_PORT=5175 ./start-atom.sh"
+  hold
+  exit 1
+fi
+
+atom_log "[ATOM] Starting UI on ${UI_URL}"
+atom_open_browser_when_ready "$PORT" &
+BROWSER_PID=$!
+
+cleanup() {
+  kill "$BROWSER_PID" 2>/dev/null || true
 }
+trap 'echo ""; atom_log "[ATOM] Shutting down..."; cleanup; exit 0' INT TERM
 
-LLAMA_BIN="$(resolve_llama_server)"
+echo ""
+echo "Leave this window open. Press Ctrl+C to stop."
+echo "UI URL: ${UI_URL}"
+echo ""
 
-echo "[ATOM] Starting..."
-echo "[ATOM] llama-server binary: ${LLAMA_BIN}"
-if ! echo "${LLAMA_BIN}" | grep -qi sycl; then
-  echo "[ATOM] Tip: On Intel Arc, use a SYCL-enabled llama.cpp build for GPU speed (see TROUBLESHOOTING.md). Set LLAMA_SERVER_BIN if needed."
+# Foreground Vite keeps the desktop-launcher terminal alive.
+# Do not exec — if Vite exits we hold the window so the red error stays readable.
+set +e
+npm run dev -- --port "$PORT" --host localhost
+VITE_STATUS=$?
+set +e
+
+if [ "$VITE_STATUS" -ne 0 ]; then
+  atom_log "[ATOM] ERROR: Vite/npm exited with status $VITE_STATUS. Last 40 lines of $ATOM_LOG:"
+  tail -n 40 "$ATOM_LOG" 2>/dev/null || true
+  hold
+  exit "$VITE_STATUS"
 fi
-
-# Pick smallest .gguf under these trees (loads faster; avoids auto-picking a 30B+ first from sort order).
-pick_smallest_gguf() {
-    local line
-    line="$(
-        for _dir in "$HOME/.lmstudio/models" "$HOME/models" "$HOME/.cache/llama.cpp" "$HOME/Downloads"; do
-            [ -d "$_dir" ] || continue
-            find "$_dir" -maxdepth 5 -name '*.gguf' -type f -printf '%s\t%p\n' 2>/dev/null
-        done | sort -n | head -1
-    )"
-    if [ -n "$line" ]; then
-        printf '%s' "$line" | cut -f2-
-    fi
-}
-
-llama_ready() {
-    curl -sS --max-time 3 "http://127.0.0.1:8080/v1/models" >/dev/null 2>&1 \
-        || curl -sS --max-time 3 "http://127.0.0.1:8080/models" >/dev/null 2>&1
-}
-
-# Check if llama-server is already running on 8080
-if llama_ready; then
-    echo "[ATOM] llama-server already running on port 8080"
-else
-    echo "[ATOM] Starting llama-server..."
-
-    ATOM_MODELS_DIR="${ATOM_MODELS_DIR:-$HOME/.lmstudio/models}"
-    # Prefer router mode: no GGUF in VRAM until the app calls /models/load (Arena loads one at a time).
-    ROUTER=0
-    if [ -z "${MODEL:-}" ] && [ -z "${GGUF_PATH:-}" ] && [ -d "$ATOM_MODELS_DIR" ] && "${LLAMA_BIN}" --help 2>&1 | grep -qE 'models-dir'; then
-        ROUTER=1
-    fi
-    ROUTER_EXTRA=()
-    if [ "$ROUTER" = 1 ] && "${LLAMA_BIN}" --help 2>&1 | grep -qE 'no-models-autoload'; then
-        ROUTER_EXTRA=(--no-models-autoload)
-    fi
-
-    if [ -n "${MODEL:-}" ] || [ -n "${GGUF_PATH:-}" ]; then
-        MODEL="${MODEL:-$GGUF_PATH}"
-    elif [ "$ROUTER" = 1 ]; then
-        MODEL=""
-    else
-        MODEL="$(pick_smallest_gguf)"
-    fi
-
-    if [ "$ROUTER" = 1 ]; then
-        echo "[ATOM] Router: --models-dir $ATOM_MODELS_DIR --models-max 1 --no-models-autoload (nothing preloaded into VRAM)"
-        : >>"$ROOT/llama-server.log"
-        nohup "$LLAMA_BIN" --models-dir "$ATOM_MODELS_DIR" --models-max 1 "${ROUTER_EXTRA[@]}" --n-gpu-layers 99 --port 8080 --host 0.0.0.0 >>"$ROOT/llama-server.log" 2>&1 &
-        LLAMA_PID=$!
-        disown || true
-    elif [ -n "$MODEL" ] && [ -f "$MODEL" ]; then
-        echo "[ATOM] Using model (explicit or smallest GGUF): $MODEL"
-        : >>"$ROOT/llama-server.log"
-        nohup "$LLAMA_BIN" -m "$MODEL" --port 8080 --n-gpu-layers 99 --host 0.0.0.0 >>"$ROOT/llama-server.log" 2>&1 &
-        LLAMA_PID=$!
-        disown || true
-    else
-        echo "[ATOM] No .gguf found for legacy -m mode and router unavailable (missing --models-dir in this binary or empty $ATOM_MODELS_DIR)."
-        LLAMA_PID=""
-    fi
-
-    if [ -n "${LLAMA_PID:-}" ]; then
-        LM_WAIT_ATTEMPTS="${LM_WAIT_ATTEMPTS:-120}"
-        LM_WAIT_SLEEP="${LM_WAIT_SLEEP:-1}"
-        echo "[ATOM] Waiting up to $((LM_WAIT_ATTEMPTS * LM_WAIT_SLEEP))s for llama HTTP on :8080 ..."
-        llama_ok=0
-        for ((i = 1; i <= LM_WAIT_ATTEMPTS; i++)); do
-            if ! kill -0 "$LLAMA_PID" 2>/dev/null; then
-                echo "[ATOM] ERROR: llama-server process exited (PID $LLAMA_PID). Last lines of llama-server.log:"
-                tail -n 60 "$ROOT/llama-server.log" 2>/dev/null || true
-                break
-            fi
-            if llama_ready; then
-                echo "[ATOM] llama-server ready (${i}x${LM_WAIT_SLEEP}s)"
-                llama_ok=1
-                break
-            fi
-            sleep "$LM_WAIT_SLEEP"
-        done
-        if [ "$llama_ok" != 1 ]; then
-            if kill -0 "$LLAMA_PID" 2>/dev/null; then
-                echo "[ATOM] WARNING: llama-server not answering on :8080 yet — UI will start; retry when the server is ready."
-            fi
-        fi
-    fi
-fi
-
-# Start voice server if present (prefer project venv so deps match setup.sh)
-if [ -f voice-server/app.py ]; then
-    if [ -x voice-server/.venv/bin/python ]; then
-        VOICE_PY="voice-server/.venv/bin/python"
-    else
-        VOICE_PY="python3"
-    fi
-    (cd voice-server && nohup "$VOICE_PY" -m uvicorn app:app --host 0.0.0.0 --port 8765 >> ../voice-server.log 2>&1 &)
-fi
-
-# Start search proxy
-if [ -f scripts/search-proxy.mjs ]; then
-    nohup node scripts/search-proxy.mjs >> search-proxy.log 2>&1 &
-fi
-
-# UI port: keep 5175 for this launcher so localStorage (API keys, backend URL) stays on the same
-# origin as before. Port 5173 vs 5175 are different sites to the browser — keys do not carry over.
-ATOM_UI_PORT="${ATOM_UI_PORT:-5175}"
-npm run dev -- --port "$ATOM_UI_PORT" --strictPort &
-UI_PID=$!
-
-# Open browser once dev server responds (use localhost, not 127.0.0.1, so origin matches bookmarks)
-for i in $(seq 1 40); do
-    if curl -s --max-time 1 "http://localhost:${ATOM_UI_PORT}/" >/dev/null 2>&1; then
-        (sleep 1; xdg-open "http://localhost:${ATOM_UI_PORT}/" 2>/dev/null) &
-        break
-    fi
-    sleep 0.5
-done
-
-trap 'kill $UI_PID 2>/dev/null; exit 0' INT TERM
-wait $UI_PID
