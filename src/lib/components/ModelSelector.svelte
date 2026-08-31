@@ -5,6 +5,7 @@
   import { modelDisplayName, getModelTypeTag } from '$lib/api.js';
   import { refreshConnectionAndModels } from '$lib/connectionSetup.js';
   import { getModelIcon, getQuantization, modelIconOverrides } from '$lib/modelIcons.js';
+  import { formatPriceLine, modelPricing } from '$lib/modelPricing.js';
   import ModelCapabilityBadges from '$lib/components/ModelCapabilityBadges.svelte';
   import ModelDropdownGroupedList from '$lib/components/ModelDropdownGroupedList.svelte';
   import ThinkingAtom from '$lib/components/ThinkingAtom.svelte';
@@ -105,6 +106,9 @@
         {@const selIcon = getModelIcon($selectedModelId, $modelIconOverrides)}
         <img src={selIcon} alt="" class="w-4 h-4 shrink-0 rounded object-contain" onerror={(e) => (e.currentTarget.style.display = 'none')} />
         <span class="truncate font-bold uppercase tracking-tight text-xs">{modelDisplayName($selectedModelId)}</span>
+        {#if formatPriceLine($selectedModelId, $modelPricing)}
+          <span class="shrink-0 text-[10px] font-medium tabular-nums normal-case tracking-normal" style="color: var(--ui-text-secondary);">{formatPriceLine($selectedModelId, $modelPricing)}</span>
+        {/if}
         {#if getModelTypeTag($selectedModelId)}
           <span class="shrink-0 text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded" style="background: color-mix(in srgb, var(--ui-accent) 12%, transparent); color: var(--ui-accent);">{getModelTypeTag($selectedModelId)}</span>
         {/if}

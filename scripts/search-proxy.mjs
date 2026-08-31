@@ -65,6 +65,21 @@ app.get('/api/search', async (req, res) => {
     }
 });
 
+app.get('/api/model-prices', async (req, res) => {
+    try {
+        const response = await fetch(
+            'https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json',
+            { signal: AbortSignal.timeout(20000) },
+        );
+        if (!response.ok) return res.status(response.status).json({ error: `catalog ${response.status}` });
+        const data = await response.json();
+        res.json(data);
+    } catch (err) {
+        console.error('[search-proxy] model-prices', err.message);
+        res.status(502).json({ error: 'Price catalog unavailable', details: err.message });
+    }
+});
+
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`[search-proxy] http://0.0.0.0:${PORT}`);
     if (!BRAVE_API_KEY) console.log('[search-proxy] No Brave key – set in Settings or BRAVE_API_KEY');

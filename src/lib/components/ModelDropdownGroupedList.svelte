@@ -4,6 +4,7 @@
   import { getModelTypeTag, modelSelectorPrimaryLine, modelSelectorSecondaryLine } from '$lib/api.js';
   import ModelCapabilityBadges from '$lib/components/ModelCapabilityBadges.svelte';
   import { groupModelsForSelector } from '$lib/modelGroups.js';
+  import { modelPricing, formatPriceLine, formatPricingFetchedAt } from '$lib/modelPricing.js';
 
   let {
     models = [],
@@ -92,12 +93,23 @@
           {g.title}
         </div>
         <div class="text-[10px] mt-0.5 leading-snug" style="color: var(--ui-text-secondary);">
-          {g.hint}
+          {#if g.bucket.startsWith('cloud:')}
+            {#if $modelPricing.status === 'ready' && formatPricingFetchedAt($modelPricing.fetchedAt)}
+              Live USD /1M tokens · as of {formatPricingFetchedAt($modelPricing.fetchedAt)}
+            {:else if $modelPricing.status === 'loading'}
+              Fetching current list prices…
+            {:else}
+              {g.hint}
+            {/if}
+          {:else}
+            {g.hint}
+          {/if}
         </div>
       </div>
       {#each g.items as m (m.id)}
         {@const icon = getModelIcon(m.id, $modelIconOverrides)}
         {@const sub = modelSelectorSecondaryLine(m.id)}
+        {@const price = formatPriceLine(m.id, $modelPricing)}
         <button
           type="button"
           class="model-row flex items-start gap-2.5 w-full pl-4 pr-3 py-2 text-left text-sm transition-colors border-b border-transparent {m.id === selectedId ? 'model-row-selected' : ''}"
@@ -133,6 +145,13 @@
                 class="truncate text-[10px] leading-tight font-mono"
                 style="color: var(--ui-text-secondary); opacity: 0.9;"
                 title={sub}>{sub}</span
+              >
+            {/if}
+            {#if price}
+              <span
+                class="text-[10px] leading-tight tabular-nums"
+                style="color: var(--ui-text-secondary);"
+                title="List price, USD per 1 million tokens (input · output)">{price}</span
               >
             {/if}
           </span>

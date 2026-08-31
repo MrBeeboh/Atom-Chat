@@ -4,7 +4,7 @@
   import { get } from 'svelte/store';
   import { fly } from 'svelte/transition';
   import { backOut, quintOut } from 'svelte/easing';
-  import { theme, sidebarOpen, settingsOpen, settingsFocus, layout, dashboardModelA, dashboardModelB, dashboardModelC, dashboardModelD, activeConversationId, conversations, selectedModelId, uiTheme, sidebarCollapsed, cockpitIntelOpen, arenaPanelCount, lmStudioConnected, cloudApisAvailable } from '$lib/stores.js';
+  import { theme, sidebarOpen, settingsOpen, settingsFocus, layout, dashboardModelA, dashboardModelB, dashboardModelC, dashboardModelD, activeConversationId, conversations, selectedModelId, uiTheme, sidebarCollapsed, cockpitIntelOpen, arenaPanelCount, lmStudioConnected, cloudApisAvailable, models } from '$lib/stores.js';
   import { createConversation, listConversations, getMessageCount, getMessages } from '$lib/db.js';
 
   function openSettingsFromStatus() {
@@ -28,6 +28,7 @@
   import ShortcutsModal from '$lib/components/ShortcutsModal.svelte';
   import AtomLogo from '$lib/components/AtomLogo.svelte';
   import { refreshConnectionAndModels } from '$lib/connectionSetup.js';
+  import { refreshModelPricing, applyPricingToModels } from '$lib/modelPricing.js';
   import { COCKPIT_LM_CHECKING, COCKPIT_LM_CONNECTED, COCKPIT_LM_UNREACHABLE, COCKPIT_CLOUD_APIS_AVAILABLE, pickWitty } from '$lib/cockpitCopy.js';
 
   const LAYOUT_OPTS = [
@@ -116,6 +117,8 @@
     if (!get(activeConversationId) && list.length > 0) activeConversationId.set(list[0].id);
 
     await refreshConnectionAndModels();
+    await refreshModelPricing();
+    applyPricingToModels(get(models));
   });
 
   async function refreshConversations() {
