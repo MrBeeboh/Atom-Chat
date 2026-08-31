@@ -49,6 +49,11 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path,
       },
+      '/api/model-prices': {
+        target: 'https://raw.githubusercontent.com',
+        changeOrigin: true,
+        rewrite: () => '/BerriAI/litellm/main/model_prices_and_context_window.json',
+      },
       '/api/health': { target: 'http://localhost:5174', changeOrigin: true },
       '/api/set-key': { target: 'http://localhost:5174', changeOrigin: true },
     },

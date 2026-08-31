@@ -13,6 +13,7 @@ import {
   effectiveModelId,
 } from '$lib/stores.js';
 import { findSmallestModel } from '$lib/utils/modelSelection.js';
+import { applyPricingToModels } from '$lib/modelPricing.js';
 
 /**
  * @typedef {'checking'|'disconnected'|'cloud_only'|'no_models'|'no_selection'|'ready'} SetupStatus
@@ -51,6 +52,7 @@ export async function refreshConnectionAndModels() {
     const ids = list.map((m) => m.id).filter(Boolean);
     models.set(ids.map((id) => ({ id })));
     if (ids.length) ensureModelIcons(ids);
+    applyPricingToModels(ids);
 
     const stored =
       typeof localStorage !== 'undefined' ? (localStorage.getItem('selectedModel') || '').trim() : '';
