@@ -6,16 +6,16 @@ A local-first AI chat and model evaluation tool. Compare models head-to-head in 
 
 ```bash
 ./setup.sh        # install deps, build, detect LM Studio, create desktop launcher
-npm run dev       # start dev server at http://localhost:5173
+./start-atom.sh   # full stack — keeps the terminal open, opens the browser
 ```
 
-That's it. Pick a model, start a chat.
+Or `npm run dev` for the UI only. Pick a model, start a chat.
 
 ## What you need
 
 - **Node.js 18+** — [nodejs.org](https://nodejs.org)
-- **llama.cpp** — `llama-server` on `localhost:8080` (default in Settings). **Intel Arc / Intel GPU:** use a [SYCL-enabled build](https://github.com/ggml-org/llama.cpp/blob/master/docs/backend/SYCL.md) (`GGML_SYCL`); the UI only talks HTTP and does not pick the GPU backend. `./scripts/start-atom.sh` prefers `llama-server-sycl` on your `PATH`, or set `LLAMA_SERVER_BIN`.
-- Any OpenAI-compatible server (LM Studio, Ollama, etc.) also works if you change the URL in Settings.
+- An OpenAI-compatible server: **LM Studio** (`localhost:1234`) is the usual setup. Set the URL in Settings if it is not already there.
+- **llama.cpp** is optional (`llama-server` on `localhost:8080`). The launcher starts it only if the binary is on your `PATH`. **Intel Arc:** use a [SYCL-enabled build](https://github.com/ggml-org/llama.cpp/blob/master/docs/backend/SYCL.md) or set `LLAMA_SERVER_BIN`.
 
 Optional: Python 3 for voice input, hardware metrics, and model unloading helpers.
 
@@ -40,20 +40,25 @@ Optional: Python 3 for voice input, hardware metrics, and model unloading helper
 | Command | Description |
 |---------|-------------|
 | `npm run dev` | Dev server (no voice/search) |
-| `npm run start` | Full stack — voice server + search proxy + UI |
+| `npm run start` / `./start-atom.sh` | Full stack — voice, search, UI; holds the terminal on error |
 | `npm run build` | Production build → `dist/` |
 | `npm run preview` | Serve production build locally |
 | `./setup.sh` | Install deps, build, detect LM Studio |
 
 ## Staying up to date
 
-The launchers (`npm run start`, `./start-atom.sh`, desktop icon) auto-sync from
-GitHub on every start: they fast-forward to the latest `origin/main` and re-run
-`npm install` only when dependencies changed. Sync is skipped safely when you
-are offline, have local edits, or are on a different branch.
+The launchers (`npm run start`, `./start-atom.sh`, desktop icon) check **Origin**
+(`origin/main`) on start. They only *report* new commits — they do not merge or
+overwrite your tree. `npm install` runs automatically if `node_modules` is missing.
 
-- `ATOM_SKIP_SYNC=1` — disable auto-sync for one launch (or export it permanently)
-- `ATOM_SYNC_BRANCH=mybranch` — track a branch other than `main`
+- `ATOM_SKIP_SYNC=1` — skip the Origin check
+- `ATOM_SYNC_BRANCH=mybranch` — check a branch other than `main`
+- `ATOM_CLEAN_PORTS=1` — kill a stale Vite / voice / search process and retry
+- `ATOM_UI_PORT=5175` — bind a specific UI port
+- `ATOM_START_LLAMA=0` — never try to start llama-server (LM Studio is enough)
+
+If the desktop window flashes red and closes, read `atom-start.log` in the repo
+folder. The launcher keeps the terminal open so the error stays readable.
 
 ## Settings
 

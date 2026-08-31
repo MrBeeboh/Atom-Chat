@@ -81,31 +81,75 @@ else
   echo "  - No voice-server/ directory found — skipping"
 fi
 
-# ── 6. Desktop icon ──────────────────────────────────────────────
+# ── 6. Desktop icon + command-line launcher ─────────────────────
 echo ""
-echo -e "${BOLD}6. Desktop launcher…${RESET}"
+echo -e "${BOLD}6. Desktop launcher & shell command…${RESET}"
+chmod +x "$ROOT/start-atom.sh" "$ROOT/scripts/start-atom.sh" "$ROOT/start-all.sh" 2>/dev/null || true
+
+BIN_DIR="$HOME/.local/bin"
+mkdir -p "$BIN_DIR"
+ATOM_BIN="$BIN_DIR/atom"
+cat > "$ATOM_BIN" <<EOF
+#!/usr/bin/env bash
+exec "$ROOT/start-atom.sh" "\$@"
+EOF
+chmod +x "$ATOM_BIN"
+echo "  ✓ Command installed: atom  (runs $ROOT/start-atom.sh)"
+if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
+  echo -e "  ${YELLOW}! Add ~/.local/bin to your PATH if 'atom' is not found:${RESET}"
+  echo "    echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.bashrc && source ~/.bashrc"
+fi
+
 DESKTOP_FILE="$ROOT/ATOM.desktop"
-if [ -f "$DESKTOP_FILE" ]; then
-  if [ -d "$HOME/Desktop" ] || [ -d "$HOME/.local/share/applications" ]; then
-    DEST="$HOME/.local/share/applications/ATOM.desktop"
-    mkdir -p "$HOME/.local/share/applications"
-    sed "s|/home/mike/atom-chat|$ROOT|g" "$DESKTOP_FILE" > "$DEST"
-    chmod +x "$DEST"
-    echo "  ✓ Desktop launcher created ($DEST)"
+write_desktop() {
+  local dest="$1"
+  if [ -f "$DESKTOP_FILE" ]; then
+    sed "s|__ATOM_ROOT__|$ROOT|g" "$DESKTOP_FILE" > "$dest"
   else
-    echo "  - No Desktop directory — skipping. To create manually:"
-    echo "    cp ATOM.desktop ~/.local/share/applications/"
-    echo "    (edit the path inside to match: $ROOT)"
+    cat > "$dest" <<EOF
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=ATOM Chat
+Comment=Local AI chat — voice, search, and UI
+Exec=$ROOT/start-atom.sh
+Path=$ROOT
+Terminal=true
+Icon=utilities-terminal
+Categories=Development;Network;
+EOF
   fi
+  chmod +x "$dest"
+}
+
+if [ -d "$HOME/.local/share/applications" ] || mkdir -p "$HOME/.local/share/applications" 2>/dev/null; then
+  DEST="$HOME/.local/share/applications/ATOM.desktop"
+  write_desktop "$DEST"
+  echo "  ✓ Menu launcher created ($DEST)"
+  if [ -d "$HOME/Desktop" ]; then
+    write_desktop "$HOME/Desktop/ATOM.desktop"
+    echo "  ✓ Desktop shortcut copied to $HOME/Desktop/ATOM.desktop"
+  fi
+else
+  echo "  - Could not write a .desktop file. Start with: $ROOT/start-atom.sh"
 fi
 
 # ── 7. Done ───────────────────────────────────────────────────────
 echo ""
 echo -e "  ${BOLD}${GREEN}✓ Setup complete!${RESET}"
 echo ""
-echo "  Starting the app:"
-echo "    npm run dev                      # dev server (no voice)"
-echo "    npm run start                    # full stack (voice + search + UI)"
-echo "    npx serve dist                   # production build (static)"
+echo "  Repo folder: $ROOT"
 echo ""
-echo "  Then open http://localhost:5173 and select a model."
+echo "  Start ATOM (from anywhere, after ~/.local/bin is on PATH):"
+echo "    atom"
+echo "    ATOM_CLEAN_PORTS=1 atom    # if a stale Vite is holding the port"
+echo ""
+echo "  Or from this folder:"
+echo "    ./start-atom.sh"
+echo "    npm run start"
+echo ""
+echo "  Dev only (no voice/search):"
+echo "    npm run dev"
+echo ""
+echo "  If the browser does not open, go to http://localhost:5173"
+echo "  Errors stay on screen and are also written to atom-start.log"

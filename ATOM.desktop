@@ -1,10 +1,11 @@
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=ATOM V2
-Comment=Start ATOM Chat with voice server and UI
-Exec=bash -c "cd /home/mike/atom-v2 && ./scripts/start-atom.sh"
-Path=/home/mike/atom-v2
+Name=ATOM Chat
+Comment=Local AI chat — voice, search, and UI
+Exec=bash -c 'ROOT="__ATOM_ROOT__"; if [ ! -x "$ROOT/scripts/start-atom.sh" ]; then for d in "$HOME/atom-chat" "$HOME/Atom-Chat" "$HOME/atom-v2" /home/mike/atom-chat /home/mike/Atom-Chat; do if [ -x "$d/scripts/start-atom.sh" ]; then ROOT="$d"; break; fi; done; fi; if [ ! -x "$ROOT/scripts/start-atom.sh" ]; then echo "ATOM Chat not found. Run ./setup.sh from the repo."; echo "Press Enter"; read -r _; exit 1; fi; cd "$ROOT" && exec "$ROOT/scripts/start-atom.sh"'
+Path=__ATOM_ROOT__
 Terminal=true
 Icon=utilities-terminal
-Categories=Development;
+Categories=Development;Network;
+StartupNotify=true
