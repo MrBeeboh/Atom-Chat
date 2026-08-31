@@ -28,6 +28,12 @@ describe('ATOM launcher contract (do not regress Mint startup)', () => {
     expect(launcher).toContain('Press Enter to close this window')
   })
 
+  it('reuses an already-running UI instead of starting a second Vite', () => {
+    expect(launcher).toContain('atom_find_running_ui')
+    expect(lib).toContain('atom_find_running_ui')
+    expect(launcher).toMatch(/UI already running/)
+  })
+
   it('runs Vite in the foreground so the desktop terminal stays alive', () => {
     expect(launcher).toMatch(/npm run dev -- --port/)
     const afterDev = launcher.split('npm run dev -- --port')[1] ?? ''

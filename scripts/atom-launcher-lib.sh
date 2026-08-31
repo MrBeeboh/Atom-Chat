@@ -45,6 +45,22 @@ atom_wait_for_http() {
   return 1
 }
 
+atom_ui_ports() {
+  printf '%s\n' 5173 5175 5176 5177
+}
+
+# Prints an existing ATOM UI port if one is already serving, else empty.
+atom_find_running_ui() {
+  local try
+  for try in $(atom_ui_ports); do
+    if atom_http_ok "http://localhost:${try}/"; then
+      printf '%s' "$try"
+      return 0
+    fi
+  done
+  return 1
+}
+
 atom_pick_ui_port() {
   local preferred="${ATOM_UI_PORT:-}"
   local try
@@ -52,7 +68,12 @@ atom_pick_ui_port() {
     printf '%s' "$preferred"
     return 0
   fi
-  for try in 5173 5175 5176 5177; do
+  # Prefer a already-running ATOM so a second click opens the browser, not a 2nd Vite.
+  if try="$(atom_find_running_ui)"; then
+    printf '%s' "$try"
+    return 0
+  fi
+  for try in $(atom_ui_ports); do
     if ! atom_port_in_use "$try"; then
       printf '%s' "$try"
       return 0

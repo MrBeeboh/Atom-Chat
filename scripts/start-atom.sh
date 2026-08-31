@@ -120,6 +120,21 @@ elif atom_port_in_use 8080; then
   atom_log "[ATOM] Port 8080 already in use — leaving it alone."
 fi
 
+# If a previous ATOM is already up, just open the browser — do not start Vite again.
+if [ -z "${ATOM_UI_PORT:-}" ]; then
+  if EXISTING="$(atom_find_running_ui)"; then
+    PORT="$EXISTING"
+    UI_URL="http://localhost:${PORT}/"
+    atom_log "[ATOM] UI already running at $UI_URL — opening browser."
+    atom_open_browser "$UI_URL" || true
+    if [ -t 0 ] && [ -z "${ATOM_NO_HOLD:-}" ]; then
+      echo "ATOM is already running at $UI_URL. This window can be closed."
+      read -r _ || true
+    fi
+    exit 0
+  fi
+fi
+
 PORT="$(atom_pick_ui_port)"
 UI_URL="http://localhost:${PORT}/"
 
