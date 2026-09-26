@@ -20,6 +20,7 @@ function viteEnvStr(key) {
     VITE_GROK_API_KEY: import.meta.env.VITE_GROK_API_KEY,
     VITE_CEREBRAS_API_KEY: import.meta.env.VITE_CEREBRAS_API_KEY,
     VITE_DEEPINFRA_API_KEY: import.meta.env.VITE_DEEPINFRA_API_KEY,
+    VITE_OPENROUTER_API_KEY: import.meta.env.VITE_OPENROUTER_API_KEY,
   };
   const v = map[key];
   return typeof v === 'string' ? v.trim() : '';
@@ -244,6 +245,21 @@ const CLOUD_PROVIDERS = {
     ],
     getKey: () => localStorageOrVite('deepinfraApiKey', 'VITE_DEEPINFRA_API_KEY'),
   },
+  openrouter: {
+    name: 'OpenRouter',
+    baseUrl: 'https://openrouter.ai/api/v1',
+    /** OpenRouter base already has /v1; chat path is /chat/completions. Model ids keep the org prefix (nousresearch/…). */
+    models: [
+      'nousresearch/hermes-3-llama-3.1-70b',
+      'nousresearch/hermes-3-llama-3.1-405b',
+      'nousresearch/hermes-4-405b',
+    ],
+    getKey: () => localStorageOrVite('openRouterApiKey', 'VITE_OPENROUTER_API_KEY'),
+    extraHeaders: {
+      'HTTP-Referer': 'https://github.com/MrBeeboh/Atom-Chat',
+      'X-Title': 'Atom Chat',
+    },
+  },
 };
 
 /** Short descriptive tag for cloud models (shown next to name in selector). */
@@ -279,6 +295,9 @@ const MODEL_TYPE_TAGS = {
   'deepseek-ai/DeepSeek-V3-0324': 'Chat',
   'google/gemma-2-27b-it': 'Chat',
   'google/gemma-2-9b-it': 'Fast Chat',
+  'nousresearch/hermes-3-llama-3.1-70b': 'Chat',
+  'nousresearch/hermes-3-llama-3.1-405b': 'Chat',
+  'nousresearch/hermes-4-405b': 'Reasoning',
 };
 
 /** Get short model type tag (e.g. "Reasoning", "Fast Chat"). Returns null if no tag. */
@@ -330,25 +349,63 @@ export function modelSelectorSecondaryLine(id) {
   return norm.slice(0, norm.length - base.length - 1) || null;
 }
 
+/** Provider id when modelId is "provider:model", and that provider is configured. Otherwise ''. */
+function cloudProviderId(modelId) {
+  if (!modelId || typeof modelId !== 'string') return '';
+  const colon = modelId.indexOf(':');
+  if (colon <= 0) return '';
+  const id = modelId.slice(0, colon);
+  return CLOUD_PROVIDERS[id] ? id : '';
+}
+
+function isKnownCloudModel(modelId) {
+  return cloudProviderId(modelId) !== '';
+}
+
 /** Get base URL and headers for a given model id. Local models use LM Studio; "provider:modelId" use cloud. */
 function getBaseAndAuth(modelId) {
-  if (!modelId || typeof modelId !== 'string') return { base: getLmStudioBase(), headers: {} };
-  const colon = modelId.indexOf(':');
-  if (colon === -1) return { base: getLmStudioBase(), headers: {} };
-  const providerId = modelId.slice(0, colon);
-  const provider = CLOUD_PROVIDERS[providerId];
-  if (!provider) return { base: getLmStudioBase(), headers: {} };
+  if (!isKnownCloudModel(modelId)) return { base: getLmStudioBase(), headers: {} };
+  const provider = CLOUD_PROVIDERS[cloudProviderId(modelId)];
   const key = provider.getKey()?.trim();
   if (!key) return { base: getLmStudioBase(), headers: {} };
-  const headers = { Authorization: `Bearer ${key}` };
+  const headers = { Authorization: `Bearer ${key}`, ...(provider.extraHeaders || {}) };
   return { base: provider.baseUrl.replace(/\/$/, ''), headers };
 }
 
-/** Resolve model id for the API request (cloud: use part after colon; local: use as-is). */
+/**
+ * Resolve model id for the API request.
+ * Only a known provider prefix is stripped, so OpenRouter slugs such as
+ * "openrouter:nousresearch/hermes-4-405b" stay "nousresearch/hermes-4-405b"
+ * (the org slash is part of the model id, not another provider).
+ */
 function resolveModelId(modelId) {
   if (!modelId || typeof modelId !== 'string') return modelId;
-  const colon = modelId.indexOf(':');
-  return colon === -1 ? modelId : modelId.slice(colon + 1);
+  const providerId = cloudProviderId(modelId);
+  if (!providerId) return modelId;
+  return modelId.slice(providerId.length + 1);
+}
+
+function chatCompletionsUrl(modelId, base) {
+  const root = String(base || '').replace(/\/$/, '');
+  if (isDeepinfraModel(modelId)) return `${root}/chat/completions`;
+  return root.endsWith('/v1') ? `${root}/chat/completions` : `${root}/v1/chat/completions`;
+}
+
+/**
+ * Where a chat completion for this model id is sent, and the model string the API expects.
+ * Local disk/router remapping still happens later for non-cloud ids.
+ * @param {string} modelId
+ * @returns {{ url: string, headers: Record<string, string>, model: string, isCloud: boolean }}
+ */
+export function resolveChatRequestTarget(modelId) {
+  const { base, headers } = getBaseAndAuth(modelId);
+  const isCloud = isKnownCloudModel(modelId);
+  return {
+    url: chatCompletionsUrl(modelId, base),
+    headers,
+    model: isCloud ? resolveModelId(modelId) : modelId,
+    isCloud,
+  };
 }
 
 /** Lowercase filename for deduping disk paths vs server-reported model names. */
@@ -469,7 +526,7 @@ function parseChatApiError(status, bodyText, modelId) {
   let code = '';
   const isCloud = modelId && String(modelId).includes(':');
   const cloudHint = isCloud
-    ? ' Check Settings → Cloud APIs (DeepSeek, Grok, Cerebras, DeepInfra): confirm the key is correct, has no extra spaces, and is valid for the selected provider.'
+    ? ' Check Settings → API keys (DeepSeek, Grok, Cerebras, DeepInfra, OpenRouter): confirm the key is correct, has no extra spaces, and is valid for the selected provider.'
     : '';
 
   if (bodyText && bodyText.trim()) {
@@ -531,6 +588,11 @@ function getCloudModels() {
     }
   }
   return out;
+}
+
+/** Cloud model ids currently available (API key set). Ids are "provider:modelId". */
+export function configuredCloudModelIds() {
+  return getCloudModels().map((m) => m.id);
 }
 
 /** Timeout for LM Studio model list fetch so we don't hang when server is down; then cloud-only list can still load. */
@@ -1298,16 +1360,16 @@ export async function requestChatCompletion({ model, messages, options = {} }) {
       throw err;
     }
   }
-  const { base, headers: authHeaders } = getBaseAndAuth(model);
-  const isCloud = model && String(model).includes(':');
-  let resolvedModel = resolveModelId(model);
+  const target = resolveChatRequestTarget(model);
+  const { headers: authHeaders, isCloud } = target;
+  let resolvedModel = target.model;
   if (!isCloud) {
-    const eff = resolveModelId(await resolveEffectiveLocalChatModelId(model));
+    const eff = await resolveEffectiveLocalChatModelId(model);
     const router = await probeLlamaRouterModelsList();
     resolvedModel = router ? eff : localModelIdForOpenAIRequest(eff);
   }
   const lmsHasRestModels = !isCloud && (await probeLmsRestModelsList());
-  const url = isDeepinfraModel(model) ? `${base}/chat/completions` : (base.endsWith('/v1') ? `${base}/chat/completions` : `${base}/v1/chat/completions`);
+  const url = target.url;
   const headers = { 'Content-Type': 'application/json', ...authHeaders };
   const rawMax = options.max_tokens ?? 1024;
   const maxTokens = isCloud ? Math.max(1, Math.min(8192, Number(rawMax) || 1024)) : rawMax;
@@ -1336,7 +1398,7 @@ export async function requestChatCompletion({ model, messages, options = {} }) {
         throw new Error(parseChatApiError(res.status, text, model));
       }
       const data = await res.json();
-      const content = data.choices?.[0]?.message?.content ?? '';
+      const content = assistantMessageText(data.choices?.[0]?.message);
       return { content: String(content).trim(), usage: data.usage };
     } catch (err) {
       clearTimeout(to);
@@ -1349,8 +1411,17 @@ export async function requestChatCompletion({ model, messages, options = {} }) {
     throw new Error(parseChatApiError(res.status, text, model));
   }
   const data = await res.json();
-  const content = data.choices?.[0]?.message?.content ?? '';
+  const content = assistantMessageText(data.choices?.[0]?.message);
   return { content: String(content).trim(), usage: data.usage };
+}
+
+/** Visible assistant text. Hermes / OpenRouter may put the reply in reasoning when content is empty. */
+function assistantMessageText(message) {
+  if (!message || typeof message !== 'object') return '';
+  if (typeof message.content === 'string' && message.content.trim()) return message.content;
+  const reasoning = message.reasoning ?? message.reasoning_content;
+  if (typeof reasoning === 'string' && reasoning.trim()) return reasoning;
+  return typeof message.content === 'string' ? message.content : '';
 }
 
 /** Regex to extract <render_searched_image image_id="..." size="..."> from stream deltas (Grok image search). */
@@ -1555,16 +1626,16 @@ export async function streamChatCompletion({ model, messages, options = {}, onCh
       onDone?.();
     }
   };
-  const { base, headers: authHeaders } = getBaseAndAuth(model);
-  const isCloud = model && String(model).includes(':');
-  let resolvedModel = resolveModelId(model);
+  const target = resolveChatRequestTarget(model);
+  const { headers: authHeaders, isCloud } = target;
+  let resolvedModel = target.model;
   if (!isCloud) {
-    const eff = resolveModelId(await resolveEffectiveLocalChatModelId(model));
+    const eff = await resolveEffectiveLocalChatModelId(model);
     const router = await probeLlamaRouterModelsList();
     resolvedModel = router ? eff : localModelIdForOpenAIRequest(eff);
   }
   const lmsHasRestModels = !isCloud && (await probeLmsRestModelsList());
-  const streamUrl = isDeepinfraModel(model) ? `${base}/chat/completions` : (base.endsWith('/v1') ? `${base}/chat/completions` : `${base}/v1/chat/completions`);
+  const streamUrl = target.url;
   const headers = { 'Content-Type': 'application/json', ...authHeaders };
   const rawMax = options.max_tokens ?? 4096;
   const maxTokens = isCloud ? Math.max(1, Math.min(8192, Number(rawMax) || 4096)) : rawMax;
@@ -1621,11 +1692,36 @@ export async function streamChatCompletion({ model, messages, options = {}, onCh
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
+    let openRouterThinkOpen = false;
+    const takeDelta = (delta) => {
+      if (!delta || typeof delta !== 'object') return '';
+      const content = typeof delta.content === 'string' ? delta.content : '';
+      if (cloudProviderId(model) !== 'openrouter') return content;
+      const reasoning = typeof delta.reasoning === 'string' && delta.reasoning
+        ? delta.reasoning
+        : (typeof delta.reasoning_content === 'string' ? delta.reasoning_content : '');
+      if (reasoning && !content) {
+        const prefix = openRouterThinkOpen ? '' : '<think>';
+        openRouterThinkOpen = true;
+        return prefix + reasoning;
+      }
+      if (content && openRouterThinkOpen) {
+        openRouterThinkOpen = false;
+        return `</think>${content}`;
+      }
+      return content;
+    };
+    const closeOpenRouterThink = () => {
+      if (!openRouterThinkOpen) return;
+      openRouterThinkOpen = false;
+      onChunk?.('</think>');
+    };
     try {
       let streamEnded = false;
       while (true) {
         const { done, value } = await reader.read();
         if (done) {
+          closeOpenRouterThink();
           callOnDone();
           break;
         }
@@ -1637,6 +1733,7 @@ export async function streamChatCompletion({ model, messages, options = {}, onCh
           if (trimmed.startsWith('data: ')) {
             const payload = trimmed.slice(6);
             if (payload === '[DONE]') {
+              closeOpenRouterThink();
               callOnDone();
               streamEnded = true;
               break;
@@ -1644,14 +1741,17 @@ export async function streamChatCompletion({ model, messages, options = {}, onCh
             try {
               const parsed = JSON.parse(payload);
               const choice = parsed.choices?.[0];
-              if (choice?.delta?.content) onChunk(choice.delta.content);
+              const piece = takeDelta(choice?.delta);
+              if (piece) onChunk(piece);
               if (choice?.finish_reason != null) {
+                closeOpenRouterThink();
                 callOnDone();
                 streamEnded = true;
               }
               if (parsed.usage) {
                 usage = parsed.usage;
                 onUsage?.(parsed.usage);
+                closeOpenRouterThink();
                 callOnDone();
                 streamEnded = true;
               }

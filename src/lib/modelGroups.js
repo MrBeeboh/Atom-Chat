@@ -8,9 +8,10 @@ const CLOUD_LABEL = {
   grok: 'Grok',
   cerebras: 'Cerebras',
   deepinfra: 'DeepInfra',
+  openrouter: 'OpenRouter',
 };
 
-const CLOUD_ORDER = ['deepseek', 'grok', 'cerebras', 'deepinfra'];
+const CLOUD_ORDER = ['deepseek', 'grok', 'cerebras', 'deepinfra', 'openrouter'];
 
 const STATIC_GROUPS = [
   {
