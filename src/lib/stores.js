@@ -22,6 +22,7 @@ function readViteEnv(key) {
     VITE_DEEPINFRA_API_KEY: import.meta.env.VITE_DEEPINFRA_API_KEY,
     VITE_BRAVE_API_KEY: import.meta.env.VITE_BRAVE_API_KEY,
     VITE_CEREBRAS_API_KEY: import.meta.env.VITE_CEREBRAS_API_KEY,
+    VITE_OPENROUTER_API_KEY: import.meta.env.VITE_OPENROUTER_API_KEY,
     VITE_TOGETHER_IMAGE_ENDPOINT: import.meta.env.VITE_TOGETHER_IMAGE_ENDPOINT,
   };
   const v = map[key];
@@ -208,6 +209,13 @@ if (typeof localStorage !== 'undefined') {
   cerebrasApiKey.subscribe((v) => persistApiKey('cerebrasApiKey', v));
 }
 
+/** OpenRouter API key (optional). When set, OpenRouter models (including Nous) appear in the model list. Stored trimmed to avoid copy-paste spaces. */
+const getStoredOpenRouterApiKey = () => apiKeyFromStorageOrEnv('openRouterApiKey', 'VITE_OPENROUTER_API_KEY');
+export const openRouterApiKey = writable(getStoredOpenRouterApiKey());
+if (typeof localStorage !== 'undefined') {
+  openRouterApiKey.subscribe((v) => persistApiKey('openRouterApiKey', v));
+}
+
 /** Together image endpoint name: required for FLUX.1-schnell-Free (create dedicated endpoint at api.together.ai, then paste the endpoint name here). */
 const getStoredTogetherImageEndpoint = () => {
   if (typeof localStorage !== 'undefined') {
@@ -223,9 +231,9 @@ if (typeof localStorage !== 'undefined') {
 
 /** True when at least one cloud chat API key is set. Used when LM Studio is down. */
 export const cloudApisAvailable = derived(
-  [deepSeekApiKey, grokApiKey, cerebrasApiKey, deepinfraApiKey],
-  ([a, b, c, d]) =>
-    [a, b, c, d].some((k) => typeof k === 'string' && k.trim().length > 0)
+  [deepSeekApiKey, grokApiKey, cerebrasApiKey, deepinfraApiKey, openRouterApiKey],
+  ([a, b, c, d, e]) =>
+    [a, b, c, d, e].some((k) => typeof k === 'string' && k.trim().length > 0)
 );
 
 /** Focus a Settings section when opened: 'connection' | 'api-keys'. Cleared after open. */

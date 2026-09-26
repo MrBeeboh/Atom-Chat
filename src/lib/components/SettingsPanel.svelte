@@ -1,7 +1,7 @@
 <script>
   import { fly } from 'svelte/transition';
   import { backOut, quintOut } from 'svelte/easing';
-  import { globalDefault, updateGlobalDefault, selectedModelId, models, presetDefaultModels, lmStudioBaseUrl, voiceServerUrl, lmStudioUnloadHelperUrl, deepSeekApiKey, grokApiKey, cerebrasApiKey, togetherApiKey, deepinfraApiKey, braveApiKey, settingsFocus } from '$lib/stores.js';
+  import { globalDefault, updateGlobalDefault, selectedModelId, models, presetDefaultModels, lmStudioBaseUrl, voiceServerUrl, lmStudioUnloadHelperUrl, deepSeekApiKey, grokApiKey, cerebrasApiKey, openRouterApiKey, togetherApiKey, deepinfraApiKey, braveApiKey, settingsFocus } from '$lib/stores.js';
   import { refreshConnectionAndModels } from '$lib/connectionSetup.js';
   import { syncBraveKeyToProxy } from '$lib/duckduckgo.js';
   import { modelSelectorPrimaryLine } from '$lib/api.js';
@@ -143,6 +143,11 @@
             <label for="settings-cerebras-key" class="block text-xs font-medium mb-1" style="color: var(--ui-text-secondary);">Cerebras API key</label>
             <input id="settings-cerebras-key" type="password" autocomplete="off" bind:value={$cerebrasApiKey} onblur={onApiKeyBlur} placeholder="csk-…" class="w-full rounded-lg px-3 py-2 text-sm font-mono" style="border: 1px solid var(--ui-border); background-color: var(--ui-input-bg); color: var(--ui-text-primary);" />
             <p class="text-xs mt-1" style="color: var(--ui-text-secondary);"><a href="https://cloud.cerebras.ai" target="_blank" rel="noopener noreferrer" style="color: var(--ui-accent);">cloud.cerebras.ai</a></p>
+          </div>
+          <div>
+            <label for="settings-openrouter-key" class="block text-xs font-medium mb-1" style="color: var(--ui-text-secondary);">OpenRouter API key</label>
+            <input id="settings-openrouter-key" type="password" autocomplete="off" bind:value={$openRouterApiKey} onblur={onApiKeyBlur} placeholder="sk-or-…" class="w-full rounded-lg px-3 py-2 text-sm font-mono" style="border: 1px solid var(--ui-border); background-color: var(--ui-input-bg); color: var(--ui-text-primary);" />
+            <p class="text-xs mt-1" style="color: var(--ui-text-secondary);">Nous Hermes models use this key. <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer" style="color: var(--ui-accent);">openrouter.ai/keys</a></p>
           </div>
           <div>
             <label for="settings-brave-key" class="block text-xs font-medium mb-1" style="color: var(--ui-text-secondary);">Brave Search API key (web search)</label>

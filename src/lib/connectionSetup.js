@@ -65,7 +65,7 @@ export async function refreshConnectionAndModels() {
         );
       } else if (get(cloudApisAvailable)) {
         modelSelectionNotification.set(
-          'Add a chat API key (DeepSeek, Grok, or Cerebras) in Settings to use cloud models.',
+          'Add a chat API key (DeepSeek, Grok, Cerebras, or OpenRouter) in Settings to use cloud models.',
         );
       } else {
         modelSelectionNotification.set(

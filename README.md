@@ -27,7 +27,7 @@ Optional: Python 3 for voice input, hardware metrics, and model unloading helper
 - Web search integration (Brave API or DuckDuckGo proxy)
 - Vision support — paste or drop images/PDFs/video
 - Model optimization — fetch recommended settings from Hugging Face
-- Cloud API support — DeepSeek, Grok, Cerebras, DeepInfra
+- Cloud API support — DeepSeek, Grok, Cerebras, DeepInfra, OpenRouter (Nous Hermes)
 - Voice input (Whisper via local Python server)
 - Message tools — regenerate, edit & resend, copy, pin, per-message delete
 - Conversation history (IndexedDB + pin, inline rename, bulk erase)
@@ -59,7 +59,7 @@ are offline, have local edits, or are on a different branch.
 
 The **Settings panel** (`Ctrl+,`) controls:
 - Model defaults (temperature, max tokens, top-p, top-k, penalties)
-- Cloud API keys (DeepSeek, Grok, Cerebras, DeepInfra)
+- Cloud API keys (DeepSeek, Grok, Cerebras, DeepInfra, OpenRouter)
 - Voice server URL
 - Web search (Brave API key or local proxy)
 - Theme (Studio / Pitch Black / Light)
