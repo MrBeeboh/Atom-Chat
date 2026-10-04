@@ -36,7 +36,6 @@
     webSearchInProgress,
     webSearchConnected,
     layout,
-    lmStudioUnloadHelperUrl,
     confirm,
     arenaBuilderInternetEnabled,
     arenaDebugMode,
@@ -78,7 +77,6 @@
   import { pickThinkingOptions } from "$lib/thinkingControls.js";
   import ChatInput from "$lib/components/ChatInput.svelte";
   import ThinkingAtom from "$lib/components/ThinkingAtom.svelte";
-  import ModelSelectorSlot from "$lib/components/ModelSelectorSlot.svelte";
   import ArenaPanel from "$lib/components/ArenaPanel.svelte";
   import ArenaScoreMatrix from "$lib/components/ArenaScoreMatrix.svelte";
   import ArenaControlBar from "$lib/components/ArenaControlBar.svelte";
@@ -128,6 +126,7 @@
   } from "$lib/arenaLogic.js";
   import { buildArenaReport, roundEntryFromMessages } from "$lib/arenaReport.js";
   import { rowsForJudgedRound } from "$lib/arenaRecordRows.js";
+  import { bytesToBase64, lastTps } from "$lib/arenaView.js";
 
   // ---------- State ----------
   let messagesA = $state([]);
@@ -648,77 +647,6 @@
 
   // _REMOVED_JUDGE_WEB_LINES: dead code removed (migrated to arenaLogic.js).
 
-  // ---------- Draggable floating panels (question + Ask the Judge) ----------
-  function loadPanelPos(key, defaultX, defaultY) {
-    if (typeof localStorage === "undefined")
-      return { x: defaultX, y: defaultY };
-    try {
-      const s = localStorage.getItem(key);
-      if (!s) return { x: defaultX, y: defaultY };
-      const { x, y } = JSON.parse(s);
-      if (typeof x === "number" && typeof y === "number") return { x, y };
-    } catch (_) {}
-    return { x: defaultX, y: defaultY };
-  }
-  let askJudgePanelPos = $state(loadPanelPos("arenaAskJudgePanelPos", 16, 300));
-
-  /**
-   * Svelte action: make the panel draggable by its handle. Handle must be a direct child of the panel.
-   * Updates getPos/setPos and persists to localStorage on drag end; clamps to viewport.
-   */
-  function makeDraggable(handleEl, params) {
-    if (!params || !handleEl) return;
-    const { storageKey, getPos, setPos } = params;
-    const panelEl = handleEl.parentElement;
-    if (!panelEl) return;
-
-    let dragging = false;
-    function move(e) {
-      const dx = e.clientX - startX;
-      const dy = e.clientY - startY;
-      setPos({ x: startLeft + dx, y: startTop + dy });
-    }
-    function up() {
-      dragging = false;
-      document.removeEventListener("pointermove", move);
-      document.removeEventListener("pointerup", up);
-      const pos = getPos();
-      const rect = panelEl.getBoundingClientRect();
-      const vw = window.innerWidth;
-      const vh = window.innerHeight;
-      const x = Math.max(0, Math.min(vw - rect.width, pos.x));
-      const y = Math.max(0, Math.min(vh - rect.height, pos.y));
-      setPos({ x, y });
-      if (typeof localStorage !== "undefined")
-        localStorage.setItem(storageKey, JSON.stringify({ x, y }));
-    }
-    let startX, startY, startLeft, startTop;
-    function down(e) {
-      if (e.button !== 0) return;
-      if (e.target && e.target.closest && e.target.closest("button")) return;
-      e.preventDefault();
-      startX = e.clientX;
-      startY = e.clientY;
-      const p = getPos();
-      startLeft = p.x;
-      startTop = p.y;
-      dragging = true;
-      document.addEventListener("pointermove", move);
-      document.addEventListener("pointerup", up);
-    }
-    handleEl.addEventListener("pointerdown", down);
-    return {
-      destroy() {
-        handleEl.removeEventListener("pointerdown", down);
-        // Always clean up document listeners on destroy (prevents leaks if destroyed mid-drag)
-        if (dragging) {
-          document.removeEventListener("pointermove", move);
-          document.removeEventListener("pointerup", up);
-        }
-      },
-    };
-  }
-
   /** Eject-all in progress; message after (success or error). */
   let ejectBusy = $state(false);
   let ejectMessage = $state(/** @type {null | string} */ (null));
@@ -823,15 +751,6 @@
       C: get(dashboardModelC) || "",
       D: get(dashboardModelD) || "",
     };
-  }
-
-  function bytesToBase64(bytes) {
-    let binary = "";
-    const chunk = 0x8000;
-    for (let i = 0; i < bytes.length; i += chunk) {
-      binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
-    }
-    return btoa(binary);
   }
 
   function openReportFile() {
@@ -2277,17 +2196,6 @@
     }
   }
 
-  function lastTps(msgs) {
-    const last = [...(msgs || [])]
-      .reverse()
-      .find((m) => m.role === "assistant" && m.stats);
-    if (!last?.stats) return null;
-    const fromServer = Number(last.stats.tok_per_sec);
-    if (Number.isFinite(fromServer) && fromServer > 0) return fromServer.toFixed(1);
-    const { completion_tokens, elapsed_ms } = last.stats;
-    if (!(elapsed_ms > 0) || !(completion_tokens > 0)) return null;
-    return (completion_tokens / (elapsed_ms / 1000)).toFixed(1);
-  }
   const tpsA = $derived(lastTps(messagesA));
   const tpsB = $derived(lastTps(messagesB));
   const tpsC = $derived(lastTps(messagesC));
