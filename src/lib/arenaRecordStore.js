@@ -6,10 +6,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 
 const { DatabaseSync } = createRequire(import.meta.url)('../../scripts/arena-sqlite.cjs');
 
-export const ARENA_RECORD_PATH = '/home/mike/atom-chat/arena-reports/arena-models.sqlite';
+const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+/** Runtime arena DB path. Env-overridable; defaults to <project>/arena-reports/. */
+export const ARENA_RECORD_PATH =
+  (typeof process !== 'undefined' && process.env?.ARENA_RECORD_PATH) ||
+  path.join(PROJECT_ROOT, 'arena-reports', 'arena-models.sqlite');
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS tests (

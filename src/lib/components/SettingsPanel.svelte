@@ -212,7 +212,7 @@
         <h2 class="text-base font-semibold" style="color: var(--ui-text-primary);">Settings</h2>
         <p class="text-xs mt-0.5" style="color: var(--ui-text-secondary);">Connection &amp; API keys. Model/load settings are in the Intel panel (right).</p>
       </div>
-      <button type="button" class="shrink-0 p-1.5 rounded-lg text-xl leading-none transition-colors" style="color: var(--ui-text-secondary);" onmouseenter={(e) => { e.currentTarget.style.background = 'color-mix(in srgb, var(--ui-border) 40%, transparent)'; e.currentTarget.style.color = 'var(--ui-text-primary)'; }} onmouseleave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ui-text-secondary)'; }} onclick={() => onclose?.()} title="Close" aria-label="Close">✕</button>
+      <button type="button" class="shrink-0 p-1.5 rounded-lg text-xl leading-none transition-colors settings-hover-close" onclick={() => onclose?.()} title="Close" aria-label="Close">✕</button>
     </div>
     <div class="flex-1 overflow-y-auto px-6 py-4 space-y-3">
 
@@ -423,11 +423,24 @@
 
     </div>
     <div class="shrink-0 px-6 py-4 flex justify-between gap-2" style="border-top: 1px solid var(--ui-border);">
-      <button type="button" class="px-3 py-1.5 text-sm rounded-lg transition-colors" style="border: 1px solid var(--ui-border); color: var(--ui-text-secondary);" onmouseenter={(e) => e.currentTarget.style.background = 'color-mix(in srgb, var(--ui-border) 40%, transparent)'} onmouseleave={(e) => e.currentTarget.style.background = 'transparent'} onclick={resetToDefaults}>Reset to defaults</button>
+      <button type="button" class="px-3 py-1.5 text-sm rounded-lg transition-colors settings-hover" style="border: 1px solid var(--ui-border); color: var(--ui-text-secondary);" onclick={resetToDefaults}>Reset to defaults</button>
       <div class="flex gap-2">
-        <button type="button" class="px-4 py-2 rounded-lg text-sm transition-colors" style="border: 1px solid var(--ui-border); color: var(--ui-text-secondary);" onmouseenter={(e) => e.currentTarget.style.background = 'color-mix(in srgb, var(--ui-border) 40%, transparent)'} onmouseleave={(e) => e.currentTarget.style.background = 'transparent'} onclick={() => onclose?.()}>Cancel</button>
+        <button type="button" class="px-4 py-2 rounded-lg text-sm transition-colors settings-hover" style="border: 1px solid var(--ui-border); color: var(--ui-text-secondary);" onclick={() => onclose?.()}>Cancel</button>
         <button type="button" class="px-4 py-2 rounded-lg text-sm font-medium transition-opacity hover:opacity-90" style="background-color: var(--ui-action, var(--ui-accent)); color: var(--ui-action-ink, var(--ui-bg-main));" onclick={save}>Save</button>
       </div>
     </div>
   </div>
 </div>
+
+<style>
+  .settings-hover:hover {
+    background: color-mix(in srgb, var(--ui-border) 40%, transparent);
+  }
+  .settings-hover-close {
+    color: var(--ui-text-secondary);
+  }
+  .settings-hover-close:hover {
+    background: color-mix(in srgb, var(--ui-border) 40%, transparent);
+    color: var(--ui-text-primary);
+  }
+</style>

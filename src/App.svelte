@@ -40,13 +40,6 @@
     const v = $layout;
     if (v !== 'cockpit' && v !== 'arena') layout.set('cockpit');
   });
-  const HEADER_MODEL_MIN = 'min-width: 22rem;';
-  const HEADER_PRESET_MIN = 'min-width: 7rem;';
-  const HEADER_THEME_MIN = 'min-width: 10rem;';
-  const HEADER_GROUP_GAP = 'gap: 0.75rem;';
-  const HEADER_BETWEEN_GROUPS = '1.25rem';
-  const HEADER_RIGHT_GROUP = 'margin-left: auto;';
-
   /** Witty LM Studio / cloud status line; updates when connection state changes. */
   let lmStatusMessage = $state('');
   $effect(() => {
@@ -180,8 +173,8 @@
         <!-- Center: model selector + preset -->
         <div class="cockpit-header-model flex-1 flex items-center justify-center gap-2 sm:gap-3 min-w-0 basis-full sm:basis-auto order-3 sm:order-none px-0 sm:px-4" role="group" aria-label="Model and preset">
           <span class="hidden sm:inline text-[10px] font-semibold uppercase tracking-[0.18em] shrink-0" style="color: var(--ui-text-secondary);">Model</span>
-          <div class="min-w-0 flex-1 sm:flex-none" style="{HEADER_MODEL_MIN}"><ModelSelector /></div>
-          <div class="shrink-0 hidden md:block" style="{HEADER_PRESET_MIN}"><PresetSelect compact={true} /></div>
+          <div class="min-w-0 flex-1 sm:flex-none" style="min-width: 22rem"><ModelSelector /></div>
+          <div class="shrink-0 hidden md:block min-w-[7rem]"><PresetSelect compact={true} /></div>
         </div>
         <!-- Right: theme + status -->
         <div class="cockpit-header-actions flex items-center gap-2 sm:gap-4 shrink-0 ml-auto order-2 sm:order-none" role="group" aria-label="Appearance and status">
@@ -266,8 +259,8 @@
 
   {:else if $layout === 'arena'}
     <div class="flex h-full flex-col">
-      <header class="atom-header shrink-0 flex items-center flex-wrap px-3 py-2 text-sm" style="color: var(--ui-text-secondary); gap: {HEADER_BETWEEN_GROUPS};">
-        <div class="flex items-center shrink-0" style="{HEADER_GROUP_GAP}" role="group" aria-label="Brand and layout">
+      <header class="atom-header shrink-0 flex items-center flex-wrap px-3 py-2 text-sm gap-5" style="color: var(--ui-text-secondary);">
+        <div class="flex items-center shrink-0 gap-3" role="group" aria-label="Brand and layout">
           <button type="button" class="md:hidden p-2 rounded-md min-h-[44px] min-w-[44px] flex items-center justify-center transition-opacity hover:opacity-80" style="color: var(--ui-text-secondary);" onclick={() => sidebarOpen.set(true)} aria-label="Open menu">☰</button>
           <span class="atom-brand flex items-center gap-2 shrink-0"><span class="atom-brand-mark"><AtomLogo size={18} /></span>ATOM</span>
           <span class="font-mono text-[9px] px-1.5 py-0.5 rounded shrink-0 select-none" style="background: color-mix(in srgb, var(--ui-accent) 12%, transparent); color: var(--ui-accent); opacity: 0.65;" title="Build revision">{__GIT_REV__}</span>
@@ -277,20 +270,20 @@
             {/each}
           </nav>
         </div>
-        <div class="flex items-center gap-2 shrink-0" style="{HEADER_GROUP_GAP}" role="group" aria-label="Arena panels">
+        <div class="flex items-center gap-3 shrink-0" role="group" aria-label="Arena panels">
           <div class="flex gap-0.5" role="group" aria-label="Arena panel count" title="Panel count — Alt+1–4">
             {#each [1, 2, 3, 4] as n}
               <button type="button" class="w-8 h-7 rounded-md text-xs font-medium transition-opacity {$arenaPanelCount === n ? '' : 'opacity-60'}" style="{$arenaPanelCount === n ? 'background: color-mix(in srgb, var(--ui-accent) 14%, transparent); color: var(--ui-accent);' : 'color: var(--ui-text-secondary);'}" onclick={() => arenaPanelCount.set(n)} aria-label="{n} panel{n === 1 ? '' : 's'} (Alt+{n})" aria-pressed={$arenaPanelCount === n} title="{n} panel{n === 1 ? '' : 's'} — Alt+{n}">{n}</button>
             {/each}
           </div>
         </div>
-        <div class="shrink-0" style="{HEADER_PRESET_MIN}" title="Global system prompt preset. Arena slots can override via Options."><PresetSelect compact={true} /></div>
-        <div class="flex items-center shrink-0 pl-3" style="{HEADER_GROUP_GAP} {HEADER_THEME_MIN}" role="group" aria-label="Appearance">
+        <div class="shrink-0 min-w-[7rem]" title="Global system prompt preset. Arena slots can override via Options."><PresetSelect compact={true} /></div>
+        <div class="flex items-center shrink-0 pl-3 gap-3 min-w-[10rem]" role="group" aria-label="Appearance">
           <UiThemeSelect compact={true} />
           <ThemeToggle />
         </div>
         <div class="flex-1 min-w-4 shrink" aria-hidden="true"></div>
-        <div class="flex items-center shrink-0" style="{HEADER_GROUP_GAP} {HEADER_RIGHT_GROUP}" role="group" aria-label="Status">
+        <div class="flex items-center shrink-0 gap-3 ml-auto" role="group" aria-label="Status">
           <button
             type="button"
             class="flex items-center gap-1 shrink-0 text-xs font-medium rounded-md px-1.5 py-1 transition-opacity hover:opacity-80"

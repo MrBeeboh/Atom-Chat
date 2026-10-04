@@ -99,11 +99,6 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/openrouter/, ''),
       },
-      '/api/deepinfra': {
-        target: 'https://api.deepinfra.com',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/deepinfra/, ''),
-      },
       '/api/search': {
         target: 'http://localhost:5174',
         changeOrigin: true,
