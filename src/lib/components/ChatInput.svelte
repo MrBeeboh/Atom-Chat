@@ -12,6 +12,8 @@
   import { isUsefulTranscript, recordUntilSilence, sleep, waitUntilReplySpoken } from '$lib/openMic.js';
   import { acquireMicStream, createMediaRecorder, micErrorMessage } from '$lib/micAccess.js';
   import { isTtsBusy, stopTts, warmUpKokoroTts, unlockAudioPlayback } from '$lib/tts.js';
+  import { resolveVoiceServerUrl, checkVoiceServerHealth, transcribeBlob, estimateDataUrlMb } from '$lib/voiceInput.js';
+  import { autoResizeTextarea } from '$lib/autoResize.js';
 
   let { onSend, onStop, onGenerateImageGrok, onGenerateImageDeepSeek, onGenerateVideoDeepSeek, imageGenerating = false, videoGenerating = false, videoGenElapsed = '', placeholder: placeholderOverride = undefined } = $props();
   const placeholderText = $derived(
@@ -229,7 +231,7 @@
     if (!files?.length) return;
     attachError = null;
     attachProcessing = true;
-    let totalMb = attachments.reduce((sum, a) => sum + (a.dataUrl.length * 3 / 4 / 1024 / 1024), 0);
+    let totalMb = attachments.reduce((sum, a) => sum + estimateDataUrlMb(a.dataUrl), 0);
 
     try {
       for (const file of Array.from(files)) {
@@ -252,7 +254,7 @@
             continue;
           }
           urls.forEach((url, i) => addImageDataUrls([url], urls.length > 1 ? `${file.name} (p.${i + 1})` : file.name));
-          totalMb += (urls[0].length * 3 / 4 / 1024 / 1024) * urls.length;
+          totalMb += estimateDataUrlMb(urls[0]) * urls.length;
         } else if (type.startsWith('image/')) {
           const url = await new Promise((resolve, reject) => {
             const r = new FileReader();
@@ -275,7 +277,7 @@
             const urls = await videoToFrames(file, { count: 8, maxDurationSec: 60 });
             if (urls.length > 0) {
               urls.forEach((url, i) => addImageDataUrls([url], `${file.name} frame ${i + 1}`));
-              totalMb += urls.reduce((sum, u) => sum + (u.length * 3 / 4 / 1024 / 1024), 0);
+              totalMb += urls.reduce((sum, u) => sum + estimateDataUrlMb(u), 0);
             }
           } catch (e) {
             attachError = e?.message || `Could not read video "${file.name}".`;
@@ -356,19 +358,8 @@
     handleSubmit();
   }
 
-  /** Perplexity-style: stable height when empty, grow only with content up to max. */
-  const INPUT_HEIGHT_EMPTY = 72;
-  const INPUT_HEIGHT_MAX = 200;
-
   function autoResize() {
-    if (!textareaEl) return;
-    textareaEl.style.height = 'auto';
-    const contentHeight = textareaEl.scrollHeight;
-    const isEmpty = !text.trim();
-    const targetHeight = isEmpty
-      ? INPUT_HEIGHT_EMPTY
-      : Math.min(Math.max(contentHeight, INPUT_HEIGHT_EMPTY), INPUT_HEIGHT_MAX);
-    textareaEl.style.height = targetHeight + 'px';
+    autoResizeTextarea(textareaEl, text);
   }
 
   $effect(() => {
@@ -396,8 +387,7 @@
   }
 
   async function startVoiceInput() {
-    const baseUrl = get(voiceServerUrl) ?? (typeof localStorage !== 'undefined' ? localStorage.getItem('voiceServerUrl') : null) ?? 'http://localhost:8765';
-    const url = (baseUrl || '').trim().replace(/\/$/, '');
+    const url = voiceServerBase();
     if (!url) {
       voiceError = 'Set Voice server URL in Settings (e.g. http://localhost:8765)';
       return;
@@ -405,20 +395,13 @@
     voiceError = null;
     try {
       // Check server is up before grabbing the mic (retry once after 2s if server is still starting)
-      async function checkHealth() {
-        const ac = new AbortController();
-        const to = setTimeout(() => ac.abort(), 3000);
-        const res = await fetch(`${url}/health`, { method: 'GET', signal: ac.signal });
-        clearTimeout(to);
-        return res;
-      }
       let healthRes;
       try {
-        healthRes = await checkHealth();
+        healthRes = await checkVoiceServerHealth(url);
       } catch (_) {
         await new Promise((r) => setTimeout(r, 2000));
         try {
-          healthRes = await checkHealth();
+          healthRes = await checkVoiceServerHealth(url);
         } catch (__) {
           voiceError = VOICE_OFFLINE;
           return;
@@ -446,15 +429,7 @@
         }
         const blob = new Blob(recordingChunks, { type: rec.mimeType || 'audio/webm' });
         try {
-          const form = new FormData();
-          form.append('audio', blob, 'audio.webm');
-          const res = await fetch(`${url}/transcribe`, { method: 'POST', body: form });
-          if (!res.ok) {
-            const err = await res.text();
-            throw new Error(err || `Server ${res.status}`);
-          }
-          const data = await res.json();
-          const transcribed = (data && data.text) ? String(data.text).trim() : '';
+          const transcribed = await transcribeBlob(blob, url);
           if (transcribed) text = text ? text + ' ' + transcribed : transcribed;
         } catch (e) {
           voiceError = e?.message || 'Voice server error. Is it running on ' + url + '?';
@@ -484,8 +459,7 @@
   }
 
   function voiceServerBase() {
-    const baseUrl = get(voiceServerUrl) ?? (typeof localStorage !== 'undefined' ? localStorage.getItem('voiceServerUrl') : null) ?? 'http://localhost:8765';
-    return (baseUrl || '').trim().replace(/\/$/, '');
+    return resolveVoiceServerUrl(get(voiceServerUrl));
   }
 
   async function ensureVoiceServer() {
@@ -494,20 +468,13 @@
       voiceError = 'Set Voice server URL in Settings (e.g. http://localhost:8765)';
       return '';
     }
-    async function checkHealth() {
-      const ac = new AbortController();
-      const to = setTimeout(() => ac.abort(), 3000);
-      const res = await fetch(`${url}/health`, { method: 'GET', signal: ac.signal });
-      clearTimeout(to);
-      return res;
-    }
     let healthRes;
     try {
-      healthRes = await checkHealth();
+      healthRes = await checkVoiceServerHealth(url);
     } catch (_) {
       await sleep(2000);
       try {
-        healthRes = await checkHealth();
+        healthRes = await checkVoiceServerHealth(url);
       } catch {
         voiceError = VOICE_OFFLINE;
         return '';
@@ -518,18 +485,6 @@
       return '';
     }
     return url;
-  }
-
-  async function transcribeBlob(blob, url) {
-    const form = new FormData();
-    form.append('audio', blob, 'audio.webm');
-    const res = await fetch(`${url}/transcribe`, { method: 'POST', body: form });
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(err || `Server ${res.status}`);
-    }
-    const data = await res.json();
-    return data && data.text ? String(data.text).trim() : '';
   }
 
   function releaseOpenMicStream() {
@@ -1131,20 +1086,6 @@
     align-self: stretch;
   }
 
-  .chat-input-bar .mic-button,
-  .chat-input-bar .web-search-button {
-    flex-shrink: 0;
-    width: 40px;
-    height: 40px;
-    min-width: 40px;
-    min-height: 40px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: transparent;
-    border-radius: 6px;
-    color: var(--ui-text-secondary, #6b7280);
-  }
   .chat-input-bar .composer-tools {
     display: flex;
     align-items: stretch;
@@ -1298,26 +1239,6 @@
     0%, 100% { opacity: 0.35; }
     50% { opacity: 1; }
   }
-  .chat-input-bar .mic-button:hover:not(:disabled),
-  .chat-input-bar .web-search-button:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--ui-accent) 10%, transparent);
-    color: var(--ui-accent);
-  }
-  .chat-input-bar .web-search-button.active {
-    background: color-mix(in srgb, var(--ui-accent) 12%, transparent);
-    color: var(--ui-accent);
-  }
-  .chat-input-bar .mic-button.open-mic-on,
-  .chat-input-bar .mic-button.tts-on {
-    background: color-mix(in srgb, var(--ui-accent) 18%, transparent);
-    color: var(--ui-accent);
-  }
-  .chat-input-bar .mic-button:active:not(:disabled),
-  .chat-input-bar .web-search-button:active:not(:disabled) {
-    transform: scale(0.94);
-    transition: transform 0.1s ease;
-  }
-
   .chat-input-bar .send-button {
     flex-shrink: 0;
     align-self: stretch;
@@ -1412,17 +1333,6 @@
     transform: none;
   }
 
-  .media-toolbar {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    flex-shrink: 0;
-  }
-  .media-toolbar:not(.media-toolbar-inline) {
-    padding: 2px 8px 4px;
-    border-top: 1px solid color-mix(in srgb, var(--ui-border, #e5e7eb) 25%, transparent);
-  }
-
   /* ── Media buttons (Image / Video) ── */
   .media-btn {
     display: inline-flex;
@@ -1493,16 +1403,6 @@
     0%, 100% { opacity: 0.5; transform: scale(1); filter: drop-shadow(0 0 2px #f59e0b); }
     50% { opacity: 1; transform: scale(1.25); transform-origin: 12px 11px; filter: drop-shadow(0 0 6px #f59e0b); }
   }
-  .media-anim-blink {
-    animation: media-blink 0.5s step-end infinite;
-  }
-  .media-anim-blink:nth-child(2) { animation-delay: 0.17s; }
-  .media-anim-blink:nth-child(3) { animation-delay: 0.34s; }
-  @keyframes media-blink {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.1; }
-  }
-
   /* ── Idle subtle animations ── */
   .media-icon-pulse-dot {
     animation: icon-dot-pulse 3s ease-in-out infinite;
@@ -1529,47 +1429,9 @@
     50% { opacity: 0.3; transform: scale(0.7); }
   }
 
-  .mic-button {
-    flex-shrink: 0;
-    width: 44px;
-    min-height: 44px;
-    border-radius: 10px;
-    border: none;
-    background: color-mix(in srgb, var(--ui-border, #e5e7eb) 25%, var(--ui-input-bg, #fff));
-    color: var(--ui-text-primary, #111);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.25rem;
-    transition: all 150ms;
-  }
-  .mic-button:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--ui-accent, #3b82f6) 14%, var(--ui-input-bg, #fff));
-    color: var(--ui-accent, #3b82f6);
-  }
-  .mic-button.open-mic-on,
-  .mic-button.tts-on {
-    background: color-mix(in srgb, var(--ui-accent) 22%, var(--ui-input-bg, #fff));
-    color: var(--ui-accent);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent) 35%, transparent);
-  }
-  .open-mic-glyph {
-    display: block;
-  }
-  .mic-button.open-mic-on .open-mic-glyph {
-    animation: open-mic-pulse 1.4s ease-in-out infinite;
-  }
   @keyframes open-mic-pulse {
     0%, 100% { opacity: 1; transform: scale(1); }
     50% { opacity: 0.7; transform: scale(1.08); }
-  }
-  .mic-dot {
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    background: var(--ui-accent-hot, #dc2626);
-    animation: pulse 1s ease-in-out infinite;
   }
   .mic-spinner {
     animation: spin 0.8s linear infinite;
@@ -1693,66 +1555,12 @@
     opacity: 0.5;
     cursor: not-allowed;
   }
-  .web-search-button {
-    position: relative;
-    flex-shrink: 0;
-    width: 44px;
-    min-height: 44px;
-    border-radius: 10px;
-    border: none;
-    background: color-mix(in srgb, var(--ui-border, #e5e7eb) 25%, var(--ui-input-bg, #fff));
-    color: var(--ui-text-primary, #111);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.25rem;
-    transition: all 150ms;
-  }
-  .web-search-button:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--ui-accent, #3b82f6) 14%, var(--ui-input-bg, #fff));
-    color: var(--ui-accent, #3b82f6);
-  }
-  .web-search-button.active {
-    background: color-mix(in srgb, var(--ui-accent, #3b82f6) 18%, var(--ui-input-bg, #fff));
-    color: var(--ui-accent, #3b82f6);
-  }
-  .web-search-button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-  .web-search-icon {
-    font-size: 1.25rem;
-    line-height: 1;
-  }
   .web-search-icon-spin {
     animation: web-search-globe-spin 1.2s linear infinite;
   }
   @keyframes web-search-globe-spin {
     from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
-  }
-  .web-search-dot {
-    position: absolute;
-    bottom: 5px;
-    left: 5px;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    pointer-events: none;
-  }
-  .web-search-dot-green {
-    background: #22c55e;
-  }
-  .web-search-dot-red {
-    background: #dc2626;
-  }
-  .web-search-dot-pulse {
-    animation: web-search-dot-pulse 1.2s ease-in-out infinite;
-  }
-  @keyframes web-search-dot-pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
   }
   .attachments-row {
     display: flex;
