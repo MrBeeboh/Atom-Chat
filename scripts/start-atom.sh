@@ -87,23 +87,27 @@ if ! echo "${LLAMA_BIN}" | grep -qi sycl; then
 fi
 
 # --- Arc Pro B70 / Intel SYCL defaults ---------------------------------------
-# ATOM takes both cards: layer-split 50/50 + Flash Attention (Xe2 XMX).
+# Both cards stay visible (level_zero:0,1). Default load is the second B70
+# (SYCL1, split none) so the desktop card stays free. The 80B (and any other
+# >30GB GGUF) splits via ~/.config/llama/models-preset.ini.
 # --parallel 1 keeps the full KV for one conversation (auto was 4 slots).
 # On launch, other apps' local models are unloaded first (see free_other_local_models).
 # Skip GPU flags: ATOM_SKIP_B70_FLAGS=1
 # Skip ejecting others: ATOM_SKIP_UNLOAD_OTHERS=1
-# One card only: ATOM_LLAMA_SPLIT=none ATOM_LLAMA_DEVICE=SYCL0
-# Tensor parallel instead of layer: ATOM_LLAMA_SPLIT=tensor
+# Force split: ATOM_LLAMA_SPLIT=layer
+# Tensor parallel: ATOM_LLAMA_SPLIT=tensor
 apply_b70_runtime_env() {
   if [ -n "${ATOM_SKIP_B70_FLAGS:-}" ]; then
     return
   fi
   # Keep both Level Zero GPUs visible so --device SYCL0/SYCL1 works.
-  export ONEAPI_DEVICE_SELECTOR="${ONEAPI_DEVICE_SELECTOR:-level_zero:gpu}"
+  export ONEAPI_DEVICE_SELECTOR="${ONEAPI_DEVICE_SELECTOR:-level_zero:0,1}"
   export ZES_ENABLE_SYSMAN="${ZES_ENABLE_SYSMAN:-1}"
   export UR_L0_ENABLE_RELAXED_ALLOCATION_LIMITS="${UR_L0_ENABLE_RELAXED_ALLOCATION_LIMITS:-1}"
   export GGML_SYCL_ENABLE_FLASH_ATTN="${GGML_SYCL_ENABLE_FLASH_ATTN:-1}"
   export GGML_SYCL_ENABLE_OPT="${GGML_SYCL_ENABLE_OPT:-1}"
+  # B70 SYCL JIT cache has been a crash source. Keep it off unless the user sets it.
+  export SYCL_CACHE_PERSISTENT="${SYCL_CACHE_PERSISTENT:-0}"
   if [ -n "${ATOM_SYCL_FA_ONEDNN:-}" ]; then
     export GGML_SYCL_FA_ONEDNN="${ATOM_SYCL_FA_ONEDNN}"
   fi
@@ -148,31 +152,35 @@ build_llama_gpu_flags() {
     have_two=1
   fi
 
-  local split="${ATOM_LLAMA_SPLIT:-}"
-  if [ -z "$split" ]; then
-    if [ "$have_two" = 1 ]; then
-      split=layer
-    else
+  # Parent --device/--split-mode beat models-preset.ini, so only pass them
+  # when the operator explicitly overrides. Default placement is in
+  # ~/.config/llama/models-preset.ini (SYCL1 singles, 80B split).
+  if [ -n "${ATOM_LLAMA_SPLIT:-}${ATOM_LLAMA_DEVICE:-}" ]; then
+    local split="${ATOM_LLAMA_SPLIT:-none}"
+    if [ "$split" != "none" ] && [ "$have_two" != 1 ]; then
+      echo "[ATOM] ${split} split requested but only one SYCL GPU is visible — using --split-mode none"
       split=none
     fi
-  fi
-  if llama_has 'split-mode'; then
-    LLAMA_GPU_FLAGS+=(--split-mode "$split")
-  fi
+    if llama_has 'split-mode'; then
+      LLAMA_GPU_FLAGS+=(--split-mode "$split")
+    fi
 
-  if [ "$split" = "none" ]; then
-    if [ "$is_sycl" = 1 ] && llama_has '--device <dev'; then
-      LLAMA_GPU_FLAGS+=(--device "${ATOM_LLAMA_DEVICE:-SYCL0}")
-    elif llama_has 'main-gpu'; then
-      LLAMA_GPU_FLAGS+=(--main-gpu "${ATOM_LLAMA_GPU:-0}")
+    if [ "$split" = "none" ]; then
+      if [ "$is_sycl" = 1 ] && llama_has '--device <dev'; then
+        LLAMA_GPU_FLAGS+=(--device "${ATOM_LLAMA_DEVICE:-SYCL1}")
+      elif llama_has 'main-gpu'; then
+        LLAMA_GPU_FLAGS+=(--main-gpu "${ATOM_LLAMA_GPU:-1}")
+      fi
+    else
+      if [ "$is_sycl" = 1 ] && llama_has '--device <dev'; then
+        LLAMA_GPU_FLAGS+=(--device "${ATOM_LLAMA_DEVICE:-SYCL0,SYCL1}")
+      fi
+      if llama_has 'tensor-split'; then
+        LLAMA_GPU_FLAGS+=(--tensor-split "${ATOM_TENSOR_SPLIT:-0.45,0.55}")
+      fi
     fi
   else
-    if [ "$is_sycl" = 1 ] && llama_has '--device <dev'; then
-      LLAMA_GPU_FLAGS+=(--device "${ATOM_LLAMA_DEVICE:-SYCL0,SYCL1}")
-    fi
-    if llama_has 'tensor-split'; then
-      LLAMA_GPU_FLAGS+=(--tensor-split "${ATOM_TENSOR_SPLIT:-0.50,0.50}")
-    fi
+    echo "[ATOM] GPU placement from models-preset.ini (singles=SYCL1, 80B=both cards)"
   fi
 
   if llama_has '--parallel N'; then
@@ -186,15 +194,39 @@ build_llama_gpu_flags() {
     LLAMA_GPU_FLAGS+=(--batch-size "${ATOM_BATCH}")
   fi
   if llama_has 'ctx-size'; then
-    # 0 = GGUF n_ctx_train (this model's max). Never default to 32768.
+    # POLICY: local models always run at their own trained maximum context.
+    # --ctx-size 0 = the GGUF's n_ctx_train (matches ~/.local/bin/llama-server-direct).
+    # Never cap to 32768 (or any "family cap"). To force a specific window for a
+    # one-off experiment, set ATOM_CTX=<n>; 32768 is refused and treated as 0.
     local ctx="${ATOM_CTX:-0}"
     if [ "$ctx" = "32768" ]; then
+      echo "[ATOM] ATOM_CTX=32768 refused (policy: native max). Using --ctx-size 0." >&2
       ctx=0
     fi
     LLAMA_GPU_FLAGS+=(--ctx-size "$ctx")
+    # KV cache type. A full f16 cache at 262144 is what made decode crawl, so at native
+    # context default to q4_0 K/V (same as llama-server-direct). Between 32k and native
+    # a q8_0 cache is used. ATOM_KV_QUANT: 0 = f16, 1 = q8_0, or q4_0 / q8_0 / f16.
+    local kv="${ATOM_KV_QUANT:-}"
+    local kvtype=""
+    case "$kv" in
+      0) kvtype="" ;;
+      1) kvtype="q8_0" ;;
+      q4_0|q8_0|f16) kvtype="$kv" ;;
+      *)
+        if [ "$ctx" = "0" ]; then
+          kvtype="q4_0"
+        elif [ "$ctx" -ge 32768 ] 2>/dev/null; then
+          kvtype="q8_0"
+        fi
+        ;;
+    esac
+    if [ -n "$kvtype" ] && llama_has 'cache-type-k'; then
+      LLAMA_GPU_FLAGS+=(--cache-type-k "$kvtype" --cache-type-v "$kvtype")
+    fi
   fi
-  if [ "${ATOM_KV_QUANT:-}" = "1" ] && llama_has 'cache-type-k'; then
-    LLAMA_GPU_FLAGS+=(--cache-type-k q8_0 --cache-type-v q8_0)
+  if llama_has 'batch-size' && [ -z "${ATOM_BATCH:-}" ]; then
+    LLAMA_GPU_FLAGS+=(--batch-size "${ATOM_BATCH:-512}")
   fi
 }
 
@@ -307,11 +339,22 @@ free_other_local_models() {
 
   local keep
   keep="$(pid_listening_on 8080)"
+  local flash
+  flash="$(pid_listening_on 8081)"
   local pid
   local killed=0
   for pid in $(llama_server_pids); do
     [ -z "$pid" ] && continue
     if [ -n "$keep" ] && pid_is_in_tree "$pid" "$keep"; then
+      continue
+    fi
+    # Flash-Next shards listen on :8081. Never unload or signal them.
+    if [ -n "$flash" ] && { [ "$pid" = "$flash" ] || pid_is_in_tree "$pid" "$flash"; }; then
+      echo "[ATOM] Leaving llama-server PID $pid on :8081 alone"
+      continue
+    fi
+    if tr '\0' ' ' <"/proc/$pid/cmdline" 2>/dev/null | grep -q -- '--port 8081'; then
+      echo "[ATOM] Leaving llama-server PID $pid (--port 8081) alone"
       continue
     fi
     echo "[ATOM] Stopping other llama-server PID $pid"
@@ -327,6 +370,12 @@ free_other_local_models() {
         if [ -n "$keep" ] && pid_is_in_tree "$pid" "$keep"; then
           continue
         fi
+        if [ -n "$flash" ] && { [ "$pid" = "$flash" ] || pid_is_in_tree "$pid" "$flash"; }; then
+          continue
+        fi
+        if tr '\0' ' ' <"/proc/$pid/cmdline" 2>/dev/null | grep -q -- '--port 8081'; then
+          continue
+        fi
         leftover=1
         break
       done
@@ -336,6 +385,12 @@ free_other_local_models() {
     for pid in $(llama_server_pids); do
       [ -z "$pid" ] && continue
       if [ -n "$keep" ] && pid_is_in_tree "$pid" "$keep"; then
+        continue
+      fi
+      if [ -n "$flash" ] && { [ "$pid" = "$flash" ] || pid_is_in_tree "$pid" "$flash"; }; then
+        continue
+      fi
+      if tr '\0' ' ' <"/proc/$pid/cmdline" 2>/dev/null | grep -q -- '--port 8081'; then
         continue
       fi
       echo "[ATOM] Killing leftover llama-server PID $pid"
@@ -359,36 +414,184 @@ except Exception:
 PY
 }
 
+# Router models-dir: llama.cpp only indexes *top-level* .gguf files and *immediate*
+# subfolders (one GGUF each). Nested LM Studio trees (~/.lmstudio/models/org/repo/)
+# therefore expose almost nothing. Prefer ~/models/library which is already flat /
+# one-folder-per-model (symlinks into hub).
+pick_atom_models_dir() {
+  if [ -n "${ATOM_MODELS_DIR:-}" ] && [ -d "$ATOM_MODELS_DIR" ]; then
+    printf '%s' "$ATOM_MODELS_DIR"
+    return
+  fi
+  local lib="$HOME/models/library"
+  local lms="$HOME/.lmstudio/models"
+  local lib_n=0
+  if [ -d "$lib" ]; then
+    lib_n="$(find "$lib" -maxdepth 1 \( -name '*.gguf' -o -type d ! -name '.' ! -name '..' \) 2>/dev/null | wc -l | tr -d ' ')"
+  fi
+  if [ "${lib_n:-0}" -gt 0 ]; then
+    printf '%s' "$lib"
+    return
+  fi
+  if [ -d "$lms" ]; then
+    printf '%s' "$lms"
+    return
+  fi
+  printf '%s' "$lib"
+}
+
+stop_llama_on_8080() {
+  # Only the process listening on :8080. Never signal every llama-server on the
+  # box — that includes the Flash-Next server on :8081.
+  local pid
+  pid="$(pid_listening_on 8080)"
+  if [ -z "$pid" ]; then
+    return 0
+  fi
+  local cmd
+  cmd="$(tr '\0' ' ' <"/proc/$pid/cmdline" 2>/dev/null || true)"
+  if printf '%s' "$cmd" | grep -q 'llama-8080-flash-proxy'; then
+    echo "[ATOM] Refusing to stop the shared :8080 router proxy" >&2
+    return 0
+  fi
+  systemctl --user stop llama-server.service 2>/dev/null || true
+  pid="$(pid_listening_on 8080)"
+  if [ -n "$pid" ]; then
+    kill -TERM "$pid" 2>/dev/null || true
+    sleep 1
+    if kill -0 "$pid" 2>/dev/null; then
+      kill -KILL "$pid" 2>/dev/null || true
+    fi
+  fi
+  sleep 0.5
+}
+
+# The desktop backend is the shared router on :8080 (llama-8080-flash-proxy →
+# llama-server on 127.0.0.1:18080). Its listener cmdline has no --ctx-size /
+# --models-dir / --split-mode, so the mismatch checks below must not restart it.
+shared_router_on_8080() {
+  local pid cmd
+  pid="$(pid_listening_on 8080)"
+  [ -n "$pid" ] || return 1
+  cmd="$(tr '\0' ' ' <"/proc/$pid/cmdline" 2>/dev/null || true)"
+  printf '%s' "$cmd" | grep -q 'llama-8080-flash-proxy'
+}
+
+running_router_models_dir() {
+  local pid
+  pid="$(pid_listening_on 8080)"
+  [ -n "$pid" ] || return 0
+  # cmdline is null-separated in /proc; show as spaces
+  tr '\0' ' ' <"/proc/$pid/cmdline" 2>/dev/null | awk '
+    {
+      for (i = 1; i <= NF; i++) {
+        if ($i == "--models-dir" && (i + 1) <= NF) { print $(i + 1); exit }
+      }
+    }'
+}
+
+running_split_mode() {
+  local pid
+  pid="$(pid_listening_on 8080)"
+  [ -n "$pid" ] || return 0
+  tr '\0' ' ' <"/proc/$pid/cmdline" 2>/dev/null | awk '
+    {
+      for (i = 1; i <= NF; i++) {
+        if ($i == "--split-mode" && (i + 1) <= NF) { print $(i + 1); exit }
+      }
+    }'
+}
+
+wanted_split_mode() {
+  local i
+  for ((i = 0; i < ${#LLAMA_GPU_FLAGS[@]}; i++)); do
+    if [ "${LLAMA_GPU_FLAGS[$i]}" = "--split-mode" ]; then
+      printf '%s' "${LLAMA_GPU_FLAGS[$((i + 1))]:-}"
+      return
+    fi
+  done
+}
+
+running_ctx_size() {
+  local pid
+  pid="$(pid_listening_on 8080)"
+  [ -n "$pid" ] || return 0
+  tr '\0' ' ' <"/proc/$pid/cmdline" 2>/dev/null | awk '
+    {
+      for (i = 1; i <= NF; i++) {
+        if (($i == "--ctx-size" || $i == "-c") && (i + 1) <= NF) { print $(i + 1); exit }
+      }
+    }'
+}
+
+wanted_ctx_size() {
+  local i
+  for ((i = 0; i < ${#LLAMA_GPU_FLAGS[@]}; i++)); do
+    if [ "${LLAMA_GPU_FLAGS[$i]}" = "--ctx-size" ]; then
+      printf '%s' "${LLAMA_GPU_FLAGS[$((i + 1))]:-}"
+      return
+    fi
+  done
+}
+
 # Check if llama-server is already running on 8080
-if llama_ready; then
-    running_ctx="$(probe_running_n_ctx | tr -d '[:space:]')"
-    if [ "$running_ctx" = "32768" ]; then
-        echo "[ATOM] Port 8080 is capped at 32768 — restarting with --ctx-size 0 (this model's trained max)"
-        systemctl --user stop llama-server.service 2>/dev/null || true
-        pid="$(pid_listening_on 8080)"
-        if [ -n "$pid" ]; then
-            kill -TERM "$pid" 2>/dev/null || true
-            sleep 1
-            kill -KILL "$pid" 2>/dev/null || true
-        fi
+ATOM_MODELS_DIR="$(pick_atom_models_dir)"
+export ATOM_MODELS_DIR
+
+# Keep ~/models/library populated with flat / one-folder-per-model symlinks so the
+# router can see weights that live under nested LM Studio paths.
+if [ -x "$ROOT/scripts/sync-router-library.sh" ] || [ -f "$ROOT/scripts/sync-router-library.sh" ]; then
+  bash "$ROOT/scripts/sync-router-library.sh" || echo "[ATOM] sync-router-library skipped/failed (non-fatal)"
+fi
+# Re-pick after sync (library may have been empty before).
+ATOM_MODELS_DIR="$(pick_atom_models_dir)"
+export ATOM_MODELS_DIR
+
+if shared_router_on_8080; then
+    echo "[ATOM] Shared router already listening on :8080 — not restarting it, not touching :8081."
+elif llama_ready; then
+    live_ctx="$(running_ctx_size || true)"
+    want_ctx="$(wanted_ctx_size || true)"
+    if [ -n "$want_ctx" ] && [ "${live_ctx:-}" != "$want_ctx" ]; then
+        echo "[ATOM] Router ctx-size mismatch: live=${live_ctx:-unset} want=$want_ctx — restarting llama-server"
+        stop_llama_on_8080
+    fi
+fi
+
+# Restart if the live router is pointed at the wrong models-dir (e.g. nested
+# ~/.lmstudio/models that only exposes one preset like qwen38).
+if ! shared_router_on_8080 && llama_ready; then
+    live_dir="$(running_router_models_dir || true)"
+    want_dir="$ATOM_MODELS_DIR"
+    if [ -n "$live_dir" ] && [ -n "$want_dir" ] && [ "$live_dir" != "$want_dir" ]; then
+        echo "[ATOM] Router models-dir mismatch: live=$live_dir want=$want_dir — restarting llama-server"
+        stop_llama_on_8080
+    fi
+fi
+
+# Restart if the live process was started with a different --split-mode
+# (e.g. leftover none/tensor from a speed experiment).
+if ! shared_router_on_8080 && llama_ready; then
+    live_split="$(running_split_mode || true)"
+    want_split="$(wanted_split_mode || true)"
+    if [ -n "$want_split" ] && [ "${live_split:-}" != "$want_split" ]; then
+        echo "[ATOM] Router split-mode mismatch: live=${live_split:-unset} want=$want_split — restarting llama-server"
+        stop_llama_on_8080
     fi
 fi
 
 if llama_ready; then
-    echo "[ATOM] llama-server already running on port 8080"
+    echo "[ATOM] llama-server already running on port 8080 (models-dir=${ATOM_MODELS_DIR})"
     echo "[ATOM] (B70 flags above apply only after you stop that process and relaunch)"
 else
     echo "[ATOM] Starting llama-server..."
 
-    ATOM_MODELS_DIR="${ATOM_MODELS_DIR:-$HOME/.lmstudio/models}"
-    # Prefer router mode: no GGUF in VRAM until the app calls /models/load (Arena loads one at a time).
+    # Prefer router mode: nothing in VRAM until the first chat. Default llama.cpp
+    # --models-autoload (on) lets /v1/chat/completions LRU-evict and load the
+    # requested model in one request — that is the fast Arena switch path.
     ROUTER=0
     if [ -z "${MODEL:-}" ] && [ -z "${GGUF_PATH:-}" ] && [ -d "$ATOM_MODELS_DIR" ] && llama_has 'models-dir'; then
         ROUTER=1
-    fi
-    ROUTER_EXTRA=()
-    if [ "$ROUTER" = 1 ] && llama_has 'no-models-autoload'; then
-        ROUTER_EXTRA=(--no-models-autoload)
     fi
 
     if [ -n "${MODEL:-}" ] || [ -n "${GGUF_PATH:-}" ]; then
@@ -400,12 +603,24 @@ else
     fi
 
     if [ "$ROUTER" = 1 ]; then
-        echo "[ATOM] Router: --models-dir $ATOM_MODELS_DIR --models-max 1 --no-models-autoload (nothing preloaded into VRAM)"
+        ROUTER_PRESET_FLAGS=()
+        if [ -z "${ATOM_MODELS_PRESET:-}" ]; then
+            if [ -f "$HOME/.config/llama/models-preset.ini" ]; then
+                ATOM_MODELS_PRESET="$HOME/.config/llama/models-preset.ini"
+            else
+                ATOM_MODELS_PRESET="$ROOT/config/llama-models.ini"
+            fi
+        fi
+        if [ -f "$ATOM_MODELS_PRESET" ] && llama_has 'models-preset'; then
+            ROUTER_PRESET_FLAGS+=(--models-preset "$ATOM_MODELS_PRESET")
+            echo "[ATOM] Router preset: $ATOM_MODELS_PRESET"
+        fi
+        echo "[ATOM] Router: --models-dir $ATOM_MODELS_DIR --models-max 1 (autoload on; nothing preloaded into VRAM)"
         : >>"$ROOT/llama-server.log"
         {
-          echo "[ATOM] $(date -Iseconds) start router ${LLAMA_GPU_FLAGS[*]}"
+          echo "[ATOM] $(date -Iseconds) start router models-dir=$ATOM_MODELS_DIR ${ROUTER_PRESET_FLAGS[*]} ${LLAMA_GPU_FLAGS[*]}"
         } >>"$ROOT/llama-server.log"
-        nohup "$LLAMA_BIN" --models-dir "$ATOM_MODELS_DIR" --models-max 1 "${ROUTER_EXTRA[@]}" "${LLAMA_GPU_FLAGS[@]}" --port 8080 --host 0.0.0.0 >>"$ROOT/llama-server.log" 2>&1 &
+        nohup "$LLAMA_BIN" --models-dir "$ATOM_MODELS_DIR" --models-max 1 "${ROUTER_PRESET_FLAGS[@]}" "${LLAMA_GPU_FLAGS[@]}" --port 8080 --host 0.0.0.0 >>"$ROOT/llama-server.log" 2>&1 &
         LLAMA_PID=$!
         disown || true
     elif [ -n "$MODEL" ] && [ -f "$MODEL" ]; then
@@ -466,17 +681,122 @@ fi
 # UI port: keep 5175 for this launcher so localStorage (API keys, backend URL) stays on the same
 # origin as before. Port 5173 vs 5175 are different sites to the browser — keys do not carry over.
 ATOM_UI_PORT="${ATOM_UI_PORT:-5175}"
+
+atom_ui_is_ours() {
+    curl -sS --max-time 1 "http://localhost:${ATOM_UI_PORT}/" 2>/dev/null | grep -q '<title>ATOM</title>'
+}
+
+free_foreign_ui_port() {
+    local pid cwd cmd
+    pid="$(pid_listening_on "$ATOM_UI_PORT")"
+    [ -n "$pid" ] || return 0
+    cwd="$(readlink -f "/proc/${pid}/cwd" 2>/dev/null || true)"
+    cmd="$(tr '\0' ' ' <"/proc/${pid}/cmdline" 2>/dev/null || true)"
+    if [ "$cwd" = "$ROOT" ] || printf '%s' "$cmd" | grep -q '/atom-chat'; then
+        return 0
+    fi
+    echo "[ATOM] Port ${ATOM_UI_PORT} is taken by PID ${pid} (${cwd:-unknown cwd}) — not ATOM. Reclaiming it."
+    kill -TERM "$pid" 2>/dev/null || true
+    sleep 1
+    if pid_listening_on "$ATOM_UI_PORT" >/dev/null; then
+        kill -KILL "$pid" 2>/dev/null || true
+        sleep 0.3
+    fi
+}
+
+open_atom_browser() {
+    echo "[ATOM] Opening browser: http://localhost:${ATOM_UI_PORT}/"
+    # Detach so the desktop terminal cannot SIGHUP xdg-open when this script
+    # exits (that was dropping the browser open on the already-running path).
+    nohup xdg-open "http://localhost:${ATOM_UI_PORT}/" >/dev/null 2>&1 &
+    disown || true
+}
+
+# True when the Vite listener is a descendant of this launcher. A Vite started
+# by hand (npm parent is init) is not — the shortcut used to see the title,
+# background xdg-open, and exit, so the terminal closed before the browser opened.
+ui_owned_by_this_launcher() {
+    local pid
+    pid="$(pid_listening_on "$ATOM_UI_PORT")"
+    [ -n "$pid" ] || return 1
+    pid_is_in_tree "$pid" "$$"
+}
+
+stop_stale_atom_ui() {
+    local pid cwd cmd
+    pid="$(pid_listening_on "$ATOM_UI_PORT")"
+    [ -n "$pid" ] || return 0
+    if ui_owned_by_this_launcher; then
+        return 0
+    fi
+    cwd="$(readlink -f "/proc/${pid}/cwd" 2>/dev/null || true)"
+    cmd="$(tr '\0' ' ' <"/proc/${pid}/cmdline" 2>/dev/null || true)"
+    if [ "$cwd" != "$ROOT" ] && ! printf '%s' "$cmd" | grep -q '/atom-chat'; then
+        return 0
+    fi
+    echo "[ATOM] Stale Vite on port ${ATOM_UI_PORT} (node PID ${pid}, not started by start-atom.sh) — stopping only that node process."
+    kill -TERM "$pid" 2>/dev/null || true
+    local i
+    for i in 1 2 3 4 5 6 7 8 9 10; do
+        kill -0 "$pid" 2>/dev/null || break
+        sleep 0.3
+    done
+    if kill -0 "$pid" 2>/dev/null; then
+        kill -KILL "$pid" 2>/dev/null || true
+    fi
+    for i in 1 2 3 4 5 6 7 8 9 10; do
+        [ -z "$(pid_listening_on "$ATOM_UI_PORT")" ] && return 0
+        sleep 0.3
+    done
+}
+
+if atom_ui_is_ours; then
+    if ui_owned_by_this_launcher; then
+        echo "[ATOM] UI already running on http://localhost:${ATOM_UI_PORT}/ — opening browser."
+        open_atom_browser
+        exit 0
+    fi
+    echo "[ATOM] Port ${ATOM_UI_PORT} is serving ATOM, but Vite was not started by this launcher."
+    stop_stale_atom_ui
+fi
+
+free_foreign_ui_port
+
+if atom_ui_is_ours; then
+    if ui_owned_by_this_launcher; then
+        echo "[ATOM] UI already running on http://localhost:${ATOM_UI_PORT}/ — opening browser."
+        open_atom_browser
+        exit 0
+    fi
+    stop_stale_atom_ui
+fi
+
 npm run dev -- --port "$ATOM_UI_PORT" --strictPort &
 UI_PID=$!
 
-# Open browser once dev server responds (use localhost, not 127.0.0.1, so origin matches bookmarks)
+# Open browser once THIS app responds (HTTP 200 on another app used to count as "ready").
+ui_ok=0
 for i in $(seq 1 40); do
-    if curl -s --max-time 1 "http://localhost:${ATOM_UI_PORT}/" >/dev/null 2>&1; then
-        (sleep 1; xdg-open "http://localhost:${ATOM_UI_PORT}/" 2>/dev/null) &
+    if atom_ui_is_ours; then
+        open_atom_browser
+        ui_ok=1
+        break
+    fi
+    if ! kill -0 "$UI_PID" 2>/dev/null; then
+        echo "[ATOM] ERROR: Vite exited before the UI came up (often: port ${ATOM_UI_PORT} still busy)." >&2
         break
     fi
     sleep 0.5
 done
 
+if [ "$ui_ok" != 1 ]; then
+    echo "[ATOM] UI did not start on http://localhost:${ATOM_UI_PORT}/" >&2
+    if [ -t 0 ] && [ -t 1 ]; then
+        read -r -p "[ATOM] Press Enter to close this window..." _
+    fi
+    wait "$UI_PID" 2>/dev/null || true
+    exit 1
+fi
+
 trap 'kill $UI_PID 2>/dev/null; exit 0' INT TERM
-wait $UI_PID
+wait $UI_PID || true

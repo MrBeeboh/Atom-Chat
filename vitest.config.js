@@ -12,9 +12,17 @@ export default defineConfig({
       $lib: path.resolve(__dirname, 'src/lib'),
     },
   },
+  ssr: {
+    external: ['node:sqlite'],
+  },
   test: {
     include: ['src/**/*.{test,spec}.{js,ts}'],
     environment: 'node',
     globals: true,
+    server: {
+      deps: {
+        external: ['node:sqlite'],
+      },
+    },
   },
 })

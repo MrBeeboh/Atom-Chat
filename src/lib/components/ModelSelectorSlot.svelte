@@ -3,7 +3,10 @@
   import { models, dashboardModelA, dashboardModelB, dashboardModelC, dashboardModelD } from '$lib/stores.js';
   import { getModels, modelDisplayName } from '$lib/api.js';
   import { getModelIcon, getQuantization, ensureModelIcons, modelIconOverrides } from '$lib/modelIcons.js';
+  import { ensureModelPricing, modelPricingCatalog } from '$lib/modelPricing.js';
+  import { prepareArenaModelList } from '$lib/arenaModelList.js';
   import ModelCapabilityBadges from '$lib/components/ModelCapabilityBadges.svelte';
+  import ModelPricingLine from '$lib/components/ModelPricingLine.svelte';
   import ModelDropdownGroupedList from '$lib/components/ModelDropdownGroupedList.svelte';
   import ThinkingAtom from '$lib/components/ThinkingAtom.svelte';
   import { COCKPIT_LOADING_MODELS, pickWitty } from '$lib/cockpitCopy.js';
@@ -27,9 +30,14 @@
   );
 
   const listboxId = $derived(`model-listbox-${slot}`);
+  const arenaModels = $derived(prepareArenaModelList($models, $modelPricingCatalog));
 
   $effect(() => {
     if (loading) loadingMessage = pickWitty(COCKPIT_LOADING_MODELS);
+  });
+
+  $effect(() => {
+    ensureModelPricing();
   });
 
   $effect(() => {
@@ -45,7 +53,7 @@
         top: r.bottom + 4,
         bottom: window.innerHeight - r.top + 4,
         left: r.left,
-        width: Math.max(r.width, 440),
+        width: Math.max(r.width, 560),
         maxHeight: Math.max(180, maxHeight),
         openUp,
       };
@@ -60,15 +68,19 @@
     loading = true;
     loadError = null;
     try {
+      ensureModelPricing();
       const list = await Promise.race([
         getModels(),
         new Promise((_, rej) =>
           setTimeout(() => rej(new Error('Request timed out. Is llama-server (8080) or your backend running?')), 12000),
         ),
       ]);
-      const ids = list.map((m) => m.id);
+      const records = list
+        .filter((m) => m && m.id)
+        .map((m) => (m.caps ? { id: m.id, caps: m.caps } : { id: m.id }));
+      const ids = records.map((m) => m.id);
       if (ids.length > 0) {
-        models.set(ids.map((id) => ({ id })));
+        models.set(records);
         ensureModelIcons(ids);
       }
     } catch (e) {
@@ -116,8 +128,13 @@
       {#if val}
         {@const selIcon = getModelIcon(val, $modelIconOverrides)}
         {#if selIcon}<img src={selIcon} alt="" class="w-4 h-4 shrink-0 rounded object-contain" onerror={(e) => (e.currentTarget.style.display = 'none')} />{/if}
-        <span class="truncate font-bold uppercase tracking-tight text-xs">{modelDisplayName(val)}</span>
-        <ModelCapabilityBadges modelId={val} class="ml-0.5" />
+        <span class="min-w-0 flex-1 flex flex-col items-start gap-0.5">
+          <span class="flex items-center gap-1.5 min-w-0 w-full">
+            <span class="truncate min-w-0 flex-1 font-bold uppercase tracking-tight text-xs">{modelDisplayName(val)}</span>
+            <ModelCapabilityBadges modelId={val} caps={$models.find((m) => m.id === val)?.caps} class="ml-0.5" />
+          </span>
+          <ModelPricingLine modelId={val} showQuant={false} />
+        </span>
       {:else}
         <span style="color: var(--ui-text-secondary);">Select model</span>
       {/if}
@@ -126,15 +143,15 @@
     {#if open}
       <div
         id={listboxId}
-        class="fixed z-[100] rounded-xl shadow-lg py-0 overflow-y-auto overflow-x-visible min-w-[320px]"
+        class="arena-model-menu fixed z-[100] rounded-xl shadow-lg py-0 overflow-y-auto overflow-x-visible min-w-[320px]"
         style="border: 1px solid var(--ui-border); background-color: var(--ui-bg-main); left: {dropdownPlace.left}px; width: {dropdownPlace.width}px; max-height: {dropdownPlace.maxHeight}px; {dropdownPlace.openUp ? 'bottom: ' + dropdownPlace.bottom + 'px; top: auto;' : 'top: ' + dropdownPlace.top + 'px;'}"
         role="listbox"
       >
-        {#if loading && $models.length === 0}
+        {#if loading && arenaModels.length === 0}
           <div class="px-4 py-3 text-sm flex items-center gap-2" style="color: var(--ui-text-secondary);">
             <ThinkingAtom size={16} />{loadingMessage || 'Loading models…'}
           </div>
-        {:else if $models.length === 0}
+        {:else if arenaModels.length === 0}
           <div class="px-4 py-3 text-sm">
             <p class="mb-2" style="color: var(--ui-text-secondary);">
               No models found. Start your inference server (llama.cpp or LM Studio) or check Settings → Connection.
@@ -156,7 +173,7 @@
             </div>
           {/if}
           <ModelDropdownGroupedList
-            models={$models}
+            models={arenaModels}
             selectedId={val || ''}
             onSelect={select}
             listboxId={listboxId}
@@ -176,3 +193,27 @@
       title="Quantization">{getQuantization(val)}</span>
   {/if}
 </div>
+
+<style>
+  .arena-model-menu {
+    border-color: var(--ui-border);
+  }
+  :global(.arena-model-menu .model-provider-header) {
+    padding-top: 0.35rem;
+    padding-bottom: 0.35rem;
+  }
+  :global(.arena-model-menu .model-row) {
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.28rem 0.55rem 0.28rem 0.7rem;
+  }
+  :global(.arena-model-menu .model-row > img) {
+    margin-top: 0;
+    width: 16px;
+    height: 16px;
+  }
+  :global(.arena-model-menu .model-row-selected) {
+    background-color: color-mix(in srgb, var(--ui-accent) 16%, transparent);
+    box-shadow: inset 2px 0 0 var(--ui-accent);
+  }
+</style>

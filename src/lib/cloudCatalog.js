@@ -3,12 +3,21 @@
  * so the selector still fills if a vendor is down or CORS blocks the probe.
  */
 
+import {
+  buildProviderCheckRow,
+  fundingProbe,
+  providerStartupReport,
+  setStartupFunding,
+} from './providerFunding.js';
+import { get } from 'svelte/store';
+
 function viteEnvStr(key) {
   const map = {
     VITE_DEEPSEEK_API_KEY: import.meta.env.VITE_DEEPSEEK_API_KEY,
     VITE_GROK_API_KEY: import.meta.env.VITE_GROK_API_KEY,
     VITE_CEREBRAS_API_KEY: import.meta.env.VITE_CEREBRAS_API_KEY,
     VITE_DEEPINFRA_API_KEY: import.meta.env.VITE_DEEPINFRA_API_KEY,
+    VITE_NOUS_API_KEY: import.meta.env.VITE_NOUS_API_KEY,
   };
   const v = map[key];
   return typeof v === 'string' ? v.trim() : '';
@@ -29,6 +38,36 @@ function isDev() {
 
 /** @type {Record<string, { name: string, baseUrl: string, modelsPath: string, listUrlDev: string, fallbackModels: string[], getKey: () => string }>} */
 export const CLOUD_PROVIDERS = {
+  nous: {
+    name: 'Nous',
+    baseUrl: isDev() ? '/api/nous/v1' : 'https://inference-api.nousresearch.com/v1',
+    modelsPath: '/models',
+    listUrlDev: '/api/nous/v1/models',
+    fallbackModels: [
+      'stealth/ox-alpha',
+      'z-ai/glm-5.2',
+      'anthropic/claude-sonnet-5',
+      'anthropic/claude-haiku-4.5',
+      'openai/gpt-5.5',
+      'openai/gpt-5.6-luna',
+      'deepseek/deepseek-v4-flash',
+      'deepseek/deepseek-v4-pro',
+      'google/gemini-3.7-flash',
+      'x-ai/grok-4.6',
+      'qwen/qwen3.8-max',
+      'moonshotai/kimi-k3',
+      'minimax/minimax-m3',
+      'nvidia/nemotron-3-super-120b-a12b',
+      'stepfun/step-3.7-flash',
+      'sakana/fugu-ultra',
+    ],
+    getKey: () => {
+      const k = localStorageOrVite('nousApiKey', 'VITE_NOUS_API_KEY');
+      if (k) return k;
+      // Dev proxy attaches the Hermes Portal token from ~/.hermes/auth.json.
+      return isDev() ? 'hermes-oauth' : '';
+    },
+  },
   deepseek: {
     name: 'DeepSeek',
     baseUrl: 'https://api.deepseek.com',
@@ -131,6 +170,20 @@ const MODEL_TYPE_TAGS = {
   'grok-imagine-image-quality': 'Image',
   'grok-imagine-video': 'Video',
   'grok-imagine-video-1.5': 'Video',
+  'stealth/ox-alpha': 'Free',
+  'z-ai/glm-5.2': 'Chat',
+  'anthropic/claude-sonnet-5': 'Chat',
+  'anthropic/claude-haiku-4.5': 'Fast Chat',
+  'openai/gpt-5.5': 'Chat',
+  'openai/gpt-5.6-luna': 'Fast Chat',
+  'google/gemini-3.7-flash': 'Fast',
+  'x-ai/grok-4.6': 'Flagship',
+  'qwen/qwen3.8-max': 'Chat',
+  'moonshotai/kimi-k3': 'Chat',
+  'minimax/minimax-m3': 'Chat',
+  'nvidia/nemotron-3-super-120b-a12b': 'Chat',
+  'stepfun/step-3.7-flash': 'Fast',
+  'sakana/fugu-ultra': 'Chat',
   'deepseek-v4-flash': 'Fast',
   'deepseek-v4-pro': 'Reasoning',
   'deepseek-chat': 'Legacy',
@@ -277,7 +330,10 @@ function keyFingerprint() {
     .join(',');
 }
 
+const startupModelLists = new Map();
+
 async function fetchProviderModelIds(providerId) {
+  if (startupModelLists.has(providerId)) return startupModelLists.get(providerId);
   const p = CLOUD_PROVIDERS[providerId];
   if (!p) return { ids: [], origin: 'fallback' };
   const key = p.getKey()?.trim();
@@ -321,6 +377,71 @@ export function getCloudModelsFallback() {
  * Cloud models for the selector. Live catalog when the key works; otherwise fallbacks.
  * @returns {Promise<{ id: string, origin?: string }[]>}
  */
+/** One check per page load. invalidateCloudModelCache does not clear this. */
+let startupFundingPromise = null;
+
+async function readProviderFunding(providerId) {
+  const provider = CLOUD_PROVIDERS[providerId];
+  const key = provider?.getKey()?.trim();
+  const probe = fundingProbe(providerId, { dev: isDev(), modelsUrl: cloudModelsListUrl(providerId) });
+  const prior = (get(providerStartupReport) || []).find((row) => row.id === providerId) || null;
+  const base = { id: providerId, name: provider?.name || providerId, hasKey: !!key, prior };
+  if (!key) return { ...buildProviderCheckRow(base), probe: probe.kind, url: probe.url };
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), CLOUD_LIST_TIMEOUT_MS);
+  try {
+    const res = await fetch(probe.url, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${key}`, Accept: 'application/json' },
+      signal: ctrl.signal,
+    });
+    const bodyText = await res.text();
+    let body = null;
+    try {
+      body = JSON.parse(bodyText);
+    } catch {
+      body = null;
+    }
+    const row = buildProviderCheckRow({ ...base, status: res.status, body, bodyText });
+    return { ...row, probe: probe.kind, url: probe.url };
+  } catch (err) {
+    const timedOut = err?.name === 'AbortError';
+    const row = buildProviderCheckRow({ ...base, timedOut, status: 0, bodyText: '' });
+    return { ...row, probe: probe.kind, url: probe.url };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Runs on the first model load of this page (app startup). A reload starts
+ * a new check. Results are not stored on disk.
+ */
+export function ensureStartupFundingCheck() {
+  if (!startupFundingPromise) {
+    startupFundingPromise = (async () => {
+      const ids = Object.keys(CLOUD_PROVIDERS);
+      const results = await Promise.all(ids.map((id) => readProviderFunding(id)));
+      startupModelLists.clear();
+      for (const result of results) {
+        const state = result.fundingState === 'error' ? 'error' : result.funded ? 'funded' : 'not-funded';
+        console.info(`[ATOM] funding ${result.id} ${state} (${result.fundingState}/${result.priceState}) ${result.probe} ${result.url} prices=${result.prices?.length || 0}`);
+        if (result.funded) {
+          startupModelLists.set(result.id, {
+            ids: result.modelIds || [],
+            origin: result.modelIds?.length ? 'live' : 'fallback',
+          });
+        }
+      }
+      providerStartupReport.set(results.map(({ probe, url, ...row }) => row));
+      const map = Object.fromEntries(results.map((result) => [result.id, result.funded === true]));
+      setStartupFunding(map, ids);
+      return map;
+    })();
+  }
+  return startupFundingPromise;
+}
+
 export async function fetchCloudModels() {
   const fingerprint = keyFingerprint();
   const now = Date.now();
@@ -328,7 +449,8 @@ export async function fetchCloudModels() {
     return cloudCache.models;
   }
 
-  const entries = Object.entries(CLOUD_PROVIDERS).filter(([, p]) => p.getKey()?.trim());
+  const funding = await ensureStartupFundingCheck();
+  const entries = Object.entries(CLOUD_PROVIDERS).filter(([id, p]) => p.getKey()?.trim() && funding[id] === true);
   if (entries.length === 0) {
     cloudCache = { fingerprint, at: now, models: [] };
     return [];
@@ -350,4 +472,11 @@ export async function fetchCloudModels() {
 /** Drop cached live lists (e.g. after an API key change). */
 export function invalidateCloudModelCache() {
   cloudCache = null;
+}
+
+/** Test hook. A real app reload clears module state without this. */
+export function resetStartupFundingCheckForTests() {
+  startupFundingPromise = null;
+  startupModelLists.clear();
+  providerStartupReport.set([]);
 }

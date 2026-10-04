@@ -215,6 +215,15 @@ export function getPlaybackVolume() {
   return clampPlaybackVolume(get(ttsVolume));
 }
 
+/** Eve/TTS share ATOM volume. If that slider is muted, raise it so voice is audible. */
+export function ensureAudiblePlaybackVolume(min = 0.75) {
+  const current = getPlaybackVolume();
+  if (current > 0.001) return { volume: current, raised: false };
+  const next = clampPlaybackVolume(min);
+  ttsVolume.set(next);
+  return { volume: next, raised: true };
+}
+
 function applyPlaybackVolumeToAudio(audio) {
   if (!audio) return;
   const vol = getPlaybackVolume();

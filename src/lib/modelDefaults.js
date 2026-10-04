@@ -14,6 +14,20 @@ export const BATCH_SIZE_MAX = 4096;
 
 /** Defaults per model family. Include gpu_offload and cpu_threads; cpu_threads get capped by hardware. */
 const FAMILY_DEFAULTS = {
+  muse: {
+    name: 'Muse Glimmer',
+    context_length: 131072,
+    eval_batch_size: 512,
+    flash_attention: true,
+    offload_kv_cache_to_gpu: true,
+    gpu_offload: 'max',
+    cpu_threads: 8,
+    temperature: 1.0,
+    max_tokens: 4096,
+    top_p: 0.95,
+    top_k: 64,
+    repeat_penalty: 1.0,
+  },
   qwen: {
     name: 'Qwen / Qwen2',
     context_length: LOCAL_LLAMA_CTX_SIZE,
@@ -145,6 +159,7 @@ const FAMILY_DEFAULTS = {
 
 /** Match model id (lowercase) to family key. Order matters: more specific first. */
 const FAMILY_PATTERNS = [
+  { key: 'muse', test: (id) => /muse-glimmer/i.test(id) },
   { key: 'codellama', test: (id) => /codellama|code.?llama/i.test(id) },
   { key: 'minicpm', test: (id) => /minicpm/i.test(id) },
   { key: 'qwen', test: (id) => /qwen/i.test(id) },
@@ -171,6 +186,7 @@ function inferFamily(modelId) {
 
 /** Optimal system prompts per model family (from Hugging Face model cards, creator docs). */
 const RECOMMENDED_SYSTEM_PROMPTS = {
+  muse: 'Reasoning strength: high.',
   qwen: 'You are a helpful assistant.',
   llama: 'You are a helpful assistant.',
   phi: 'You are a helpful assistant.',

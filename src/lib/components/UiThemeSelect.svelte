@@ -17,7 +17,7 @@
   title="Palette: Orbit, Paper, Ember, Ion"
   aria-label="UI palette — color theme for the app chrome"
   onclick={() => (pickerOpen = true)}>
-  <span class="ui-theme-swatch" style="background: {currentLabel === 'Ember' ? '#ea580c' : currentLabel === 'Ion' ? '#0f766e' : currentLabel === 'Paper' ? '#9b2c2c' : '#e8a060'};"></span>
+  <span class="ui-theme-swatch" style="background: {currentLabel === 'Ember' ? '#ea580c' : currentLabel === 'Ion' ? '#1b4332' : currentLabel === 'Paper' ? '#9b2c2c' : '#e8a060'};"></span>
   {currentLabel}
 </button>
 

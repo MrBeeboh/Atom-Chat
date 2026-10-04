@@ -173,7 +173,7 @@
           <span class="font-mono text-[9px] px-1.5 py-0.5 rounded shrink-0 select-none" style="background: color-mix(in srgb, var(--ui-accent) 12%, transparent); color: var(--ui-accent); opacity: 0.65;" title="Build revision">{__GIT_REV__}</span>
           <nav class="layout-pill flex rounded-full p-0.5 shrink-0 text-xs font-medium" style="background: color-mix(in srgb, var(--ui-border) 60%, transparent);" aria-label="Layout: Cockpit or Arena">
             {#each LAYOUT_OPTS as opt}
-              <button type="button" class="layout-pill-btn rounded-full px-3 py-1.5 transition-all" style="background: {$layout === opt.value ? 'var(--ui-accent)' : 'transparent'}; color: {$layout === opt.value ? 'var(--ui-bg-main)' : 'var(--ui-text-secondary)'};" onclick={() => layout.set(opt.value)}>{opt.label}</button>
+              <button type="button" class="layout-pill-btn rounded-full px-3 py-1.5 transition-all" style="background: {$layout === opt.value ? 'var(--ui-selected-bg, var(--ui-accent))' : 'transparent'}; color: {$layout === opt.value ? 'var(--ui-selected-fg, var(--ui-bg-main))' : 'var(--ui-text-secondary)'};" onclick={() => layout.set(opt.value)}>{opt.label}</button>
             {/each}
           </nav>
         </div>
@@ -273,18 +273,16 @@
           <span class="font-mono text-[9px] px-1.5 py-0.5 rounded shrink-0 select-none" style="background: color-mix(in srgb, var(--ui-accent) 12%, transparent); color: var(--ui-accent); opacity: 0.65;" title="Build revision">{__GIT_REV__}</span>
           <nav class="layout-pill flex rounded-full p-0.5 shrink-0 text-xs font-medium" style="background: color-mix(in srgb, var(--ui-border) 60%, transparent);" aria-label="Layout: Cockpit or Arena">
             {#each LAYOUT_OPTS as opt}
-              <button type="button" class="layout-pill-btn rounded-full px-3 py-1.5 transition-all" style="background: {$layout === opt.value ? 'var(--ui-accent)' : 'transparent'}; color: {$layout === opt.value ? 'var(--ui-bg-main)' : 'var(--ui-text-secondary)'};" onclick={() => layout.set(opt.value)}>{opt.label}</button>
+              <button type="button" class="layout-pill-btn rounded-full px-3 py-1.5 transition-all" style="background: {$layout === opt.value ? 'var(--ui-selected-bg, var(--ui-accent))' : 'transparent'}; color: {$layout === opt.value ? 'var(--ui-selected-fg, var(--ui-bg-main))' : 'var(--ui-text-secondary)'};" onclick={() => layout.set(opt.value)}>{opt.label}</button>
             {/each}
           </nav>
         </div>
         <div class="flex items-center gap-2 shrink-0" style="{HEADER_GROUP_GAP}" role="group" aria-label="Arena panels">
-          <span class="text-[11px]" style="color: var(--ui-text-secondary);" title="Alt+1–4">Panels</span>
-          <div class="flex gap-0.5" role="group" aria-label="Arena panel count">
+          <div class="flex gap-0.5" role="group" aria-label="Arena panel count" title="Panel count — Alt+1–4">
             {#each [1, 2, 3, 4] as n}
               <button type="button" class="w-8 h-7 rounded-md text-xs font-medium transition-opacity {$arenaPanelCount === n ? '' : 'opacity-60'}" style="{$arenaPanelCount === n ? 'background: color-mix(in srgb, var(--ui-accent) 14%, transparent); color: var(--ui-accent);' : 'color: var(--ui-text-secondary);'}" onclick={() => arenaPanelCount.set(n)} aria-label="{n} panel{n === 1 ? '' : 's'} (Alt+{n})" aria-pressed={$arenaPanelCount === n} title="{n} panel{n === 1 ? '' : 's'} — Alt+{n}">{n}</button>
             {/each}
           </div>
-          <span class="hidden lg:inline text-[11px] max-w-[10rem] truncate" style="color: var(--ui-text-secondary);" title="Free-form messages from the footer go to panel A only">Footer chat → panel A</span>
         </div>
         <div class="shrink-0" style="{HEADER_PRESET_MIN}" title="Global system prompt preset. Arena slots can override via Options."><PresetSelect compact={true} /></div>
         <div class="flex items-center shrink-0 pl-3" style="{HEADER_GROUP_GAP} {HEADER_THEME_MIN}" role="group" aria-label="Appearance">

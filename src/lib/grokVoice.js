@@ -4,12 +4,15 @@
  */
 import { get } from 'svelte/store';
 import { ttsVolume, micDeviceId } from '$lib/stores.js';
-import { getPlaybackVolume } from '$lib/tts.js';
+import { getPlaybackVolume, unlockAudioPlayback, ensureAudiblePlaybackVolume } from '$lib/tts.js';
 import { acquireMicStream } from '$lib/micAccess.js';
 
 const REALTIME_MODEL = 'grok-voice-latest';
 const WS_URL = `wss://api.x.ai/v1/realtime?model=${REALTIME_MODEL}`;
 const SUPPORTED_RATES = [8000, 16000, 22050, 24000, 32000, 44100, 48000];
+/** Docs default / recommended rate for grok-voice PCM. */
+export const VOICE_SESSION_RATE = 24000;
+const PLAYBACK_LEAD_S = 0.15;
 
 export const XAI_VOICES = [
   { id: 'eve', label: 'Eve', description: 'Energetic, upbeat (default)' },
@@ -21,12 +24,20 @@ export const XAI_VOICES = [
 
 export const DEFAULT_ROLEPLAY_INSTRUCTIONS = `You are Eve, an engaging voice roleplay partner. Stay in character, speak naturally and conversationally, and respond as if in a live scene with the user. Use expressive dialogue and emotional nuance suited to spoken conversation. Keep most replies to a few sentences unless the scene clearly needs more. Never break character unless the user asks you to.`;
 
+/** True for realtime voice models (picker ids and persisted `grok-voice:eve` rows). */
+export function isGrokVoiceModel(modelId) {
+  if (!modelId || typeof modelId !== 'string') return false;
+  const s = modelId.toLowerCase();
+  if (s.startsWith('grok-voice:')) return true;
+  return /(?:^|[/:.])grok-voice(?:[-_./]|$)|voice-think-fast/.test(s);
+}
+
 /** Pick xAI session rate closest to the browser AudioContext rate. */
 export function pickSessionSampleRate(nativeRate) {
   const n = Number(nativeRate) || 48000;
   return SUPPORTED_RATES.reduce(
     (best, r) => (Math.abs(r - n) < Math.abs(best - n) ? r : best),
-    24000,
+    VOICE_SESSION_RATE,
   );
 }
 
@@ -40,6 +51,17 @@ export function buildRoleplayInstructions(basePrompt, scenario = '') {
   if (scene) parts.push(`Roleplay scenario and character notes:\n${scene}`);
   parts.push('Respond only with spoken dialogue and brief stage directions when helpful — no markdown, bullet lists, or meta commentary.');
   return parts.join('\n\n');
+}
+
+/** Join word-sized transcript deltas that arrive without a leading space. */
+export function appendTranscriptDelta(existing, delta) {
+  const next = typeof delta === 'string' ? delta : '';
+  if (!next) return existing || '';
+  const prev = existing || '';
+  if (!prev) return next;
+  if (/\s$/.test(prev) || /^\s/.test(next)) return prev + next;
+  if (/[A-Za-z0-9)]$/.test(prev) && /^[A-Za-z0-9('"]/.test(next)) return `${prev} ${next}`;
+  return prev + next;
 }
 
 function float32ToBase64PCM16(float32Array) {
@@ -57,22 +79,27 @@ function float32ToBase64PCM16(float32Array) {
   return btoa(binary);
 }
 
+export function pcm16BytesToFloat32(bytes) {
+  const src = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []);
+  const sampleCount = Math.floor(src.length / 2);
+  const float32 = new Float32Array(sampleCount);
+  for (let i = 0; i < sampleCount; i++) {
+    const lo = src[i * 2];
+    const hi = src[i * 2 + 1];
+    let val = lo | (hi << 8);
+    if (val >= 0x8000) val -= 0x10000;
+    float32[i] = val / 32768;
+  }
+  return float32;
+}
+
 function base64PCM16ToFloat32(base64String) {
   if (!base64String) return new Float32Array(0);
   const binaryString = atob(base64String);
   const byteLen = binaryString.length;
   const bytes = new Uint8Array(byteLen);
   for (let i = 0; i < byteLen; i++) bytes[i] = binaryString.charCodeAt(i);
-  const sampleCount = Math.floor(byteLen / 2);
-  const float32 = new Float32Array(sampleCount);
-  for (let i = 0; i < sampleCount; i++) {
-    const lo = bytes[i * 2];
-    const hi = bytes[i * 2 + 1];
-    let val = lo | (hi << 8);
-    if (val >= 0x8000) val -= 0x10000;
-    float32[i] = val / 32768;
-  }
-  return float32;
+  return pcm16BytesToFloat32(bytes);
 }
 
 function resample(input, fromRate, toRate) {
@@ -90,16 +117,17 @@ function resample(input, fromRate, toRate) {
   return out;
 }
 
+function isB64(v) {
+  return typeof v === 'string' && v.length > 0;
+}
+
 /** Pull a base64 PCM16 string out of an audio event, tolerating several payload shapes. */
-function extractAudioDelta(event) {
+export function extractAudioDelta(event) {
   if (!event || typeof event !== 'object') return null;
-  const isB64 = (v) => typeof v === 'string' && v.length > 0;
-  // Direct string fields
   if (isB64(event.delta)) return event.delta;
   if (isB64(event.audio)) return event.audio;
   if (isB64(event.chunk)) return event.chunk;
   if (isB64(event.data)) return event.data;
-  // Nested objects (output_audio / audio / delta as object)
   for (const key of ['output_audio', 'audio', 'delta']) {
     const nested = event[key];
     if (nested && typeof nested === 'object') {
@@ -112,13 +140,26 @@ function extractAudioDelta(event) {
   return null;
 }
 
+/** xAI client_secret payloads have used a few field names. */
+export function extractVoiceClientToken(data) {
+  if (!data || typeof data !== 'object') return '';
+  if (typeof data.value === 'string' && data.value.trim()) return data.value.trim();
+  if (typeof data.client_secret === 'string' && data.client_secret.trim()) return data.client_secret.trim();
+  if (data.client_secret && typeof data.client_secret.value === 'string' && data.client_secret.value.trim()) {
+    return data.client_secret.value.trim();
+  }
+  if (typeof data.secret === 'string' && data.secret.trim()) return data.secret.trim();
+  if (typeof data.token === 'string' && data.token.trim()) return data.token.trim();
+  return '';
+}
+
 /**
  * @param {string} apiKey
- * @param {object} sessionConfig
- * @returns {Promise<{ value: string, expires_at?: number }>}
+ * @returns {Promise<string>}
  */
-export async function fetchVoiceClientSecret(apiKey, sessionConfig = {}) {
+export async function fetchVoiceClientSecret(apiKey) {
   if (!apiKey?.trim()) throw new Error('Grok (xAI) API key required for voice roleplay.');
+  // Docs: this endpoint does not accept `session` or extra expires_after fields.
   const res = await fetch('/api/xai/v1/realtime/client_secrets', {
     method: 'POST',
     headers: {
@@ -126,16 +167,16 @@ export async function fetchVoiceClientSecret(apiKey, sessionConfig = {}) {
       Authorization: `Bearer ${apiKey.trim()}`,
     },
     body: JSON.stringify({
-      expires_after: { seconds: 3600 },
-      model: REALTIME_MODEL,
-      session: sessionConfig,
+      expires_after: { seconds: 300 },
     }),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new Error(`Voice session token: ${res.status} ${text || res.statusText}`);
   }
-  return res.json();
+  const token = extractVoiceClientToken(await res.json());
+  if (!token) throw new Error('Voice session token missing from xAI response.');
+  return token;
 }
 
 /**
@@ -145,6 +186,7 @@ export async function fetchVoiceClientSecret(apiKey, sessionConfig = {}) {
  * @property {(delta: string, full: string) => void} [onAssistantTranscriptDelta]
  * @property {(text: string) => void} [onAssistantTranscriptDone]
  * @property {(chunks: number) => void} [onAudioChunks]
+ * @property {(info: { audioChunks: number }) => void} [onTurnDone]
  * @property {(err: Error|string) => void} [onError]
  */
 
@@ -171,7 +213,7 @@ export class GrokVoiceSession {
     this.connected = false;
     this.assistantTranscript = '';
     this.playbackTime = 0;
-    this.sessionSampleRate = 24000;
+    this.sessionSampleRate = VOICE_SESSION_RATE;
     this.audioChunksPlayed = 0;
     /** @type {AudioBufferSourceNode[]} */
     this.scheduledSources = [];
@@ -179,6 +221,9 @@ export class GrokVoiceSession {
     this._volUnsub = /** @type {(() => void) | null} */ (null);
     this.responseInProgress = false;
     this.sessionReady = false;
+    /** @type {{ resolve: (text: string) => void, reject: (err: Error) => void } | null} */
+    this._textTurn = null;
+    this._sessionWaitTimer = /** @type {ReturnType<typeof setTimeout> | null} */ (null);
   }
 
   /** @param {GrokVoiceCallbacks['onState'] extends (...args: infer A) => void ? A[0] : never} state */
@@ -187,12 +232,20 @@ export class GrokVoiceSession {
   }
 
   async _initAudio() {
-    if (this.audioContext) return;
-    this.audioContext = new AudioContext();
+    unlockAudioPlayback();
+    ensureAudiblePlaybackVolume(0.75);
+    if (this.audioContext) {
+      if (this.audioContext.state === 'suspended') {
+        await this.audioContext.resume().catch(() => {});
+      }
+      return;
+    }
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    this.audioContext = new Ctx({ sampleRate: VOICE_SESSION_RATE });
     if (this.audioContext.state === 'suspended') {
       await this.audioContext.resume();
     }
-    this.sessionSampleRate = pickSessionSampleRate(this.audioContext.sampleRate);
+    this.sessionSampleRate = VOICE_SESSION_RATE;
     this.outputGain = this.audioContext.createGain();
     this.outputGain.gain.value = getPlaybackVolume();
     this.outputGain.connect(this.audioContext.destination);
@@ -201,19 +254,25 @@ export class GrokVoiceSession {
         if (this.outputGain) this.outputGain.gain.value = getPlaybackVolume();
       });
     }
-    this.playbackTime = this.audioContext.currentTime;
+    this.playbackTime = this.audioContext.currentTime + PLAYBACK_LEAD_S;
   }
 
   _buildSessionConfig(voice, instructions, scenario) {
-    const rate = this.sessionSampleRate;
+    const rate = this.sessionSampleRate || VOICE_SESSION_RATE;
     return {
       voice,
       instructions: buildRoleplayInstructions(instructions, scenario),
       turn_detection: { type: 'server_vad', silence_duration_ms: 600 },
       reasoning: { effort: 'none' },
       audio: {
-        input: { format: { type: 'audio/pcm', rate } },
-        output: { format: { type: 'audio/pcm', rate } },
+        input: {
+          format: { type: 'audio/pcm', rate },
+          transport: 'json',
+        },
+        output: {
+          format: { type: 'audio/pcm', rate },
+          transport: 'json',
+        },
       },
     };
   }
@@ -224,19 +283,20 @@ export class GrokVoiceSession {
    * @param {string} [opts.instructions]
    * @param {string} [opts.scenario]
    * @param {string} [opts.voice]
+   * @param {boolean} [opts.captureMic]
    */
-  async connect({ apiKey, instructions = '', scenario = '', voice = 'eve' }) {
+  async connect({ apiKey, instructions = '', scenario = '', voice = 'eve', captureMic = true }) {
     this._abort = false;
     this._setState('connecting');
     await this._initAudio();
 
     const sessionConfig = this._buildSessionConfig(voice, instructions, scenario);
-    const { value: token } = await fetchVoiceClientSecret(apiKey, sessionConfig);
+    const token = await fetchVoiceClientSecret(apiKey);
     if (this._abort) return;
-    if (!token) throw new Error('Voice session token missing from xAI response.');
 
     await new Promise((resolve, reject) => {
       const ws = new WebSocket(WS_URL, [`xai-client-secret.${token}`]);
+      ws.binaryType = 'arraybuffer';
       this.ws = ws;
       let settled = false;
       const t = setTimeout(() => {
@@ -256,8 +316,10 @@ export class GrokVoiceSession {
 
       ws.onopen = () => {
         this._sessionWaitTimer = setTimeout(finishOk, 4000);
-        // Belt-and-suspenders: ensure session audio format is applied.
         this._send({ type: 'session.update', session: sessionConfig });
+        if (this.audioContext?.state === 'suspended') {
+          this.audioContext.resume().catch(() => {});
+        }
       };
       ws.onerror = () => {
         if (settled) return;
@@ -275,9 +337,10 @@ export class GrokVoiceSession {
           return;
         }
         if (!this._abort) this._setState('disconnected');
+        this._finishTextTurn(this._abort ? null : new Error('Voice session closed'));
       };
       ws.onmessage = (ev) => {
-        this._handleMessage(ev);
+        this._handleRawMessage(ev.data);
         if (!this.sessionReady) return;
         if (this._sessionWaitTimer) {
           clearTimeout(this._sessionWaitTimer);
@@ -292,22 +355,63 @@ export class GrokVoiceSession {
       return;
     }
 
-    await this.startMic();
+    if (captureMic) await this.startMic();
   }
 
-  /** @param {MessageEvent} ev */
-  _handleMessage(ev) {
+  /** @param {string} text */
+  sendText(text) {
+    const trimmed = String(text || '').trim();
+    if (!trimmed) return Promise.reject(new Error('Nothing to say.'));
+    if (this.ws?.readyState !== WebSocket.OPEN) {
+      return Promise.reject(new Error('Voice session is not connected.'));
+    }
+    return new Promise((resolve, reject) => {
+      this._textTurn = { resolve, reject };
+      this._send({
+        type: 'conversation.item.create',
+        item: {
+          type: 'message',
+          role: 'user',
+          content: [{ type: 'input_text', text: trimmed }],
+        },
+      });
+      this._send({ type: 'response.create' });
+    });
+  }
+
+  _finishTextTurn(error) {
+    const turn = this._textTurn;
+    this._textTurn = null;
+    if (!turn) return;
+    if (error) turn.reject(error instanceof Error ? error : new Error(String(error)));
+    else turn.resolve(this.assistantTranscript);
+  }
+
+  /** @param {string | ArrayBuffer | Blob} data */
+  _handleRawMessage(data) {
+    if (data instanceof Blob) {
+      data.arrayBuffer().then((buf) => this._playPcm16Bytes(new Uint8Array(buf))).catch(() => {});
+      return;
+    }
+    if (data instanceof ArrayBuffer) {
+      this._playPcm16Bytes(new Uint8Array(data));
+      return;
+    }
+    if (typeof data !== 'string') return;
+    this._handleJsonMessage(data);
+  }
+
+  /** @param {string} raw */
+  _handleJsonMessage(raw) {
     let event;
     try {
-      event = JSON.parse(String(ev.data));
+      event = JSON.parse(raw);
     } catch {
       return;
     }
 
     const type = typeof event.type === 'string' ? event.type : '';
-    // Audio bytes can arrive under several names across API revisions
-    // (response.output_audio.delta, response.audio.delta, output_audio_buffer.delta, …).
-    // Match any audio delta/chunk that is NOT a transcript event.
+    // Audio bytes can arrive under several names across API revisions.
     if (type.includes('audio') && !type.includes('transcript')) {
       const audio = extractAudioDelta(event);
       if (audio) {
@@ -324,10 +428,9 @@ export class GrokVoiceSession {
         break;
       case 'input_audio_buffer.speech_started':
         if (this.responseInProgress) {
-          // User barge-in while Eve is speaking (requires headphones for clean detection).
           this._stopLocalPlayback();
         }
-        this._setState(this.responseInProgress ? 'listening' : 'listening');
+        this._setState('listening');
         break;
       case 'input_audio_buffer.speech_stopped':
         break;
@@ -336,23 +439,25 @@ export class GrokVoiceSession {
         this.micSendEnabled = false;
         this.assistantTranscript = '';
         this.audioChunksPlayed = 0;
-        if (this.audioContext) this.playbackTime = this.audioContext.currentTime;
+        if (this.audioContext) this.playbackTime = this.audioContext.currentTime + PLAYBACK_LEAD_S;
         this._setState('speaking');
         break;
       case 'response.output_audio_transcript.delta':
+      case 'response.audio_transcript.delta':
         if (typeof event.delta === 'string') {
-          this.assistantTranscript += event.delta;
+          this.assistantTranscript = appendTranscriptDelta(this.assistantTranscript, event.delta);
           this.callbacks.onAssistantTranscriptDelta?.(event.delta, this.assistantTranscript);
         }
         break;
       case 'response.output_audio_transcript.done':
-        if (typeof event.transcript === 'string') {
-          this.callbacks.onAssistantTranscriptDone?.(event.transcript);
-        } else if (this.assistantTranscript) {
-          this.callbacks.onAssistantTranscriptDone?.(this.assistantTranscript);
-        }
-        this.assistantTranscript = '';
+      case 'response.audio_transcript.done': {
+        const doneText = typeof event.transcript === 'string' && event.transcript.trim()
+          ? event.transcript
+          : this.assistantTranscript;
+        if (doneText) this.callbacks.onAssistantTranscriptDone?.(doneText);
+        if (!this._textTurn) this.assistantTranscript = '';
         break;
+      }
       case 'response.output_audio.delta':
       case 'response.audio.delta':
         this._playAudioDelta(extractAudioDelta(event));
@@ -363,9 +468,12 @@ export class GrokVoiceSession {
       case 'response.done':
         this.responseInProgress = false;
         this.micSendEnabled = true;
+        this.callbacks.onTurnDone?.({ audioChunks: this.audioChunksPlayed });
         this._setState(this.micActive ? 'listening' : 'connected');
+        this._finishTextTurn(null);
         break;
-      case 'conversation.item.input_audio_transcription.completed': {
+      case 'conversation.item.input_audio_transcription.completed':
+      case 'conversation.item.input_audio_transcription.updated': {
         const text = event.transcript ?? event.item?.content?.[0]?.transcript ?? '';
         if (text) this.callbacks.onUserTranscript?.(String(text).trim());
         break;
@@ -373,8 +481,10 @@ export class GrokVoiceSession {
       case 'error': {
         const msg = event.error?.message || event.message || 'Voice agent error';
         if (isIgnorableVoiceError(msg)) break;
-        this.callbacks.onError?.(new Error(msg));
+        const err = new Error(msg);
+        this.callbacks.onError?.(err);
         this._setState('error');
+        this._finishTextTurn(err);
         break;
       }
       default:
@@ -416,17 +526,29 @@ export class GrokVoiceSession {
     this._setState('listening');
   }
 
+  /** @param {Uint8Array} bytes */
+  _playPcm16Bytes(bytes) {
+    if (!bytes?.length) return;
+    this._playFloat32(pcm16BytesToFloat32(bytes));
+  }
+
   /** @param {string | null} base64Delta */
   _playAudioDelta(base64Delta) {
-    if (!base64Delta || !this.audioContext || !this.outputGain) return;
+    if (!base64Delta) return;
+    this._playFloat32(base64PCM16ToFloat32(base64Delta));
+  }
+
+  /** @param {Float32Array} samplesIn */
+  _playFloat32(samplesIn) {
+    if (!this.audioContext || !this.outputGain) return;
     if (this.audioContext.state === 'suspended') {
       this.audioContext.resume().catch(() => {});
     }
 
     const apiRate = this.sessionSampleRate;
     const ctxRate = this.audioContext.sampleRate;
-    let samples = base64PCM16ToFloat32(base64Delta);
-    if (samples.length === 0) return;
+    let samples = samplesIn;
+    if (!samples?.length) return;
     if (ctxRate !== apiRate) samples = resample(samples, apiRate, ctxRate);
 
     const buffer = this.audioContext.createBuffer(1, samples.length, ctxRate);
@@ -448,6 +570,13 @@ export class GrokVoiceSession {
     };
   }
 
+  async waitForPlayback() {
+    if (!this.audioContext || this.audioChunksPlayed === 0) return;
+    const remainingMs = Math.max(0, (this.playbackTime - this.audioContext.currentTime) * 1000 + 80);
+    if (remainingMs <= 0) return;
+    await new Promise((resolve) => setTimeout(resolve, Math.min(remainingMs, 30000)));
+  }
+
   _stopLocalPlayback() {
     for (const src of this.scheduledSources) {
       try {
@@ -460,6 +589,7 @@ export class GrokVoiceSession {
 
   disconnect() {
     this._abort = true;
+    this._finishTextTurn(new Error('Voice session ended'));
     if (this._volUnsub) {
       this._volUnsub();
       this._volUnsub = null;
@@ -513,6 +643,64 @@ export class GrokVoiceSession {
     }
     this.connected = false;
     this._setState('disconnected');
+  }
+}
+
+/**
+ * One typed chat turn through Eve (no mic). Used when a grok-voice model is selected.
+ * @param {object} opts
+ * @param {string} opts.apiKey
+ * @param {string} opts.text
+ * @param {string} [opts.voice]
+ * @param {string} [opts.instructions]
+ * @param {string} [opts.historyText]
+ * @param {(full: string) => void} [opts.onDelta]
+ * @param {AbortSignal} [opts.signal]
+ */
+export async function runGrokVoiceTextTurn({
+  apiKey,
+  text,
+  voice = 'eve',
+  instructions = '',
+  historyText = '',
+  onDelta,
+  signal,
+}) {
+  const started = Date.now();
+  let finalText = '';
+  /** @type {Error | null} */
+  let turnError = null;
+  const session = new GrokVoiceSession({
+    onAssistantTranscriptDelta: (_delta, full) => onDelta?.(full),
+    onAssistantTranscriptDone: (t) => {
+      if (t) finalText = t;
+    },
+    onError: (err) => {
+      turnError = err instanceof Error ? err : new Error(String(err));
+    },
+  });
+  const onAbort = () => session.disconnect();
+  signal?.addEventListener('abort', onAbort, { once: true });
+  try {
+    if (signal?.aborted) return { aborted: true, content: '', elapsedMs: 0, audioChunks: 0 };
+    const prior = (historyText || '').trim();
+    const prompt = prior
+      ? `${instructions || DEFAULT_ROLEPLAY_INSTRUCTIONS}\n\nPrior conversation:\n${prior}`
+      : instructions;
+    await session.connect({ apiKey, instructions: prompt, voice, captureMic: false });
+    if (signal?.aborted) return { aborted: true, content: '', elapsedMs: 0, audioChunks: 0 };
+    const spoken = await session.sendText(text);
+    if (turnError) throw turnError;
+    await session.waitForPlayback();
+    return {
+      aborted: false,
+      content: (spoken || finalText || '').trim(),
+      elapsedMs: Date.now() - started,
+      audioChunks: session.audioChunksPlayed,
+    };
+  } finally {
+    signal?.removeEventListener('abort', onAbort);
+    session.disconnect();
   }
 }
 

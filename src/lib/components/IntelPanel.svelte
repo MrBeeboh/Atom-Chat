@@ -25,6 +25,7 @@
   import { fetchOptimalSettingsWithDelay, askModelForOptimalSettings, resolveHfModelId, getHfModelUrl, getHfSearchUrl } from '$lib/hfOptimize.js';
   import InfoTooltip from '$lib/components/InfoTooltip.svelte';
   import ThinkingAtom from '$lib/components/ThinkingAtom.svelte';
+  import ThinkingControls from '$lib/components/ThinkingControls.svelte';
 
   let settingsVal = $state({});
   let contextLength = $state(LOCAL_LLAMA_CTX_SIZE);
@@ -35,6 +36,8 @@
   let repeatPenalty = $state(1.15);
   let presencePenalty = $state(0);
   let frequencyPenalty = $state(0);
+  let thinkingLevel = $state('');
+  let thinkingSpeed = $state('');
   let sysPrompt = $state('You are a helpful assistant.');
   let currentModelId = $state('');
   let messagesList = $state([]);
@@ -105,6 +108,8 @@
       repeatPenalty = s?.repeat_penalty ?? 1.15;
       presencePenalty = s?.presence_penalty ?? 0;
       frequencyPenalty = s?.frequency_penalty ?? 0;
+      thinkingLevel = s?.thinking ?? '';
+      thinkingSpeed = s?.thinking_speed ?? '';
       sysPrompt = (s?.system_prompt ?? 'You are a helpful assistant.').toString();
     });
     return () => unsub();
@@ -163,6 +168,11 @@
     const v = parseFloat(e.target.value);
     if (Number.isFinite(v)) frequencyPenalty = Math.max(-2, Math.min(2, v));
   }
+  function onThinkingChange(patch) {
+    if (patch.thinking != null) thinkingLevel = patch.thinking;
+    if (patch.thinking_speed != null) thinkingSpeed = patch.thinking_speed;
+    if (currentModelId) setPerModelOverride(currentModelId, patch);
+  }
 
   async function save() {
     if (!currentModelId) {
@@ -180,6 +190,8 @@
         repeat_penalty: repeatPenalty,
         presence_penalty: presencePenalty,
         frequency_penalty: frequencyPenalty,
+        thinking: thinkingLevel || undefined,
+        thinking_speed: thinkingSpeed || undefined,
         system_prompt: sysPrompt.trim() || undefined,
         context_length: contextLength,
         eval_batch_size: evalBatchSize,
@@ -280,6 +292,8 @@
       repeat_penalty: repeatPenalty,
       presence_penalty: presencePenalty,
       frequency_penalty: frequencyPenalty,
+      thinking: thinkingLevel || undefined,
+      thinking_speed: thinkingSpeed || undefined,
       system_prompt: sysPrompt.trim() || undefined,
       context_length: contextLength,
       eval_batch_size: evalBatchSize,
@@ -311,6 +325,8 @@
       if (p.repeat_penalty != null) repeatPenalty = p.repeat_penalty;
       if (p.presence_penalty != null) presencePenalty = p.presence_penalty;
       if (p.frequency_penalty != null) frequencyPenalty = p.frequency_penalty;
+      if (p.thinking != null) thinkingLevel = p.thinking;
+      if (p.thinking_speed != null) thinkingSpeed = p.thinking_speed;
       if (p.system_prompt != null) sysPrompt = String(p.system_prompt);
       if (p.context_length != null) contextLength = p.context_length;
       if (p.eval_batch_size != null) evalBatchSize = p.eval_batch_size;
@@ -597,6 +613,14 @@
             <div class="flex justify-between text-[10px] mt-0.5" style="color: var(--ui-text-secondary);"><span>64</span><span>{LOCAL_MAX_TOKENS_UI_MAX}</span></div>
           </div>
           <div class="param-row">
+            <ThinkingControls
+              modelId={currentModelId}
+              thinking={thinkingLevel}
+              speed={thinkingSpeed}
+              onChange={onThinkingChange}
+            />
+          </div>
+          <div class="param-row">
             <div class="flex justify-between text-xs mb-0.5"><span>Context<InfoTooltip text="Context window in tokens. 0 / model max = the GGUF training length for this model. ATOM does not cap this at 32768."><span class="ml-0.5 w-3 h-3 rounded-full border inline-flex items-center justify-center text-[8px] cursor-help opacity-60 hover:opacity-100" style="border-color: var(--ui-border);">i</span></InfoTooltip></span><span class="font-mono">{contextLength > 0 ? contextLength : 'model max'}</span></div>
             <input
               type="range"
@@ -844,7 +868,7 @@
     <button
       type="button"
       class="w-full py-2 px-4 rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity flex items-center justify-center gap-2"
-      style="background-color: var(--ui-accent); color: white;"
+      style="background-color: var(--ui-action, var(--ui-accent)); color: var(--ui-action-ink, white);"
       onclick={save}
       disabled={loadApplying || !currentModelId}
       title="Save all settings for this model and load it with LM Studio">

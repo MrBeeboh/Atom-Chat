@@ -6,7 +6,9 @@ import {
   getModelTypeTag,
   inferCloudTypeTag,
   CLOUD_PROVIDERS,
+  resetStartupFundingCheckForTests,
 } from './cloudCatalog.js';
+import { resetProviderFundingSession } from './providerFunding.js';
 import { mergeServerAndDiskModels } from './api.js';
 
 describe('parseOpenAIModelsList', () => {
@@ -74,6 +76,36 @@ describe('fetchCloudModels', () => {
       globalThis.fetch = origFetch;
       CLOUD_PROVIDERS.grok.getKey = origGetKey;
       invalidateCloudModelCache();
+      resetStartupFundingCheckForTests();
+      resetProviderFundingSession();
+    }
+  });
+
+  it('omits a provider whose models request is unauthorized', async () => {
+    const { fetchCloudModels, invalidateCloudModelCache } = await import('./cloudCatalog.js');
+    invalidateCloudModelCache();
+    resetStartupFundingCheckForTests();
+    resetProviderFundingSession();
+    const origGetKey = CLOUD_PROVIDERS.cerebras.getKey;
+    CLOUD_PROVIDERS.cerebras.getKey = () => 'cb-test';
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      const href = String(url);
+      const status = href.includes('cerebras') ? 401 : 200;
+      return new Response(JSON.stringify({ data: [{ id: 'llama3.1-8b' }] }), {
+        status,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+    try {
+      const list = await fetchCloudModels();
+      expect(list.some((m) => m.id.startsWith('cerebras:'))).toBe(false);
+    } finally {
+      globalThis.fetch = origFetch;
+      CLOUD_PROVIDERS.cerebras.getKey = origGetKey;
+      invalidateCloudModelCache();
+      resetStartupFundingCheckForTests();
+      resetProviderFundingSession();
     }
   });
 });
@@ -84,6 +116,12 @@ describe('CLOUD_PROVIDERS fallbacks', () => {
     expect(CLOUD_PROVIDERS.deepseek.fallbackModels).toContain('deepseek-v4-pro');
     expect(CLOUD_PROVIDERS.grok.fallbackModels).toContain('grok-4.6');
     expect(CLOUD_PROVIDERS.grok.fallbackModels).toContain('grok-build-0.1');
+  });
+
+  it('includes Nous Portal fallbacks', () => {
+    expect(CLOUD_PROVIDERS.nous.name).toBe('Nous');
+    expect(CLOUD_PROVIDERS.nous.fallbackModels).toContain('stealth/ox-alpha');
+    expect(CLOUD_PROVIDERS.nous.fallbackModels).toContain('z-ai/glm-5.2');
   });
 });
 
@@ -102,5 +140,14 @@ describe('mergeServerAndDiskModels', () => {
     expect(ids).not.toContain('/home/x/.lmstudio/models/loaded.gguf');
     expect(ids).toContain('/home/x/models/other.gguf');
     expect(ids).toContain('/home/x/Downloads/other.gguf');
+  });
+
+  it('keeps capability flags that came from the server row', () => {
+    const merged = mergeServerAndDiskModels(
+      [{ id: 'vl.gguf', caps: { vision: true } }],
+      [{ id: '/home/x/models/other.gguf', caps: { tools: true } }],
+    );
+    expect(merged.find((m) => m.id === 'vl.gguf').caps.vision).toBe(true);
+    expect(merged.find((m) => m.id === '/home/x/models/other.gguf').caps.tools).toBe(true);
   });
 });

@@ -22,4 +22,14 @@ describe('groupModelsForSelector', () => {
     expect(bucketForModelId('grok:grok-4.6')).toBe('cloud:grok');
     expect(bucketForModelId('deepseek:deepseek-v4-flash')).toBe('cloud:deepseek');
   });
+
+  it('puts Nous ahead of other cloud groups', () => {
+    const g = groupModelsForSelector([
+      { id: 'deepseek:deepseek-chat' },
+      { id: 'nous:stealth/ox-alpha' },
+    ]);
+    const buckets = g.map((x) => x.bucket);
+    expect(buckets.indexOf('cloud:nous')).toBeLessThan(buckets.indexOf('cloud:deepseek'));
+    expect(g.find((x) => x.bucket === 'cloud:nous')?.title).toBe('Nous');
+  });
 });

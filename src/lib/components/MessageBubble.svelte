@@ -7,6 +7,7 @@
   import AuthVideo from "$lib/components/AuthVideo.svelte";
   import { pinnedContent, deepinfraApiKey, isStreaming } from "$lib/stores.js";
   import { modelDisplayName } from "$lib/api.js";
+  import { assistantShowsModelName } from "$lib/providerFunding.js";
   import ThinkingAtom from "$lib/components/ThinkingAtom.svelte";
 
   const modelLabel = $derived(
@@ -42,6 +43,8 @@
     onRegenerate = null,
     onEditResend = null,
     onDelete = null,
+    /** Arena anonymous mode: hide the model name label only. Answer stays. */
+    hideModelName = false,
   } = $props();
   const isUser = $derived(message.role === "user");
   const isAssistant = $derived(message.role === "assistant");
@@ -196,7 +199,7 @@
               <button
                 type="button"
                 class="text-[11px] px-2.5 py-1 rounded font-medium"
-                style="background: var(--ui-accent); color: var(--ui-bg-main);"
+                style="background: var(--ui-action, var(--ui-accent)); color: var(--ui-action-ink, var(--ui-bg-main));"
                 onclick={saveEdit}>Send</button
               >
             </div>
@@ -238,7 +241,7 @@
         </div>
       {/if}
     {:else if isAssistant}
-      {#if modelLabel}
+      {#if assistantShowsModelName(modelLabel, hideModelName)}
         <div
           class="flex items-center gap-1.5 mb-2 pb-2"
           style="border-bottom: 1px solid color-mix(in srgb, var(--ui-border) 70%, transparent);"
@@ -251,14 +254,14 @@
         </div>
       {/if}
       {#if message.toolStatus}
-        <div class="flex items-center gap-3 py-2" aria-label="Using Documents">
+        <div class="flex items-center gap-3 py-2" aria-label="Using tools">
           <ThinkingAtom size={32} />
-          <span class="thinking-label text-xs font-medium" style="color: var(--ui-text-secondary);">Documents: {message.toolStatus}</span>
+          <span class="thinking-label text-xs font-medium" style="color: var(--ui-text-secondary);">Tools: {message.toolStatus}</span>
         </div>
       {:else if !content && $isStreaming}
-        <div class="flex items-center gap-3 py-2" aria-label="Thinking">
+        <div class="flex items-center gap-3 py-2" aria-label="Waiting for first token">
           <ThinkingAtom size={32} />
-          <span class="thinking-label text-xs font-medium" style="color: var(--ui-text-secondary);">Reasoning…</span>
+          <span class="thinking-label text-xs font-medium" style="color: var(--ui-text-secondary);">Waiting for first token…</span>
         </div>
       {:else if !content}
         <div class="flex items-center gap-3 py-2" aria-label="Waiting">

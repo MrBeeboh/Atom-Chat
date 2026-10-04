@@ -19,10 +19,18 @@ import {
   stripThinkBlocks,
   detectLoop,
   contentToText,
+  responseNeedsVision,
+  slotsNeedVision,
+  extractSvgMarkup,
   arenaStandingLabel,
   buildJudgePrompt,
   addScoreRound,
   computeTotals,
+  extractContestSvg,
+  extractOpenScadSource,
+  readArenaColumnVisible,
+  writeArenaColumnVisible,
+  contestCategoryTotals,
   migrateOldQuestionsAndAnswers,
   pickJudgeModel,
   isCloudModel,
@@ -501,6 +509,30 @@ describe('contentToText', () => {
   });
 });
 
+describe('responseNeedsVision', () => {
+  it('is false for plain text', () => {
+    expect(responseNeedsVision('4')).toBe(false);
+  });
+
+  it('is true for an image part or an svg reply', () => {
+    expect(responseNeedsVision([{ type: 'image_url', image_url: { url: 'data:image/png;base64,xx' } }])).toBe(true);
+    expect(responseNeedsVision('<svg viewBox="0 0 10 10"></svg>')).toBe(true);
+  });
+
+  it('detects a picture round from the last assistant reply', () => {
+    expect(slotsNeedVision([
+      { slot: 'B', msgs: [{ role: 'assistant', content: 'just text' }] },
+    ])).toBe(false);
+    expect(slotsNeedVision([
+      { slot: 'B', msgs: [{ role: 'assistant', content: '<svg></svg>' }] },
+    ])).toBe(true);
+  });
+
+  it('pulls the svg element out of a fenced reply', () => {
+    expect(extractSvgMarkup('```svg\n<svg></svg>\n```')).toBe('<svg></svg>');
+  });
+});
+
 // ---------- arenaStandingLabel ----------
 describe('arenaStandingLabel', () => {
   it('returns Leader for highest score (no tie)', () => {
@@ -573,6 +605,22 @@ describe('buildJudgePrompt', () => {
     expect(content).toContain('same result');
   });
 
+  it('attaches a picture when the round is visual', () => {
+    const { messages } = buildJudgePrompt({
+      slotsWithResponses: baseMsgs,
+      answerKeyTrimmed: '',
+      judgeWebContext: '',
+      promptText: 'Draw a stop sign',
+      judgeFeedback: '',
+      judgeInstructions: '',
+      picturesBySlot: { B: ['data:image/png;base64,abc'] },
+    });
+    const user = messages.find((m) => m.role === 'user');
+    expect(Array.isArray(user.content)).toBe(true);
+    expect(user.content.some((p) => p.type === 'image_url' && p.image_url.url.includes('abc'))).toBe(true);
+    expect(user.content.some((p) => p.type === 'text' && p.text.includes('Picture for Model B'))).toBe(true);
+  });
+
   it('builds messages without answer key', () => {
     const { messages } = buildJudgePrompt({
       slotsWithResponses: baseMsgs,
@@ -634,6 +682,31 @@ describe('score history', () => {
     expect(updated).toHaveLength(1);
     expect(updated[0].scores).toEqual({ B: 8, C: 6 });
     expect(updated[0].questionText).toBe('Test Q');
+  });
+
+  it('addScoreRound replaces the same questionIndex instead of doubling', () => {
+    const once = addScoreRound([], 0, 'Test Q', { A: 8, B: 6 });
+    const twice = addScoreRound(once, 0, 'Test Q', { A: 8, B: 6 });
+    expect(twice).toHaveLength(1);
+    expect(computeTotals(twice)).toEqual({ A: 8, B: 6, C: 0, D: 0 });
+  });
+
+  it('sums a contest across questions and keeps named categories', () => {
+    const history = addScoreRound(
+      addScoreRound([], 0, 'Q1', { A: 8, B: 5 }, 'Physics'),
+      1,
+      'Q2',
+      { A: 6, B: 9 },
+      'History',
+    );
+    expect(computeTotals(history)).toEqual({ A: 14, B: 14, C: 0, D: 0 });
+    const roll = contestCategoryTotals(history);
+    expect(roll.categories).toEqual(['Physics', 'History']);
+    expect(roll.bySlot.A).toEqual({ Physics: 8, History: 6 });
+    expect(roll.bySlot.B.History).toBe(9);
+    const replaced = addScoreRound(history, 1, 'Q2', { A: 7, B: 9 }, 'History');
+    expect(computeTotals(replaced).A).toBe(15);
+    expect(replaced).toHaveLength(2);
   });
 });
 
@@ -736,6 +809,29 @@ describe('pickJudgeModel', () => {
     expect(isCloudModel(result.id)).toBe(true);
     expect(result.id.startsWith('deepseek:') || result.id.startsWith('grok:')).toBe(true);
   });
+
+  it('rejects a text scoring model when the round is a picture', () => {
+    const result = pickJudgeModel({
+      userChoice: 'qwen3-32b-instruct',
+      contestantIds: [],
+      availableModels: allModels,
+      requireVision: true,
+    });
+    expect(result.id).not.toBe('qwen3-32b-instruct');
+    expect(result.id).toBe('qwen3-vl-4b-instruct');
+    expect(result.fallback).toBe(true);
+  });
+
+  it('errors when no vision model can judge a picture', () => {
+    const result = pickJudgeModel({
+      userChoice: '',
+      contestantIds: [],
+      availableModels: [{ id: 'qwen3-32b-instruct' }],
+      requireVision: true,
+    });
+    expect(result.id).toBeNull();
+    expect(result.error).toMatch(/picture/i);
+  });
 });
 
 describe('isCloudModel', () => {
@@ -807,11 +903,44 @@ describe('parseGeneratedQuestionSet', () => {
     expect(r3?.questions).toEqual(['What is 2+2?']);
     expect(r3?.answers).toEqual(['']);
   });
+  it('accepts trailing commas and capital Question/Answer keys', () => {
+    const r1 = parseGeneratedQuestionSet('[{"question":"Q1","answer":"A1"},]');
+    expect(r1?.questions).toEqual(['Q1']);
+    expect(r1?.answers).toEqual(['A1']);
+    const r2 = parseGeneratedQuestionSet('[{"Question":"Q2","Answer":"A2"}]');
+    expect(r2?.questions).toEqual(['Q2']);
+    expect(r2?.answers).toEqual(['A2']);
+  });
+  it('accepts JSONL objects and the Arena UI preview shape', () => {
+    const r1 = parseGeneratedQuestionSet(
+      '{"question":"Q1","answer":"A1"}\n{"question":"Q2","answer":"A2"}',
+    );
+    expect(r1?.questions).toEqual(['Q1', 'Q2']);
+    const r2 = parseGeneratedQuestionSet(
+      '[ {"question":"In quantum mechanics, what is superposition?","answer":"A state of multiple possibilities"} ]',
+    );
+    expect(r2?.questions[0]).toMatch(/superposition/i);
+    expect(r2?.answers[0]).toMatch(/possibilities/i);
+  });
+  it('salvages complete objects when the wrapping array never closes', () => {
+    const raw =
+      '[ {"question":"In quantum mechanics, what is superposition?","answer":"A state"},{"question":"Cut off';
+    const r = parseGeneratedQuestionSet(raw);
+    expect(r?.questions).toEqual(['In quantum mechanics, what is superposition?']);
+    expect(r?.answers).toEqual(['A state']);
+  });
   it('salvages an array truncated at the token limit', () => {
     const raw = '[{"question":"Q1","answer":"A1"},{"question":"Q2","answer":"A2"},{"question":"Q3","ans';
     const r = parseGeneratedQuestionSet(raw);
     expect(r?.questions).toEqual(['Q1', 'Q2']);
     expect(r?.answers).toEqual(['A1', 'A2']);
+  });
+  it('strips unclosed think then parses JSON', () => {
+    const raw =
+      '<think>planning the quiz [not json\n[{"question":"Capital of France?","answer":"Paris"}]';
+    const r = parseGeneratedQuestionSet(raw);
+    expect(r?.questions).toEqual(['Capital of France?']);
+    expect(r?.answers).toEqual(['Paris']);
   });
   it('returns null when no questions can be recovered', () => {
     expect(parseGeneratedQuestionSet('No JSON here, sorry.')).toBeNull();
@@ -897,5 +1026,65 @@ describe('buildJudgeScoreExtractionPrompt', () => {
     const m = buildJudgeScoreExtractionPrompt('foo', true, ['B', 'C']);
     expect(m[1].content).toContain('Response 1 = Model B');
     expect(m[1].content).toContain('foo');
+  });
+});
+
+
+describe('extractContestSvg', () => {
+  it('reads an svg from a markdown fence', () => {
+    const raw = '```svg\n<svg viewBox="0 0 10 10"><rect width="10" height="10"/></svg>\n```';
+    const svg = extractContestSvg(raw);
+    expect(svg).toContain('<svg');
+    expect(svg).toContain('<rect');
+    expect(svg).toContain('</svg>');
+  });
+
+  it('strips scripts, handlers, and external hrefs', () => {
+    const raw = '<svg onload="alert(1)"><script>alert(1)</script><image href="https://evil.example/x.png"/><rect/></svg>';
+    const svg = extractContestSvg(raw);
+    expect(svg).not.toContain('<script');
+    expect(svg).not.toContain('onload');
+    expect(svg).not.toContain('https://evil');
+    expect(svg).toContain('<rect');
+  });
+
+  it('returns null when the answer has no svg', () => {
+    expect(extractContestSvg('Final Answer: 4')).toBeNull();
+    expect(extractContestSvg('')).toBeNull();
+  });
+});
+
+
+describe('extractOpenScadSource', () => {
+  it('reads a fenced openscad block', () => {
+    const raw = 'Here:\n```openscad\ncube([30,30,30], center=true);\n```\n';
+    expect(extractOpenScadSource(raw)).toBe('cube([30,30,30], center=true);');
+  });
+
+  it('reads an unfenced cube and cylinder script', () => {
+    const raw = 'cube([30,30,30], center=true);\ncylinder(h=40, r=5, center=true);\n';
+    expect(extractOpenScadSource(raw)).toContain('cylinder(h=40, r=5, center=true);');
+  });
+
+  it('returns null for ordinary text', () => {
+    expect(extractOpenScadSource('Final Answer: 4')).toBeNull();
+    expect(extractOpenScadSource('use a cube in the answer')).toBeNull();
+    expect(extractOpenScadSource('')).toBeNull();
+  });
+});
+
+describe('arena column visibility', () => {
+  it('treats a missing key as visible and persists a hide', () => {
+    const store = {};
+    globalThis.localStorage = {
+      getItem: (k) => (Object.prototype.hasOwnProperty.call(store, k) ? store[k] : null),
+      setItem: (k, v) => { store[k] = String(v); },
+    };
+    expect(readArenaColumnVisible('B')).toBe(true);
+    writeArenaColumnVisible('B', false);
+    expect(store.arenaColumnVisible).toContain('"B":false');
+    expect(readArenaColumnVisible('B')).toBe(false);
+    expect(readArenaColumnVisible('A')).toBe(true);
+    delete globalThis.localStorage;
   });
 });

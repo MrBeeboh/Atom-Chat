@@ -383,9 +383,9 @@
     cursor: not-allowed;
   }
   .judgment-btn-accent {
-    background: var(--ui-accent);
-    color: var(--ui-bg-main);
-    border-color: var(--ui-accent);
+    background: var(--ui-action, var(--ui-accent));
+    color: var(--ui-action-ink, var(--ui-bg-main));
+    border-color: var(--ui-action, var(--ui-accent));
   }
   .judgment-btn-accent:hover:not(:disabled) {
     filter: brightness(1.1);

@@ -5,16 +5,17 @@ export function generateId() {
 
 /**
  * Resize/compress image data URLs for vision APIs (avoids LM Studio 400 on large base64).
- * Always re-encodes to JPEG for smaller payload; max dimension 768px for non-Qwen models.
+ * Always re-encodes to JPEG for smaller payload; max dimension 768px by default.
  * @param {string} dataUrl
+ * @param {{ maxDim?: number, jpegQuality?: number }} [opts]
  * @returns {Promise<string>}
  */
-export function resizeImageForVision(dataUrl) {
+export function resizeImageForVision(dataUrl, opts = {}) {
   if (!dataUrl || typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image')) {
     return Promise.resolve(dataUrl);
   }
-  const maxDim = 768;
-  const jpegQuality = 0.8;
+  const maxDim = opts.maxDim ?? 768;
+  const jpegQuality = opts.jpegQuality ?? 0.8;
   return new Promise((resolve) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
@@ -55,27 +56,34 @@ export function resizeImageForVision(dataUrl) {
 const VISION_SKIP_RESIZE_BELOW_BYTES = 1 * 1024 * 1024; // 1 MB
 
 /**
- * Resize multiple image data URLs for vision API. Preserves order.
- * Skips resize entirely if total base64 payload is already under 1 MB.
- * @param {string[]} dataUrls
- * @returns {Promise<string[]>}
- */
-export async function resizeImageDataUrlsForVision(dataUrls) {
-  if (!Array.isArray(dataUrls) || dataUrls.length === 0) return dataUrls;
-  const totalBytes = dataUrls.reduce((sum, url) => sum + (typeof url === 'string' ? Math.floor((url.length * 3) / 4) : 0), 0);
-  if (totalBytes <= VISION_SKIP_RESIZE_BELOW_BYTES) return dataUrls;
-  return Promise.all(dataUrls.map(resizeImageForVision));
-}
-
-/**
  * True if this model is Qwen-VL 4B or 8B — those work with full-size images; skip resize to preserve quality.
+ * Flash-Next always resizes: a phone photo becomes thousands of vision tokens and can hang the B70s.
  * @param {string} [modelId]
  * @returns {boolean}
  */
 export function shouldSkipImageResizeForVision(modelId) {
   if (!modelId || typeof modelId !== 'string') return false;
   const lower = modelId.toLowerCase();
+  if (lower.includes('flash-next')) return false;
   return /qwen.*vl.*(4b|8b)|(4b|8b).*qwen.*vl/.test(lower);
+}
+
+/**
+ * Resize multiple image data URLs for vision API. Preserves order.
+ * Flash-Next always re-encodes to ≤512px. Other models skip under 1 MB.
+ * @param {string[]} dataUrls
+ * @param {string} [modelId]
+ * @returns {Promise<string[]>}
+ */
+export async function resizeImageDataUrlsForVision(dataUrls, modelId) {
+  if (!Array.isArray(dataUrls) || dataUrls.length === 0) return dataUrls;
+  const flashNext = typeof modelId === 'string' && modelId.toLowerCase().includes('flash-next');
+  if (flashNext) {
+    return Promise.all(dataUrls.map((url) => resizeImageForVision(url, { maxDim: 512, jpegQuality: 0.72 })));
+  }
+  const totalBytes = dataUrls.reduce((sum, url) => sum + (typeof url === 'string' ? Math.floor((url.length * 3) / 4) : 0), 0);
+  if (totalBytes <= VISION_SKIP_RESIZE_BELOW_BYTES) return dataUrls;
+  return Promise.all(dataUrls.map(resizeImageForVision));
 }
 
 /**

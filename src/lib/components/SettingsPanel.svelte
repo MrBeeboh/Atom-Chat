@@ -2,7 +2,7 @@
   import { fly } from 'svelte/transition';
   import { backOut, quintOut } from 'svelte/easing';
   import { onMount } from 'svelte';
-  import { globalDefault, updateGlobalDefault, selectedModelId, models, presetDefaultModels, lmStudioBaseUrl, voiceServerUrl, micDeviceId, lmStudioUnloadHelperUrl, localModelDirs, deepSeekApiKey, grokApiKey, cerebrasApiKey, togetherApiKey, deepinfraApiKey, braveApiKey, settingsFocus, ttsEngine, ttsKokoroVoice, ttsVoiceUri, ttsRate, ttsVolume, confirm } from '$lib/stores.js';
+  import { globalDefault, updateGlobalDefault, selectedModelId, models, presetDefaultModels, lmStudioBaseUrl, voiceServerUrl, micDeviceId, lmStudioUnloadHelperUrl, localModelDirs, deepSeekApiKey, grokApiKey, cerebrasApiKey, nousApiKey, togetherApiKey, deepinfraApiKey, braveApiKey, settingsFocus, ttsEngine, ttsKokoroVoice, ttsVoiceUri, ttsRate, ttsVolume, confirm } from '$lib/stores.js';
   import { refreshConnectionAndModels } from '$lib/connectionSetup.js';
   import { syncBraveKeyToProxy } from '$lib/duckduckgo.js';
   import { modelSelectorPrimaryLine, invalidateCloudModelCache } from '$lib/api.js';
@@ -304,7 +304,7 @@
       <details bind:this={apiDetailsEl} class="rounded-lg overflow-hidden group" style="border: 1px solid var(--ui-border);">
         <summary class="px-4 py-3 cursor-pointer list-none text-sm font-medium transition-colors" style="background-color: var(--ui-bg-sidebar); border-bottom: 1px solid var(--ui-border); color: var(--ui-text-primary);">API keys</summary>
         <div class="px-4 py-3 space-y-4" style="background-color: var(--ui-bg-main);">
-          <p class="text-xs" style="color: var(--ui-text-secondary);">Keys live in the browser for this site (host + port). With a key set, ATOM asks that provider for its current model list (Grok, DeepSeek, Cerebras, DeepInfra) instead of a short built-in catalog. You can also put keys in <code style="background: color-mix(in srgb, var(--ui-border) 40%, transparent); padding: 0 4px; border-radius: 3px;">.env.local</code> as <code style="background: color-mix(in srgb, var(--ui-border) 40%, transparent); padding: 0 4px; border-radius: 3px;">VITE_*</code> (see <code style="background: color-mix(in srgb, var(--ui-border) 40%, transparent); padding: 0 4px; border-radius: 3px;">.env.example</code>); they apply when storage is empty and copy into the browser on load. Restart <code style="background: color-mix(in srgb, var(--ui-border) 40%, transparent); padding: 0 4px; border-radius: 3px;">npm run dev</code> after editing env.</p>
+          <p class="text-xs" style="color: var(--ui-text-secondary);">Keys live in the browser for this site (host + port). With a key set, ATOM asks that provider for its current model list (Nous, Grok, DeepSeek, Cerebras, DeepInfra) instead of a short built-in catalog. You can also put keys in <code style="background: color-mix(in srgb, var(--ui-border) 40%, transparent); padding: 0 4px; border-radius: 3px;">.env.local</code> as <code style="background: color-mix(in srgb, var(--ui-border) 40%, transparent); padding: 0 4px; border-radius: 3px;">VITE_*</code> (see <code style="background: color-mix(in srgb, var(--ui-border) 40%, transparent); padding: 0 4px; border-radius: 3px;">.env.example</code>); they apply when storage is empty and copy into the browser on load. Restart <code style="background: color-mix(in srgb, var(--ui-border) 40%, transparent); padding: 0 4px; border-radius: 3px;">npm run dev</code> after editing env.</p>
           <div>
             <label for="settings-deepseek-key" class="block text-xs font-medium mb-1" style="color: var(--ui-text-secondary);">DeepSeek API key</label>
             <input id="settings-deepseek-key" type="password" autocomplete="off" bind:value={$deepSeekApiKey} onblur={onApiKeyBlur} placeholder="API key (paste without extra spaces)" class="w-full rounded-lg px-3 py-2 text-sm font-mono" style="border: 1px solid var(--ui-border); background-color: var(--ui-input-bg); color: var(--ui-text-primary);" />
@@ -319,6 +319,11 @@
             <label for="settings-cerebras-key" class="block text-xs font-medium mb-1" style="color: var(--ui-text-secondary);">Cerebras API key</label>
             <input id="settings-cerebras-key" type="password" autocomplete="off" bind:value={$cerebrasApiKey} onblur={onApiKeyBlur} placeholder="csk-…" class="w-full rounded-lg px-3 py-2 text-sm font-mono" style="border: 1px solid var(--ui-border); background-color: var(--ui-input-bg); color: var(--ui-text-primary);" />
             <p class="text-xs mt-1" style="color: var(--ui-text-secondary);"><a href="https://cloud.cerebras.ai" target="_blank" rel="noopener noreferrer" style="color: var(--ui-accent);">cloud.cerebras.ai</a></p>
+          </div>
+          <div>
+            <label for="settings-nous-key" class="block text-xs font-medium mb-1" style="color: var(--ui-text-secondary);">Nous Portal API key</label>
+            <input id="settings-nous-key" type="password" autocomplete="off" bind:value={$nousApiKey} onblur={onApiKeyBlur} placeholder="sk-… or Portal token" class="w-full rounded-lg px-3 py-2 text-sm font-mono" style="border: 1px solid var(--ui-border); background-color: var(--ui-input-bg); color: var(--ui-text-primary);" />
+            <p class="text-xs mt-1" style="color: var(--ui-text-secondary);"><a href="https://portal.nousresearch.com" target="_blank" rel="noopener noreferrer" style="color: var(--ui-accent);">portal.nousresearch.com</a></p>
           </div>
           <div>
             <label for="settings-brave-key" class="block text-xs font-medium mb-1" style="color: var(--ui-text-secondary);">Brave Search API key (web search)</label>
@@ -421,7 +426,7 @@
       <button type="button" class="px-3 py-1.5 text-sm rounded-lg transition-colors" style="border: 1px solid var(--ui-border); color: var(--ui-text-secondary);" onmouseenter={(e) => e.currentTarget.style.background = 'color-mix(in srgb, var(--ui-border) 40%, transparent)'} onmouseleave={(e) => e.currentTarget.style.background = 'transparent'} onclick={resetToDefaults}>Reset to defaults</button>
       <div class="flex gap-2">
         <button type="button" class="px-4 py-2 rounded-lg text-sm transition-colors" style="border: 1px solid var(--ui-border); color: var(--ui-text-secondary);" onmouseenter={(e) => e.currentTarget.style.background = 'color-mix(in srgb, var(--ui-border) 40%, transparent)'} onmouseleave={(e) => e.currentTarget.style.background = 'transparent'} onclick={() => onclose?.()}>Cancel</button>
-        <button type="button" class="px-4 py-2 rounded-lg text-sm font-medium transition-opacity hover:opacity-90" style="background-color: var(--ui-accent); color: var(--ui-bg-main);" onclick={save}>Save</button>
+        <button type="button" class="px-4 py-2 rounded-lg text-sm font-medium transition-opacity hover:opacity-90" style="background-color: var(--ui-action, var(--ui-accent)); color: var(--ui-action-ink, var(--ui-bg-main));" onclick={save}>Save</button>
       </div>
     </div>
   </div>

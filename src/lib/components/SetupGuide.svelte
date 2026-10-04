@@ -66,7 +66,7 @@
       <button
         type="button"
         class="shrink-0 px-3 py-2 rounded-lg text-xs font-semibold transition-opacity hover:opacity-90 disabled:opacity-50"
-        style="background: var(--ui-accent); color: var(--ui-bg-main);"
+        style="background: var(--ui-action, var(--ui-accent)); color: var(--ui-action-ink, var(--ui-bg-main));"
         disabled={refreshing || status === 'checking'}
         onclick={onRetry}
       >
@@ -110,7 +110,7 @@
             {:else if $lmStudioConnected}
               In LM Studio, load a model into memory (Local Server tab).
             {:else}
-              Load a model in LM Studio, or add DeepSeek / Grok / Cerebras keys in Settings.
+              Load a model in LM Studio, or add Nous / DeepSeek / Grok / Cerebras keys in Settings.
             {/if}
           </p>
         </div>

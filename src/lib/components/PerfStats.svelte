@@ -3,7 +3,13 @@
   const completion = $derived(stats?.completion_tokens ?? Math.max(1, Math.ceil(contentLength / 4)));
   const elapsedMs = $derived(stats?.elapsed_ms ?? propElapsedMs ?? 0);
   const elapsedSec = $derived(elapsedMs / 1000);
-  const tokensPerSec = $derived(elapsedSec > 0 ? (completion / elapsedSec).toFixed(1) : '—');
+  const tokensPerSec = $derived(
+    stats?.tok_per_sec > 0
+      ? Number(stats.tok_per_sec).toFixed(1)
+      : elapsedSec > 0
+        ? (completion / elapsedSec).toFixed(1)
+        : '—',
+  );
   const promptTokens = $derived(stats?.prompt_tokens ?? 0);
   const isEstimated = $derived(stats?.estimated ?? !stats?.completion_tokens);
 </script>

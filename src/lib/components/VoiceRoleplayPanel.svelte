@@ -2,7 +2,7 @@
   import { grokApiKey, settings, settingsOpen, settingsFocus } from '$lib/stores.js';
   import { addMessage } from '$lib/db.js';
   import { GrokVoiceSession, XAI_VOICES, DEFAULT_ROLEPLAY_INSTRUCTIONS } from '$lib/grokVoice.js';
-  import { stopTts } from '$lib/tts.js';
+  import { stopTts, unlockAudioPlayback, ensureAudiblePlaybackVolume } from '$lib/tts.js';
   import { voiceRoleplaySessionActive, ttsActiveMessageId, ttsReadAloudEnabled } from '$lib/stores.js';
   import ThinkingAtom from '$lib/components/ThinkingAtom.svelte';
 
@@ -101,7 +101,6 @@
         state = st;
         if (st === 'listening' || st === 'speaking' || st === 'connected') {
           voiceRoleplaySessionActive.set(true);
-          error = null;
         } else if (st === 'connecting') {
           error = null;
         } else if (st === 'disconnected' || st === 'error') {
@@ -130,6 +129,12 @@
       onAudioChunks: (n) => {
         audioChunks = n;
       },
+      onTurnDone: ({ audioChunks: n }) => {
+        audioChunks = n;
+        if (n === 0) {
+          error = 'Eve replied in text but no audio arrived. End the session, check volume, then start again. Use headphones if the mic is echoing.';
+        }
+      },
       onError: (err) => {
         error = err instanceof Error ? err.message : String(err);
         state = 'error';
@@ -138,6 +143,8 @@
 
     session = s;
     stopTts();
+    unlockAudioPlayback();
+    ensureAudiblePlaybackVolume(0.75);
     ttsActiveMessageId.set(null);
     ttsReadAloudEnabled.set(false);
     try {
@@ -353,7 +360,7 @@
           <button
             type="button"
             class="flex-1 rounded-xl py-2.5 text-sm font-semibold disabled:opacity-50"
-            style="background: var(--ui-accent); color: var(--ui-bg-main);"
+            style="background: var(--ui-action, var(--ui-accent)); color: var(--ui-action-ink, var(--ui-bg-main));"
             disabled={!hasKey}
             onclick={startSession}
           >

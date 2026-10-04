@@ -5,6 +5,8 @@
  * Extracted from DashboardArena.svelte for testability and reuse.
  */
 
+import { getModelCapabilities } from '$lib/modelCapabilities.js';
+
 // ---------- System prompt templates ----------
 
 /**
@@ -14,6 +16,82 @@
  */
 export const ARENA_CONTESTANT_SYSTEM_PROMPT =
   'Answer the question directly and concisely. Follow any instructions or constraints given. Do not discuss how you would be evaluated. End your response with "Final Answer: " followed by your concise answer.';
+
+/** Extra user line when the arena SVG toggle is on. Not a drawing API. */
+export const ARENA_SVG_ASK =
+  'For this turn, draw the answer as one self-contained SVG. Output a single <svg>...</svg> element. Do not use script tags, event handlers, or external images. No markdown fence is required. A fenced svg block is also fine.';
+
+const COLUMN_VIS_KEY = 'arenaColumnVisible';
+
+/** Eye toggle. Missing means visible. */
+export function readArenaColumnVisible(slot) {
+  if (typeof localStorage === 'undefined') return true;
+  try {
+    const raw = localStorage.getItem(COLUMN_VIS_KEY);
+    if (!raw) return true;
+    const o = JSON.parse(raw);
+    return o?.[slot] !== false;
+  } catch {
+    return true;
+  }
+}
+
+export function writeArenaColumnVisible(slot, visible) {
+  if (typeof localStorage === 'undefined') return;
+  let o = {};
+  try {
+    o = JSON.parse(localStorage.getItem(COLUMN_VIS_KEY) || '{}') || {};
+  } catch {
+    o = {};
+  }
+  o[slot] = !!visible;
+  localStorage.setItem(COLUMN_VIS_KEY, JSON.stringify(o));
+}
+
+/**
+ * Pull one <svg> out of a contestant answer. Strips scripts, handlers, and external URLs.
+ * Returns null when the model did not send an svg. Does not invent one.
+ */
+export function extractContestSvg(raw) {
+  const text = String(raw || '');
+  const match = text.match(/<svg\b[^>]*>[\s\S]*?<\/svg>/i);
+  if (!match) return null;
+  let svg = match[0];
+  svg = svg.replace(/<script\b[\s\S]*?<\/script>/gi, '');
+  svg = svg.replace(/\son[a-z]+\s*=\s*(['"]).*?\1/gi, '');
+  svg = svg.replace(/\s(?:href|xlink:href)\s*=\s*(['"])\s*(?!#)[^'"]*\1/gi, '');
+  svg = svg.replace(/url\(\s*(['"]?)https?:[^)]+\)/gi, 'none');
+  if (!/<svg\b[^>]*>[\s\S]*<\/svg>/i.test(svg)) return null;
+  return svg;
+}
+
+
+const OPENSCAD_FENCE = /```(?:openscad|scad)\b[^\n]*\n([\s\S]*?)```/i;
+const OPENSCAD_CALL = /\b(?:cube|cylinder)\s*\(/;
+const OPENSCAD_LINE = /^(?:module|function|cube|cylinder|sphere|square|circle|polygon|polyhedron|translate|rotate|scale|union|difference|intersection|color|linear_extrude|rotate_extrude|hull|minkowski|offset|projection|render|children|mirror|multmatrix|resize|\$fn|\$fa|\$fs)\b|^[A-Za-z_][A-Za-z0-9_]*\s*=|^[{}]/;
+
+/**
+ * OpenSCAD from a contestant reply: a fenced openscad/scad block, or an unfenced
+ * cube/cylinder script. Returns null when the reply is not a model.
+ */
+export function extractOpenScadSource(raw) {
+  const text = String(raw || '').replace(/\r\n/g, '\n');
+  const fenced = text.match(OPENSCAD_FENCE);
+  if (fenced && fenced[1].trim()) return fenced[1].trim().slice(0, 48000);
+  if (!OPENSCAD_CALL.test(text)) return null;
+  const kept = [];
+  for (const line of text.split('\n')) {
+    const t = line.trim();
+    if (!t || t.startsWith('```')) continue;
+    const statement = /;\s*(?:\/\/.*)?$/.test(t) && /[()]/.test(t);
+    if (OPENSCAD_LINE.test(t) || statement) kept.push(t);
+    if (kept.length >= 400) break;
+  }
+  if (!kept.some((line) => OPENSCAD_CALL.test(line))) return null;
+  return kept.join('\n');
+}
+
+
 
 export const ARENA_SYSTEM_PROMPT_TEMPLATES = [
   { name: '—', prompt: '' },
@@ -326,8 +404,10 @@ export function migrateOldQuestionsAndAnswers(oldQuestions, oldAnswers) {
  */
 export function stripThinkBlocks(text) {
   if (!text || typeof text !== 'string') return text || '';
-  // Remove <think>...</think> blocks (greedy, handles multi-line)
-  return text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+  let out = text.replace(/<think>[\s\S]*?<\/think>/gi, '');
+  // Unclosed think (model hit max_tokens inside reasoning)
+  out = out.replace(/<think>[\s\S]*$/gi, '');
+  return out.trim();
 }
 
 /**
@@ -641,10 +721,14 @@ export function buildJudgeScoreExtractionPrompt(rawOutput, blind, responseOrder 
  * @returns {boolean}
  */
 export function detectLoop(content) {
-  if (content.length < 200) return false;
+  // Only the posted answer. Thinking often restates the same ending, which
+  // used to abort right as the final answer appeared.
+  const answer = stripThinkBlocks(content);
+  const text = (answer && answer.length >= 200) ? answer : '';
+  if (!text) return false;
   const tailLen = 80;
-  const tail = content.slice(-tailLen);
-  const beforeTail = content.slice(0, -tailLen);
+  const tail = text.slice(-tailLen);
+  const beforeTail = text.slice(0, -tailLen);
   if (beforeTail.length < tailLen * 2) return false;
   const count = (beforeTail.match(new RegExp(tail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || []).length;
   return count >= 2;
@@ -690,9 +774,14 @@ export function saveScoreHistory(history) {
  * @param {Record<string, number>} scores - e.g. { B: 7, C: 5 }
  * @returns {ScoreRound[]} updated history
  */
-export function addScoreRound(history, questionIndex, questionText, scores) {
+export function addScoreRound(history, questionIndex, questionText, scores, category) {
   const round = { questionIndex, questionText, scores: { ...scores }, timestamp: Date.now() };
-  const next = [...history, round];
+  const cat = typeof category === 'string' ? category.trim() : '';
+  if (cat) round.category = cat;
+  const list = Array.isArray(history) ? history : [];
+  const idx = list.findIndex((r) => r && r.questionIndex === questionIndex);
+  // Re-judging the same question replaces that round — do not append (totals would double).
+  const next = idx >= 0 ? list.map((r, i) => (i === idx ? round : r)) : [...list, round];
   saveScoreHistory(next);
   return next;
 }
@@ -704,12 +793,36 @@ export function addScoreRound(history, questionIndex, questionText, scores) {
  */
 export function computeTotals(history) {
   const totals = { A: 0, B: 0, C: 0, D: 0 };
-  for (const round of history) {
-    for (const [slot, score] of Object.entries(round.scores)) {
-      if (slot in totals) totals[slot] += score;
+  for (const round of history || []) {
+    for (const [slot, score] of Object.entries(round?.scores || {})) {
+      if (slot in totals && typeof score === 'number' && Number.isFinite(score)) totals[slot] += score;
     }
   }
   return totals;
+}
+
+/**
+ * Sum judge scores by the category already stored on each round.
+ * Rounds with no category still count in `totals` and are omitted from `categories`.
+ * @param {Array<{ category?: string, scores?: Record<string, number> }>} history
+ */
+export function contestCategoryTotals(history) {
+  const categories = [];
+  const seen = new Set();
+  const bySlot = { A: {}, B: {}, C: {}, D: {} };
+  for (const round of history || []) {
+    const cat = typeof round?.category === 'string' ? round.category.trim() : '';
+    if (!cat) continue;
+    if (!seen.has(cat)) {
+      seen.add(cat);
+      categories.push(cat);
+    }
+    for (const [slot, score] of Object.entries(round.scores || {})) {
+      if (!(slot in bySlot) || typeof score !== 'number' || !Number.isFinite(score)) continue;
+      bySlot[slot][cat] = (bySlot[slot][cat] || 0) + score;
+    }
+  }
+  return { categories, bySlot, totals: computeTotals(history) };
 }
 
 /**
@@ -733,6 +846,56 @@ export function contentToText(content) {
     return content.map((p) => (p?.type === 'text' ? p.text : '')).filter(Boolean).join('\n');
   }
   return '';
+}
+
+/** True when a contestant reply is a picture a text-only judge cannot see. */
+export function responseNeedsVision(content) {
+  const hasSvg = (text) => typeof text === 'string' && /<svg[\s>]/i.test(text);
+  if (typeof content === 'string') return hasSvg(content);
+  if (!Array.isArray(content)) return false;
+  return content.some((p) => {
+    if (!p || typeof p !== 'object') return false;
+    if (p.type === 'image_url' || p.image_url) return true;
+    return p.type === 'text' && hasSvg(p.text);
+  });
+}
+
+/** True when any contestant reply in this round is a picture. */
+export function slotsNeedVision(slotsWithResponses) {
+  return (slotsWithResponses || []).some(({ msgs }) => {
+    const last = [...(msgs || [])].reverse().find((m) => m?.role === 'assistant');
+    return !!(last && responseNeedsVision(last.content));
+  });
+}
+
+/** First self-contained SVG in a reply, or ''. */
+export function extractSvgMarkup(text) {
+  if (!text || typeof text !== 'string') return '';
+  const fenced = text.match(/```(?:svg|xml)?\s*([\s\S]*?<svg[\s\S]*?<\/svg>)\s*```/i);
+  if (fenced) return fenced[1].trim();
+  const raw = text.match(/<svg[\s\S]*?<\/svg>/i);
+  return raw ? raw[0].trim() : '';
+}
+
+function pictureNote(ordered) {
+  const any = (ordered || []).some((row) => row?.urls?.length);
+  if (!any) return null;
+  return 'PICTURES ARE ATTACHED below. Score what each picture shows. The source text is only a backup when a picture is missing.';
+}
+
+function userContentWithPictures(text, ordered) {
+  const note = pictureNote(ordered);
+  if (!note) return text;
+  const content = [{ type: 'text', text: `${text}\n${note}` }];
+  for (const row of ordered) {
+    const urls = row?.urls || [];
+    if (!urls.length) continue;
+    content.push({ type: 'text', text: row.label });
+    for (const url of urls) {
+      if (url) content.push({ type: 'image_url', image_url: { url } });
+    }
+  }
+  return content;
 }
 
 // ---------- Blind review (shuffle + anonymize) ----------
@@ -810,7 +973,7 @@ export function parseBlindJudgeScores(text, responseOrder) {
  * @param {number|null} [opts.numericPrecision] - when set (0-5), judge scores numeric answers to this many decimal places
  * @returns {{ messages: Array<{ role: string, content: string }> }}
  */
-export function buildJudgePrompt({ slotsWithResponses, answerKeyTrimmed, judgeWebContext, promptText, judgeFeedback, judgeInstructions, numericPrecision = null }) {
+export function buildJudgePrompt({ slotsWithResponses, answerKeyTrimmed, judgeWebContext, promptText, judgeFeedback, judgeInstructions, numericPrecision = null, picturesBySlot = null }) {
   const competingSlots = slotsWithResponses.map((s) => s.slot);
   const competingList = competingSlots.join(', ');
   const firstSlot = competingSlots[0] || 'A';
@@ -852,7 +1015,13 @@ export function buildJudgePrompt({ slotsWithResponses, answerKeyTrimmed, judgeWe
     const text = lastAssistant ? contentToText(lastAssistant.content) : '';
     parts.push(`--- MODEL ${slot} ---`, text.trim() || '(no response)', '');
   }
-  const userContent = parts.join('\n');
+  const userContent = userContentWithPictures(
+    parts.join('\n'),
+    slotsWithResponses.map(({ slot }) => ({
+      label: `Picture for Model ${slot}`,
+      urls: picturesBySlot?.[slot] || [],
+    })),
+  );
 
   const systemWithAnswerKey = answerKeyTrimmed
     ? `You are a judge. An ANSWER KEY is provided—use it as the reference for the correct result. A response is CORRECT if it is functionally equivalent to the key (same end result), not necessarily word-for-word. Use your judgment to equate different phrasings, formats, or explanations that yield the same result (e.g. "Max Planck", "Planck", or a truncated "Max P" when the key is Max Planck). Do NOT give a higher score for repetition, verbosity, or "matching format"—if two models give the same correct answer, they must receive the same score. Do NOT penalize concise or minimal phrasing. For math, same value or expression; for concepts, same meaning.\n\nCALIBRATION: Reserve 1/10 only for no response, completely wrong, or irrelevant answers. If a response expresses the same idea or condition as the answer key (even in different words or with different structure), score at least 6–10. Do NOT give 1/10 merely because the wording differs from the key. Same substantive answer = 8–10; partial or close = 5–7; wrong or missing = 1–3.\n\nScore exactly ${competingSlots.length} model(s): ${competingList}. Output exactly one line for each, in that order. No other models. No <think>, no chain-of-thought, no analysis. Start with "Model ${firstSlot}:".`
@@ -900,6 +1069,7 @@ export function buildJudgePromptBlind({
   judgeInstructions,
   shuffleRandom = Math.random,
   numericPrecision = null,
+  picturesBySlot = null,
 }) {
   const shuffled = shuffleArray(slotsWithResponses, shuffleRandom);
   const responseOrder = shuffled.map((s) => s.slot);
@@ -940,7 +1110,13 @@ export function buildJudgePromptBlind({
     const text = lastAssistantMsg ? contentToText(lastAssistantMsg.content) : '';
     parts.push(`--- Response ${i + 1} ---`, text.trim() || '(no response)', '');
   });
-  const userContent = parts.join('\n');
+  const userContent = userContentWithPictures(
+    parts.join('\n'),
+    shuffled.map(({ slot }, i) => ({
+      label: `Picture for Response ${i + 1}`,
+      urls: picturesBySlot?.[slot] || [],
+    })),
+  );
 
   const systemContent = answerKeyTrimmed
     ? `You are a judge. An ANSWER KEY is provided—use it as the reference for the correct result. Score each response 0-10 by whether it is functionally equivalent (same end result) to the key. Equate different phrasings or formats (e.g. "Max Planck", "Planck", truncated "Max P"). Do NOT give a higher score for repetition or verbosity; do NOT penalize concise phrasing. Same correct answer = same score.\n\nCALIBRATION: Reserve 1/10 only for no response or plainly wrong/irrelevant answers. If a response expresses the same idea as the key (even in different words), score at least 6–10. Do NOT give 1/10 for correct-but-different wording. Same substantive answer = 8–10; partial = 5–7; wrong/missing = 1–3. Consider: ${criteriaLine}. Output ONLY "Response 1: X/10 - reason" through "Response ${n}: X/10 - reason". No other text.`
@@ -970,7 +1146,7 @@ export function buildArenaQuestionGenerationPrompt({ categories = [], questionCo
       ? categories.map((c) => c.trim()).filter(Boolean).join(', ')
       : 'general knowledge';
   const systemContent =
-    'You are generating a set of quiz questions for an AI model competition. Output ONLY a valid JSON array. Each element must have exactly "question" and "answer" keys (strings). No markdown, no code fence, no explanation—only the raw JSON array.';
+    'You are generating a set of quiz questions. Output ONLY a valid JSON array. Each element must have exactly "question" and "answer" keys (strings). No markdown, no code fence, no <think>, no reasoning, no explanation — first character must be "[".';
   const difficultyInstructions = {
     1: 'Difficulty level 1 (easiest): Questions should be solvable by most capable models. Straightforward, widely known facts or simple reasoning.',
     2: 'Difficulty level 2: Moderately easy. Clear questions with well-established answers; may require a bit of reasoning or common knowledge.',
@@ -1005,16 +1181,39 @@ export function buildArenaQuestionGenerationPrompt({ categories = [], questionCo
  * @param {string} rawContent
  * @returns {{ questions: string[], answers: string[] } | null}
  */
+function itemQuestionText(item) {
+  if (typeof item === 'string') return item;
+  if (!item || typeof item !== 'object') return '';
+  const qRaw =
+    item.question ??
+    item.Question ??
+    item.q ??
+    item.text ??
+    item.prompt ??
+    item.prompt_text ??
+    item.title;
+  return qRaw != null ? String(qRaw).trim() : '';
+}
+
+function itemAnswerText(item) {
+  if (typeof item === 'string' || !item || typeof item !== 'object') return '';
+  const aRaw =
+    item.answer ??
+    item.Answer ??
+    item.a ??
+    item.correct_answer ??
+    item.correctAnswer ??
+    item.expected;
+  return aRaw != null ? String(aRaw).trim() : '';
+}
+
 function parseQuestionSetArray(arr) {
   if (!Array.isArray(arr) || arr.length === 0) return null;
   const questions = [];
   const answers = [];
   for (const item of arr) {
-    // Accept {question, answer} plus common variants the judge may emit despite instructions.
-    const qRaw = typeof item === 'string' ? item : item?.question ?? item?.q ?? item?.text;
-    const aRaw = typeof item === 'string' ? '' : item?.answer ?? item?.a ?? item?.correct_answer;
-    const q = qRaw != null ? String(qRaw).trim() : '';
-    const a = aRaw != null ? String(aRaw).trim() : '';
+    const q = itemQuestionText(item);
+    const a = itemAnswerText(item);
     if (q) {
       questions.push(q);
       answers.push(a);
@@ -1026,10 +1225,101 @@ function parseQuestionSetArray(arr) {
 /** Accept a parsed JSON value: array of items, or an object wrapping one ({ questions: [...] }). */
 function parseQuestionSetValue(value) {
   if (Array.isArray(value)) return parseQuestionSetArray(value);
-  if (value && typeof value === 'object' && Array.isArray(value.questions)) {
-    return parseQuestionSetArray(value.questions);
+  if (value && typeof value === 'object') {
+    if (Array.isArray(value.questions)) return parseQuestionSetArray(value.questions);
+    if (Array.isArray(value.items)) return parseQuestionSetArray(value.items);
+    if (Array.isArray(value.data)) return parseQuestionSetArray(value.data);
+    if (itemQuestionText(value)) return parseQuestionSetArray([value]);
   }
   return null;
+}
+
+/** Trailing commas, smart quotes, leftover markdown fences — common judge JSON damage. */
+export function softenJsonCandidate(s) {
+  if (!s || typeof s !== 'string') return s;
+  let t = s.replace(/^\uFEFF/, '');
+  t = t.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '');
+  t = t
+    .replace(/[\u201C\u201D\u201E\u201F]/g, '"')
+    .replace(/[\u2018\u2019]/g, "'");
+  t = t.replace(/,(\s*[}\]])/g, '$1');
+  return t.trim();
+}
+
+/**
+ * Balanced `{...}` objects in text (JSONL or array guts). Used when the wrapping `[` never closes.
+ * @param {string} text
+ * @param {number} [maxCandidates]
+ * @returns {string[]}
+ */
+export function extractJsonObjectSubstrings(text, maxCandidates = 40) {
+  if (!text || typeof text !== 'string') return [];
+  const out = [];
+  for (let start = 0; start < text.length && out.length < maxCandidates; start++) {
+    if (text[start] !== '{') continue;
+    let depth = 0;
+    let inString = false;
+    let escape = false;
+    let found = false;
+    for (let i = start; i < text.length; i++) {
+      const ch = text[i];
+      if (inString) {
+        if (escape) {
+          escape = false;
+          continue;
+        }
+        if (ch === '\\') {
+          escape = true;
+          continue;
+        }
+        if (ch === '"') inString = false;
+        continue;
+      }
+      if (ch === '"') {
+        inString = true;
+        continue;
+      }
+      if (ch === '{' || ch === '[') depth++;
+      else if (ch === '}' || ch === ']') {
+        depth--;
+        if (depth === 0 && ch === '}') {
+          out.push(text.slice(start, i + 1));
+          start = i;
+          found = true;
+          break;
+        }
+        if (depth < 0) break;
+      }
+    }
+    if (!found) break;
+  }
+  return out;
+}
+
+function unescapeJsonString(s) {
+  try {
+    return JSON.parse(`"${s}"`);
+  } catch {
+    return s.replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+  }
+}
+
+/** Last-resort: pull "question"/"answer" string fields out of otherwise unparseable text. */
+function extractQaPairsByRegex(text) {
+  if (!text || typeof text !== 'string') return null;
+  const questions = [];
+  const answers = [];
+  const qRe = /"(?:question|Question|q|text|prompt)"\s*:\s*"((?:\\.|[^"\\])*)"/g;
+  let m;
+  while ((m = qRe.exec(text)) !== null) {
+    const q = unescapeJsonString(m[1]).trim();
+    if (!q) continue;
+    const after = text.slice(m.index, m.index + 800);
+    const aMatch = after.match(/"(?:answer|Answer|a|correct_answer)"\s*:\s*"((?:\\.|[^"\\])*)"/);
+    questions.push(q);
+    answers.push(aMatch ? unescapeJsonString(aMatch[1]).trim() : '');
+  }
+  return questions.length > 0 ? { questions, answers } : null;
 }
 
 export function parseGeneratedQuestionSet(rawContent) {
@@ -1037,20 +1327,27 @@ export function parseGeneratedQuestionSet(rawContent) {
   // Reasoning judges wrap output in <think> blocks despite instructions; strip them first
   // so stray brackets in the thinking text cannot shadow the real JSON array.
   const cleaned = stripThinkBlocks(rawContent) || rawContent.trim();
-  let jsonStr = cleaned;
+  let jsonStr = softenJsonCandidate(cleaned);
   const codeBlock = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (codeBlock) jsonStr = codeBlock[1].trim();
+  if (codeBlock) jsonStr = softenJsonCandidate(codeBlock[1]);
   // Prefer balanced arrays that actually contain "question" over prose brackets.
-  const arrays = extractAllJsonArraySubstrings(cleaned);
-  arrays.sort((a, b) => Number(b.includes('"question"')) - Number(a.includes('"question"')));
+  const arrays = extractAllJsonArraySubstrings(cleaned).map(softenJsonCandidate);
+  arrays.sort((a, b) => Number(/"question"/i.test(b)) - Number(/"question"/i.test(a)));
+  const objects = extractJsonObjectSubstrings(jsonStr).filter((o) =>
+    /"(?:question|Question|q|text)"\s*:/.test(o),
+  );
+  const objectArray = objects.length ? `[${objects.join(',')}]` : '';
   const candidates = [
     jsonStr,
     ...arrays,
     extractJsonArraySubstring(jsonStr),
+    objectArray,
     // Last resort: salvage output truncated at the token limit.
     repairTruncatedJsonArray(jsonStr),
     repairTruncatedJsonArray(cleaned),
-  ].filter(Boolean);
+  ]
+    .filter(Boolean)
+    .map(softenJsonCandidate);
   const seen = new Set();
   for (const candidate of candidates) {
     if (!candidate || seen.has(candidate)) continue;
@@ -1062,7 +1359,7 @@ export function parseGeneratedQuestionSet(rawContent) {
       /* try next candidate */
     }
   }
-  return null;
+  return extractQaPairsByRegex(jsonStr) || extractQaPairsByRegex(cleaned);
 }
 
 // ---------- Question objects (id-based, for filtering and audit) ----------
@@ -1188,28 +1485,32 @@ export function isCloudModel(id) {
  * @param {string} opts.userChoice - User-configured arenaScoringModelId ('' = auto).
  * @param {string[]} opts.contestantIds - Model IDs currently competing (A–D).
  * @param {Array<{ id: string }>} opts.availableModels - Full model list (LM Studio + cloud when keys set).
+ * @param {boolean} [opts.requireVision] - Picture round: the judge must be able to see images.
  * @returns {{ id: string|null, error?: string, fallback?: boolean }}
  */
-export function pickJudgeModel({ userChoice, contestantIds, availableModels }) {
+export function pickJudgeModel({ userChoice, contestantIds, availableModels, requireVision = false }) {
   const contestants = new Set((contestantIds || []).map((s) => s.trim().toLowerCase()).filter(Boolean));
   const isContestant = (id) => id && contestants.has(String(id).trim().toLowerCase());
+  const canJudge = (id) => !requireVision || getModelCapabilities(id).vision;
 
-  // User explicitly chose a model
+  // User explicitly chose a model that can actually score this round.
   if (userChoice && userChoice.trim()) {
-    if (!isContestant(userChoice)) {
+    if (!isContestant(userChoice) && canJudge(userChoice)) {
       return { id: userChoice.trim() };
     }
-    // User's choice IS a contestant → fall back to auto-pick
+    // Contestant, or a text model on a picture round → fall back to auto-pick.
   }
 
   const candidates = (availableModels || [])
     .map((m) => m.id)
-    .filter((id) => id && !isContestant(id));
+    .filter((id) => id && !isContestant(id) && canJudge(id));
 
   if (candidates.length === 0) {
     return {
       id: null,
-      error: 'No judge model available. Add a DeepSeek or Grok API key in Settings → Cloud APIs, or load a model in LM Studio that is not assigned to any Arena slot.',
+      error: requireVision
+        ? 'This round has a picture. No vision model is free to judge it. Load a vision model that is not in a contestant slot, or set one as the scoring model.'
+        : 'No judge model available. Add a DeepSeek or Grok API key in Settings → Cloud APIs, or load a model in LM Studio that is not assigned to any Arena slot.',
     };
   }
 

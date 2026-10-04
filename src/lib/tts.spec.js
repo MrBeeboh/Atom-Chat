@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { plainTextForSpeech, resolveSpeechVoice, shouldAutoSpeakReply, splitTextForTts, clampPlaybackVolume } from './tts.js';
+import { plainTextForSpeech, resolveSpeechVoice, shouldAutoSpeakReply, splitTextForTts, clampPlaybackVolume, ensureAudiblePlaybackVolume } from './tts.js';
+import { ttsVolume } from './stores.js';
 import { deepinfraInferenceUrl } from './api.js';
 
 describe('plainTextForSpeech', () => {
@@ -29,6 +30,16 @@ describe('resolveSpeechVoice', () => {
       { name: 'B', voiceURI: 'b', lang: 'en-GB', localService: false },
     ];
     expect(resolveSpeechVoice(voices, 'b')?.voiceURI).toBe('b');
+  });
+});
+
+describe('ensureAudiblePlaybackVolume', () => {
+  it('raises a muted ATOM volume so Eve is not silent', () => {
+    ttsVolume.set(0);
+    const out = ensureAudiblePlaybackVolume(0.75);
+    expect(out.raised).toBe(true);
+    expect(out.volume).toBe(0.75);
+    ttsVolume.set(0.8);
   });
 });
 

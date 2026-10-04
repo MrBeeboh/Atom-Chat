@@ -2,8 +2,8 @@
 Version=1.0
 Type=Application
 Name=ATOM Chat
-Comment=Start ATOM Chat with voice server and UI
-Exec=bash -c "cd /home/mike/atom-chat && ./scripts/start-atom.sh"
+Comment=Start ATOM Chat UI on port 5175 in a terminal. Does not stop llama.
+Exec=/home/mike/atom-chat/scripts/start-atom-ui.sh
 Path=/home/mike/atom-chat
 Terminal=true
 Icon=/home/mike/atom-chat/public/atom-256.png

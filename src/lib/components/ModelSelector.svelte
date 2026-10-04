@@ -6,6 +6,7 @@
   import { refreshConnectionAndModels } from '$lib/connectionSetup.js';
   import { getModelIcon, getQuantization, modelIconOverrides } from '$lib/modelIcons.js';
   import ModelCapabilityBadges from '$lib/components/ModelCapabilityBadges.svelte';
+  import ModelPricingLine from '$lib/components/ModelPricingLine.svelte';
   import ModelDropdownGroupedList from '$lib/components/ModelDropdownGroupedList.svelte';
   import ThinkingAtom from '$lib/components/ThinkingAtom.svelte';
   import { COCKPIT_LOADING_MODELS, pickWitty } from '$lib/cockpitCopy.js';
@@ -33,7 +34,7 @@
         top: r.bottom + 4,
         bottom: window.innerHeight - r.top + 4,
         left: r.left,
-        width: Math.max(r.width, 440),
+        width: Math.max(r.width, 560),
         maxHeight: Math.max(180, maxHeight),
         openUp,
       };
@@ -95,7 +96,7 @@
   <div class="relative" role="combobox" aria-expanded={open} aria-haspopup="listbox" aria-controls="model-listbox" aria-label="Select model" bind:this={triggerEl}>
     <button
       type="button"
-      class="flex items-center gap-2 rounded-lg border text-sm px-3 py-2 max-w-[420px] focus:ring-2 focus:ring-offset-1 font-semibold min-h-[44px] transition-colors duration-150 ui-model-selector {open ? 'ui-model-selector-open' : ''}"
+      class="flex items-center gap-2 rounded-lg border text-sm px-3 py-2 max-w-[560px] focus:ring-2 focus:ring-offset-1 font-semibold min-h-[44px] transition-colors duration-150 ui-model-selector {open ? 'ui-model-selector-open' : ''}"
       style="background-color: var(--ui-input-bg); color: var(--ui-text-primary); border-color: var(--ui-border);"
       onclick={toggle}
       onkeydown={(e) => e.key === 'Escape' && (open = false)}
@@ -104,11 +105,16 @@
       {#if $selectedModelId}
         {@const selIcon = getModelIcon($selectedModelId, $modelIconOverrides)}
         <img src={selIcon} alt="" class="w-4 h-4 shrink-0 rounded object-contain" onerror={(e) => (e.currentTarget.style.display = 'none')} />
-        <span class="truncate font-bold uppercase tracking-tight text-xs">{modelDisplayName($selectedModelId)}</span>
-        {#if getModelTypeTag($selectedModelId)}
-          <span class="shrink-0 text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded" style="background: color-mix(in srgb, var(--ui-accent) 12%, transparent); color: var(--ui-accent);">{getModelTypeTag($selectedModelId)}</span>
-        {/if}
-        <ModelCapabilityBadges modelId={$selectedModelId} class="ml-0.5" />
+        <span class="min-w-0 flex-1 flex flex-col items-start gap-0.5">
+          <span class="flex items-center gap-2 min-w-0 w-full">
+            <span class="truncate min-w-0 flex-1 font-bold uppercase tracking-tight text-xs">{modelDisplayName($selectedModelId)}</span>
+            {#if getModelTypeTag($selectedModelId)}
+              <span class="shrink-0 text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded" style="background: color-mix(in srgb, var(--ui-accent) 12%, transparent); color: var(--ui-accent);">{getModelTypeTag($selectedModelId)}</span>
+            {/if}
+            <ModelCapabilityBadges modelId={$selectedModelId} caps={$models.find((m) => m.id === $selectedModelId)?.caps} class="ml-0.5" />
+          </span>
+          <ModelPricingLine modelId={$selectedModelId} showQuant={false} />
+        </span>
       {:else}
         <span style="color: var(--ui-text-secondary);">Select model</span>
       {/if}
@@ -135,7 +141,7 @@
             <button
               type="button"
               class="px-2.5 py-1 rounded-md text-xs font-medium"
-              style="background: var(--ui-accent); color: var(--ui-bg-main);"
+              style="background: var(--ui-action, var(--ui-accent)); color: var(--ui-action-ink, var(--ui-bg-main));"
               onclick={() => { load(); }}
             >Retry</button>
             <button

@@ -1,8 +1,10 @@
 <script>
   import { get } from 'svelte/store';
   import { tick, onMount } from 'svelte';
-  import { isStreaming, voiceServerUrl, micDeviceId, pendingDroppedFiles, insertChatPrompt, webSearchForNextMessage, webSearchInProgress, webSearchConnected, layout, braveApiKey, openMicActive, ttsReadAloudEnabled, ttsActiveMessageId, ttsPreparing, ttsError, ttsVolume, voiceRoleplaySessionActive, settingsOpen, settingsFocus, ttsEngine } from '$lib/stores.js';
+  import { isStreaming, voiceServerUrl, micDeviceId, pendingDroppedFiles, insertChatPrompt, webSearchForNextMessage, webSearchInProgress, webSearchConnected, layout, braveApiKey, openMicActive, ttsReadAloudEnabled, ttsActiveMessageId, ttsPreparing, ttsError, ttsVolume, voiceRoleplaySessionActive, settingsOpen, settingsFocus, ttsEngine, effectiveModelId, settings, setPerModelOverride } from '$lib/stores.js';
   import ThinkingAtom from '$lib/components/ThinkingAtom.svelte';
+  import ThinkingControls from '$lib/components/ThinkingControls.svelte';
+  import ContextRing from '$lib/components/ContextRing.svelte';
   import { COCKPIT_SENDING, COCKPIT_SEARCHING, pickWitty } from '$lib/cockpitCopy.js';
   import { warmUpSearchConnection, syncBraveKeyToProxy } from '$lib/duckduckgo.js';
   import { pdfToImageDataUrls } from '$lib/pdfToImages.js';
@@ -73,6 +75,11 @@
     }
   }
 
+  function onThinkingChange(patch) {
+    const id = get(effectiveModelId);
+    if (id) setPerModelOverride(id, patch);
+  }
+
   function onReadAloudClick(e) {
     if (e.shiftKey) {
       settingsFocus.set('read-aloud');
@@ -138,13 +145,14 @@
    * SKIP when Arena is active — DashboardArena runs its own warm-up to avoid double attempts.
    */
   $effect(() => {
-    const on = $webSearchForNextMessage;
     const connected = $webSearchConnected;
     if ($layout === 'arena') { webSearchWarmUpAttempted = false; return; }
-    if (!on) { webSearchWarmUpAttempted = false; return; }
     if (connected || webSearchWarmingUp || webSearchWarmUpAttempted) return;
     runWarmUp();
   });
+
+  const chatHasLiveWeb = $derived($layout !== 'arena');
+  const webButtonOn = $derived(chatHasLiveWeb || $webSearchForNextMessage);
 
   /** Attachments: { dataUrl, label, isVideo? } for display; we send dataUrl list to onSend. */
   let attachments = $state([]);
@@ -757,7 +765,22 @@
       {/if}
     </div>
   {/if}
-  <div class="composer-tools" role="toolbar" aria-label="Talk, dictate, speak, and web">
+  <div class="composer-tools" role="toolbar" aria-label="Thinking, context, talk, dictate, speak, and web">
+  {#if $layout !== 'arena'}
+    <ThinkingControls
+      compact
+      modelId={$effectiveModelId}
+      thinking={$settings.thinking}
+      speed={$settings.thinking_speed}
+      onChange={onThinkingChange}
+    />
+  {/if}
+  <div class="tool-btn context-tool" title="Context used">
+    <span class="tool-icon-wrap">
+      <ContextRing inline />
+    </span>
+    <span class="tool-label">Ctx</span>
+  </div>
   <button
     type="button"
     class="tool-btn"
@@ -889,10 +912,15 @@
   <button
     type="button"
     class="tool-btn"
-    class:tool-btn-on={$webSearchForNextMessage}
-    title={webSearchWarmingUp ? 'Connecting to the web…' : $webSearchForNextMessage ? ($webSearchConnected ? 'Web on — this message can use the internet (click to turn off)' : 'Web on — not connected yet (click again to retry)') : 'Web off — click to let the next message use the internet (works with local models)'}
+    class:tool-btn-on={webButtonOn}
+    title={webSearchWarmingUp ? 'Connecting to the web…' : chatHasLiveWeb ? ($webSearchConnected ? 'Web on — the model can search and fetch pages (click to reconnect)' : 'Web on — Brave not connected yet (click to retry)') : $webSearchForNextMessage ? ($webSearchConnected ? 'Web on — Arena will attach search results (click to turn off)' : 'Web on — not connected yet (click again to retry)') : 'Web off — click to attach web results in Arena'}
     disabled={$isStreaming}
     onclick={() => {
+      if (chatHasLiveWeb) {
+        webSearchWarmUpAttempted = false;
+        runWarmUp();
+        return;
+      }
       const on = $webSearchForNextMessage;
       const connected = $webSearchConnected;
       if (on && !connected && !webSearchWarmingUp) {
@@ -908,8 +936,8 @@
       webSearchForNextMessage.set(true);
       runWarmUp();
     }}
-    aria-label={webSearchWarmingUp ? 'Connecting to the web' : $webSearchForNextMessage ? 'Web search on' : 'Web search off'}
-    aria-pressed={$webSearchForNextMessage}
+    aria-label={webSearchWarmingUp ? 'Connecting to the web' : webButtonOn ? 'Web search on' : 'Web search off'}
+    aria-pressed={webButtonOn}
     aria-busy={webSearchWarmingUp}
   >
     <span class="tool-icon-wrap">
@@ -919,7 +947,7 @@
         <path d="M12 3a14 14 0 0 1 0 18" />
         <path d="M12 3a14 14 0 0 0 0 18" />
       </svg>
-      {#if $webSearchForNextMessage}
+      {#if webButtonOn}
         <span class="tool-pip" class:tool-pip-live={$webSearchConnected} class:tool-pip-rec={!$webSearchConnected} class:tool-pip-busy={webSearchWarmingUp} aria-hidden="true"></span>
       {/if}
     </span>
@@ -1161,6 +1189,13 @@
     opacity: 0.4;
     cursor: not-allowed;
   }
+  .chat-input-bar .context-tool {
+    cursor: default;
+  }
+  .chat-input-bar .context-tool .tool-icon-wrap {
+    width: 24px;
+    height: 24px;
+  }
   .tool-icon-wrap {
     position: relative;
     width: 18px;
@@ -1291,8 +1326,8 @@
     padding: 0 16px;
     border-radius: 0 12px 12px 0;
     font-weight: 600;
-    background: var(--ui-accent);
-    color: var(--ui-bg-main);
+    background: var(--ui-action, var(--ui-accent));
+    color: var(--ui-action-ink, var(--ui-bg-main));
   }
   .chat-input-bar .send-button:hover:not(:disabled) {
     filter: brightness(1.08);
@@ -1305,8 +1340,8 @@
     animation: send-ready-pulse 2s ease-in-out infinite;
   }
   @keyframes send-ready-pulse {
-    0%, 100% { filter: brightness(1); box-shadow: 0 0 0 0 color-mix(in srgb, var(--ui-accent) 25%, transparent); }
-    50% { filter: brightness(1.06); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-accent) 18%, transparent); }
+    0%, 100% { filter: brightness(1); box-shadow: 0 0 0 0 color-mix(in srgb, var(--ui-action, var(--ui-accent)) 25%, transparent); }
+    50% { filter: brightness(1.06); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-action, var(--ui-accent)) 18%, transparent); }
   }
   .send-feedback {
     font-size: 13px;
@@ -1357,8 +1392,8 @@
   .send-button {
     padding: 12px 24px;
     min-height: 44px;
-    background: var(--ui-accent, #3b82f6);
-    color: var(--ui-bg-main, white);
+    background: var(--ui-action, var(--ui-accent, #3b82f6));
+    color: var(--ui-action-ink, var(--ui-bg-main, white));
     border: none;
     border-radius: 8px;
     font-weight: 600;

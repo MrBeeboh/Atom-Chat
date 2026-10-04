@@ -23,6 +23,7 @@ function readViteEnv(key) {
     VITE_DEEPINFRA_API_KEY: import.meta.env.VITE_DEEPINFRA_API_KEY,
     VITE_BRAVE_API_KEY: import.meta.env.VITE_BRAVE_API_KEY,
     VITE_CEREBRAS_API_KEY: import.meta.env.VITE_CEREBRAS_API_KEY,
+    VITE_NOUS_API_KEY: import.meta.env.VITE_NOUS_API_KEY,
     VITE_TOGETHER_IMAGE_ENDPOINT: import.meta.env.VITE_TOGETHER_IMAGE_ENDPOINT,
   };
   const v = map[key];
@@ -226,6 +227,13 @@ if (typeof localStorage !== 'undefined') {
   cerebrasApiKey.subscribe((v) => persistApiKey('cerebrasApiKey', v));
 }
 
+/** Nous Portal API key (optional). When set, Nous models appear in the model list. Hermes OAuth JWTs also work. */
+const getStoredNousApiKey = () => apiKeyFromStorageOrEnv('nousApiKey', 'VITE_NOUS_API_KEY');
+export const nousApiKey = writable(getStoredNousApiKey());
+if (typeof localStorage !== 'undefined') {
+  nousApiKey.subscribe((v) => persistApiKey('nousApiKey', v));
+}
+
 /** Together image endpoint name: required for FLUX.1-schnell-Free (create dedicated endpoint at api.together.ai, then paste the endpoint name here). */
 const getStoredTogetherImageEndpoint = () => {
   if (typeof localStorage !== 'undefined') {
@@ -241,9 +249,9 @@ if (typeof localStorage !== 'undefined') {
 
 /** True when at least one cloud chat API key is set. Used when LM Studio is down. */
 export const cloudApisAvailable = derived(
-  [deepSeekApiKey, grokApiKey, cerebrasApiKey, deepinfraApiKey],
-  ([a, b, c, d]) =>
-    [a, b, c, d].some((k) => typeof k === 'string' && k.trim().length > 0)
+  [deepSeekApiKey, grokApiKey, cerebrasApiKey, deepinfraApiKey, nousApiKey],
+  ([a, b, c, d, e]) =>
+    [a, b, c, d, e].some((k) => typeof k === 'string' && k.trim().length > 0)
 );
 
 /** Focus a Settings section when opened: 'connection' | 'api-keys'. Cleared after open. */
@@ -562,10 +570,10 @@ export const chatCommand = writable(null);
 /** One-shot prompt insert for ChatInput (starter chips, etc.). { text, ts }. */
 export const insertChatPrompt = writable(null);
 
-/** When true, the next Send will run a web search (DuckDuckGo) with the message text, then send. Toggle via globe button. */
+/** When true, Arena injects Brave results into contestant/judge prompts. Chat models get web_search tools either way. Toggle via globe. */
 export const webSearchForNextMessage = writable(false);
 
-/** True while a web search is in progress (DuckDuckGo fetch). Show "Searching the web..." UI. */
+/** True while a web search tool call or Arena injection is in progress. */
 export const webSearchInProgress = writable(false);
 
 /** True only after a web search or warm-up fetch has succeeded. Drives the green dot on the globe – do not set true without a real successful fetch. */

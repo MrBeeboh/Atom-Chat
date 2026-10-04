@@ -69,7 +69,7 @@
   <button
     type="button"
     class="w-full min-w-0 py-2.5 px-3 rounded-lg text-left font-medium text-xs transition-opacity hover:opacity-90 shrink-0"
-    style="background: var(--ui-accent); color: var(--ui-bg-main);"
+    style="background: var(--ui-action, var(--ui-accent)); color: var(--ui-action-ink, var(--ui-bg-main));"
     onclick={newChat}>
     + New chat
   </button>

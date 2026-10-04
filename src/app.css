@@ -614,44 +614,143 @@ html { --metrics-axis: #d4d4d4; --metrics-grid: #e5e5e5; }
   --atom-amber: #fbbf24;
 }
 
-/* Ion — instrument teal on charcoal. */
+/*
+  Ion (fern) — an instrument panel, not a tint.
+  Named roles (do not reuse a role for a second job):
+    --ion-ground     cool neutral page
+    --ion-card       panel surface, a clear step off the page
+    --ion-ink        reading text (not green)
+    --ion-muted      secondary text
+    --ion-line       border, darker than a wash
+    --ion-selected   selected-row fill, cool, never green or brass
+    --ion-focus      focus ring and the selected-row edge
+    --ion-green      the one deep green: the header bar only
+    --ion-brass      primary actions only
+    --ion-brass-ink  label sitting on those actions
+  --ui-accent stays steel (links, marks, meters). --ui-action is brass.
+*/
 [data-ui-theme="fern"] {
-  --ui-bg-main: #f1f6f5;
-  --ui-bg-sidebar: #e4eeec;
-  --ui-accent: #0f766e;
-  --ui-accent-hot: #115e59;
-  --ui-accent-cool: #134e4a;
-  --ui-text-primary: #134e4a;
-  --ui-text-secondary: #4b635f;
-  --ui-border: #c5d9d5;
-  --ui-sidebar-active: #d5e6e2;
-  --ui-sidebar-hover: #c9ddda;
+  --ion-ground: #d5dbe3;
+  --ion-card: #f4f7fb;
+  --ion-ink: #1a1f27;
+  --ion-muted: #4e5968;
+  --ion-line: #8fa0b5;
+  --ion-selected: #d5deea;
+  --ion-hover: #e6ebf2;
+  --ion-focus: #3d5a80;
+  --ion-focus-ring: rgba(61, 90, 128, 0.35);
+  --ion-green: #1b4332;
+  --ion-brass: #7a4e1c;
+  --ion-brass-ink: #f6f1e6;
+
+  --ui-bg-main: var(--ion-ground);
+  --ui-bg-sidebar: var(--ion-card);
+  --ui-accent: var(--ion-focus);
+  --ui-accent-hot: #9f2d2d;
+  --ui-accent-cool: var(--ion-focus);
+  --ui-text-primary: var(--ion-ink);
+  --ui-text-secondary: var(--ion-muted);
+  --ui-border: var(--ion-line);
+  --ui-sidebar-active: var(--ion-selected);
+  --ui-sidebar-hover: var(--ion-hover);
   --ui-input-bg: #ffffff;
-  --ui-input-border: #c5d9d5;
-  --ui-glow: rgba(15, 118, 110, 0.18);
-  --atom-accent: #0f766e;
-  --atom-accent-light: #14b8a6;
-  --atom-teal: #0d9488;
-  --atom-amber: #0f766e;
+  --ui-input-border: #8fa0b5;
+  --ui-glow: rgba(61, 90, 128, 0.16);
+  --ui-action: var(--ion-brass);
+  --ui-action-ink: var(--ion-brass-ink);
+  --ui-selected-bg: var(--ion-selected);
+  --ui-selected-fg: var(--ion-ink);
+  --atom-accent: var(--ion-focus);
+  --atom-accent-light: #6e88ab;
+  --atom-teal: #3d5a80;
+  --atom-amber: #5c6b7a;
 }
 .dark[data-ui-theme="fern"] {
-  --ui-bg-main: #061210;
-  --ui-bg-sidebar: #0b1a18;
-  --ui-accent: #2dd4bf;
-  --ui-accent-hot: #5eead4;
-  --ui-accent-cool: #14b8a6;
-  --ui-text-primary: #ecfdf8;
-  --ui-text-secondary: #8fb8b2;
-  --ui-border: rgba(45, 212, 191, 0.18);
-  --ui-sidebar-active: #11302c;
-  --ui-sidebar-hover: #16403b;
-  --ui-input-bg: #0b1a18;
-  --ui-input-border: #16403b;
-  --ui-glow: rgba(45, 212, 191, 0.24);
-  --atom-accent: #2dd4bf;
-  --atom-accent-light: #5eead4;
-  --atom-teal: #2dd4bf;
-  --atom-amber: #99f6e4;
+  --ion-ground: #12161d;
+  --ion-card: #202833;
+  --ion-ink: #e7edf5;
+  --ion-muted: #a3b0c2;
+  --ion-line: #46556b;
+  --ion-selected: #2c3a4d;
+  --ion-hover: #283242;
+  --ion-focus: #9eb6d0;
+  --ion-focus-ring: rgba(158, 182, 208, 0.45);
+  --ion-green: #2d6a4f;
+  --ion-brass: #d4a15a;
+  --ion-brass-ink: #1c140a;
+
+  --ui-bg-main: var(--ion-ground);
+  --ui-bg-sidebar: var(--ion-card);
+  --ui-accent: var(--ion-focus);
+  --ui-accent-hot: #e07070;
+  --ui-accent-cool: var(--ion-focus);
+  --ui-text-primary: var(--ion-ink);
+  --ui-text-secondary: var(--ion-muted);
+  --ui-border: var(--ion-line);
+  --ui-sidebar-active: var(--ion-selected);
+  --ui-sidebar-hover: var(--ion-hover);
+  --ui-input-bg: #2a3340;
+  --ui-input-border: #46556b;
+  --ui-glow: rgba(158, 182, 208, 0.14);
+  --ui-action: var(--ion-brass);
+  --ui-action-ink: var(--ion-brass-ink);
+  --ui-selected-bg: var(--ion-selected);
+  --ui-selected-fg: var(--ion-ink);
+  --atom-accent: var(--ion-focus);
+  --atom-accent-light: #c5d4e6;
+  --atom-teal: #9eb6d0;
+  --atom-amber: #8b97a8;
+}
+
+/* Ion structure. Other themes do not match these selectors. */
+[data-ui-theme="fern"] .atom-shell::before {
+  background: none;
+}
+[data-ui-theme="fern"] .atom-header {
+  background: var(--ion-card);
+  border-bottom: 3px solid var(--ion-green);
+  box-shadow: none;
+}
+[data-ui-theme="fern"] .atom-brand-mark {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--ion-line);
+}
+[data-ui-theme="fern"] .atom-panel-wrap {
+  background: var(--ion-card) !important;
+  border: 1px solid var(--ion-line);
+  box-shadow: 0 12px 28px rgba(18, 22, 29, 0.08);
+}
+[data-ui-theme="fern"] .arena-footer {
+  background: var(--ion-ground) !important;
+  border-top: 1px solid var(--ion-line) !important;
+}
+[data-ui-theme="fern"] .arena-command-toolbar {
+  background: var(--ion-card) !important;
+  border-color: var(--ion-line) !important;
+}
+[data-ui-theme="fern"] .ui-sidebar-active {
+  background: var(--ion-selected) !important;
+  border-left: 3px solid var(--ion-focus);
+  box-shadow: none;
+}
+[data-ui-theme="fern"] .ui-user-bubble {
+  background: var(--ion-card) !important;
+  background-color: var(--ion-card) !important;
+  border: 1px solid var(--ion-line) !important;
+  box-shadow: none !important;
+}
+[data-ui-theme="fern"] .message-bubble-inner.atom-assistant {
+  box-shadow: inset 3px 0 0 var(--ion-line) !important;
+}
+[data-ui-theme="fern"] .chat-input-bar:focus-within,
+[data-ui-theme="fern"] .ui-input-glow:focus-within {
+  border-color: var(--ion-focus) !important;
+  box-shadow: 0 0 0 3px var(--ion-focus-ring) !important;
+}
+[data-ui-theme="fern"] button[aria-pressed="true"] {
+  background: var(--ion-selected) !important;
+  color: var(--ion-ink) !important;
+  box-shadow: inset 0 -2px 0 var(--ion-focus);
 }
 
 
@@ -692,8 +791,8 @@ html { --metrics-axis: #d4d4d4; --metrics-grid: #e5e5e5; }
   opacity: 0.9;
 }
 .ui-btn-accent {
-  background: var(--ui-accent);
-  color: var(--ui-bg-main);
+  background: var(--ui-action, var(--ui-accent));
+  color: var(--ui-action-ink, var(--ui-bg-main));
   box-shadow: 0 4px 15px var(--ui-glow);
   transition: all 0.15s ease;
 }
@@ -904,4 +1003,117 @@ body {
   background: var(--ui-accent);
   transition: width 0.3s ease;
   border-radius: 0 2px 2px 0;
+}
+
+/* Arena contrast. Ion tokens stay put. These only make contestant numbers and rows readable. */
+:root {
+  --arena-read: #12161c;
+  --arena-cell: #e7eef6;
+  --arena-line: #4d5e74;
+  --arena-row-a: #d5deea;
+  --arena-row-b: #f7f9fc;
+}
+.dark {
+  --arena-read: #f4f7fb;
+  --arena-cell: #2a3544;
+  --arena-line: #8ea0b8;
+  --arena-row-a: #2c3a4e;
+  --arena-row-b: #1a212c;
+}
+.arena-ink,
+.arena-tally-num {
+  color: var(--arena-read);
+  font-weight: 800;
+}
+.arena-slot-badge {
+  font-weight: 800;
+  background: var(--arena-badge, #9fb6dc);
+  color: var(--arena-read);
+}
+.arena-col-A {
+  --arena-read: #0f2744;
+  --arena-badge: #8eaddb;
+  --arena-head: #c5d4ef;
+  --arena-note: #d5e2f6;
+}
+.arena-col-B {
+  --arena-read: #06352a;
+  --arena-badge: #7ec9ad;
+  --arena-head: #c5e6d8;
+  --arena-note: #d7f0e6;
+}
+.arena-col-C {
+  --arena-read: #5c2e04;
+  --arena-badge: #e3b56a;
+  --arena-head: #f3d7a8;
+  --arena-note: #f8e6c4;
+}
+.arena-col-D {
+  --arena-read: #3b1764;
+  --arena-badge: #c4b0e8;
+  --arena-head: #ddd0f5;
+  --arena-note: #e8def8;
+}
+.dark .arena-col-A {
+  --arena-read: #e8eef8;
+  --arena-badge: #3d5f8f;
+  --arena-head: #243656;
+  --arena-note: #1c2a42;
+}
+.dark .arena-col-B {
+  --arena-read: #e5f6ee;
+  --arena-badge: #1f6b56;
+  --arena-head: #1c3d34;
+  --arena-note: #16332c;
+}
+.dark .arena-col-C {
+  --arena-read: #fff1d6;
+  --arena-badge: #8a6230;
+  --arena-head: #3f3218;
+  --arena-note: #332816;
+}
+.dark .arena-col-D {
+  --arena-read: #f3e9ff;
+  --arena-badge: #5c4588;
+  --arena-head: #342848;
+  --arena-note: #2a203c;
+}
+.arena-col-head,
+.arena-judge-cell {
+  background: var(--arena-head);
+  border: 1px solid var(--arena-line);
+}
+.arena-judge-note {
+  background: var(--arena-note);
+  border-left: 4px solid var(--arena-badge);
+}
+.arena-score-matrix {
+  color: var(--arena-read);
+}
+.arena-matrix-label,
+.arena-matrix-num,
+.arena-matrix-slot {
+  color: var(--arena-read);
+  border-color: var(--arena-line);
+  font-weight: 700;
+}
+.arena-matrix-num,
+.arena-matrix-slot,
+.arena-matrix-total .arena-matrix-num {
+  font-weight: 800;
+}
+.arena-matrix-row-a {
+  background: var(--arena-row-a);
+}
+.arena-matrix-row-b {
+  background: var(--arena-row-b);
+}
+.arena-matrix-total {
+  background: var(--arena-head, var(--arena-row-a));
+}
+.arena-matrix-slot.arena-col-A,
+.arena-matrix-slot.arena-col-B,
+.arena-matrix-slot.arena-col-C,
+.arena-matrix-slot.arena-col-D {
+  background: var(--arena-head);
 }

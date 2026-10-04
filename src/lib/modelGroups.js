@@ -4,7 +4,7 @@
 import { modelDisplayName } from '$lib/api.js';
 import { cloudProviderLabel } from '$lib/cloudCatalog.js';
 
-const CLOUD_ORDER = ['deepseek', 'grok', 'cerebras', 'deepinfra'];
+const CLOUD_ORDER = ['nous', 'deepseek', 'grok', 'cerebras', 'deepinfra'];
 
 const STATIC_GROUPS = [
   {

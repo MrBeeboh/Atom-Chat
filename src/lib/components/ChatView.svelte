@@ -1,18 +1,19 @@
 <script>
   import { get } from 'svelte/store';
-  import { activeConversationId, activeMessages, conversations, settings, effectiveModelId, isStreaming, chatError, chatCommand, insertChatPrompt, pendingDroppedFiles, webSearchForNextMessage, webSearchInProgress, webSearchConnected, grokApiKey, deepinfraApiKey, confirm } from '$lib/stores.js';
+  import { activeConversationId, activeMessages, conversations, settings, effectiveModelId, isStreaming, chatError, chatCommand, insertChatPrompt, pendingDroppedFiles, webSearchInProgress, webSearchConnected, grokApiKey, deepinfraApiKey, confirm, contextUsage, summarizeAndContinueTrigger, models } from '$lib/stores.js';
   import SetupGuide from '$lib/components/SetupGuide.svelte';
   import { deriveSetupStatus } from '$lib/connectionSetup.js';
   import { getMessages, addMessage, clearMessages, deleteMessage, getMessageCount, updateConversation, listConversations } from '$lib/db.js';
-  import { streamChatCompletion, requestGrokImageGeneration, requestDeepInfraImageGeneration, requestDeepInfraVideoGeneration, isGrokModel, isDeepSeekModel } from '$lib/api.js';
-  import { searchDuckDuckGo, formatSearchResultForChat } from '$lib/duckduckgo.js';
+  import { streamChatCompletion, requestChatCompletion, requestGrokImageGeneration, requestDeepInfraImageGeneration, requestDeepInfraVideoGeneration, isGrokModel, isDeepSeekModel, decodeTokPerSec, probeLocalContextSize, isQwen38FlashNextSelection, flashNextHasVision } from '$lib/api.js';
+  import { isGrokVoiceModel, runGrokVoiceTextTurn, DEFAULT_ROLEPLAY_INSTRUCTIONS } from '$lib/grokVoice.js';
+  import { pickThinkingOptions } from '$lib/thinkingControls.js';
   import MessageList from '$lib/components/MessageList.svelte';
   import ChatInput from '$lib/components/ChatInput.svelte';
   import AtomLogo from '$lib/components/AtomLogo.svelte';
-  import { generateId, resizeImageDataUrlsForVision, shouldSkipImageResizeForVision } from '$lib/utils.js';
-  import { getModelCapabilities } from '$lib/modelCapabilities.js';
-  import { maybeReadAloudAssistantReply } from '$lib/tts.js';
-  import { stripThinkingBlocks } from '$lib/markdown.js';
+  import { generateId, resizeImageDataUrlsForVision, shouldSkipImageResizeForVision, messageContentToText } from '$lib/utils.js';
+  import { listedModelCaps } from '$lib/modelCapabilities.js';
+  import { modelPricingCatalog } from '$lib/modelPricing.js';
+  import { maybeReadAloudAssistantReply, unlockAudioPlayback } from '$lib/tts.js';
   import {
     DESKTOP_TOOLS,
     MAX_DESKTOP_TOOL_ROUNDS,
@@ -24,10 +25,42 @@
     executeDesktopToolCalls,
     formatToolStatus,
   } from '$lib/desktopHost.js';
+  import {
+    WEB_SEARCH_TOOLS,
+    WEB_SEARCH_HINT,
+    GROK_WEB_SEARCH_HINT,
+    isWebSearchToolName,
+    executeWebSearchToolCalls,
+  } from '$lib/webSearch.js';
+  import { buildChatApiMessages } from '$lib/deepSeekCache.js';
+  import { estimateMessagesTokens, fitMessagesToContext, needsCompress, splitHeadForCompress, transcriptForSummary } from '$lib/chatContext.js';
 
   const convId = $derived($activeConversationId);
   let chatAbortController = $state(null);
   let imageGenerating = $state(false);
+  let compressing = $state(false);
+  /** Once Documents tools are used on a conversation, keep the same tool schema + hint. */
+  const desktopToolsPin = new Map();
+
+  $effect(() => {
+    const msgs = $activeMessages || [];
+    const model = $effectiveModelId;
+    const tokens = estimateMessagesTokens(msgs);
+    let cancelled = false;
+    (async () => {
+      const nCtx = model && !String(model).includes(':') ? await probeLocalContextSize() : 128000;
+      if (!cancelled) contextUsage.set({ promptTokens: tokens, contextMax: nCtx });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  });
+
+  $effect(() => {
+    const tick = $summarizeAndContinueTrigger;
+    if (!tick) return;
+    compressConversation();
+  });
 
   /** Welcome line on empty chat: one prompt, chosen on mount, fades in to feel alive. */
   const WELCOME_PROMPTS = [
@@ -208,43 +241,64 @@
     URL.revokeObjectURL(a.href);
   }
 
-  /** Strip prior-turn images and hidden Qwen think blocks so follow-ups stay small. */
-  function sanitizeContentForApi(content, { stripThinking = false } = {}) {
-    if (typeof content === 'string') {
-      return stripThinking ? stripThinkingBlocks(content) : content;
-    }
-    if (!Array.isArray(content)) return content;
-    return content.map((part) => {
-      if (part?.type === 'text' && typeof part.text === 'string') {
-        return stripThinking ? { ...part, text: stripThinkingBlocks(part.text) } : part;
-      }
-      if (part?.type === 'image_url') return { type: 'text', text: '[Image attached]' };
-      return part;
+  /** Strip prior-turn images (size). DeepSeek keeps assistant thinking so the KV prefix matches. */
+  function buildApiMessages(msgs, systemPrompt) {
+    return buildChatApiMessages({
+      msgs,
+      systemPrompt,
+      stripAssistantThinking: !isDeepSeekModel($effectiveModelId),
     });
   }
 
-  function buildApiMessages(msgs, systemPrompt) {
-    const sanitized = msgs.map((m, i) => {
-      const isLastUser = i === msgs.length - 1 && m.role === 'user';
-      const row = {
-        role: m.role,
-        content: isLastUser
-          ? m.content
-          : sanitizeContentForApi(m.content, { stripThinking: m.role === 'assistant' }),
-      };
-      if (m.tool_calls) row.tool_calls = m.tool_calls;
-      if (m.tool_call_id) row.tool_call_id = m.tool_call_id;
-      return row;
-    });
-    const out = sanitized.filter((m) => {
-      if (m.role === 'system' || m.role === 'tool') return true;
-      if (m.tool_calls?.length) return true;
-      if (typeof m.content === 'string') return m.content.trim().length > 0;
-      if (Array.isArray(m.content)) return m.content.length > 0;
+  /**
+   * Replace older turns with one compact note so the live window stays usable.
+   * @returns {Promise<boolean>}
+   */
+  async function compressConversation() {
+    if (compressing || $isStreaming || !convId) return false;
+    const model = $effectiveModelId;
+    if (!model) return false;
+    const history = await getMessages(convId);
+    const nCtx = String(model).includes(':') ? 128000 : await probeLocalContextSize();
+    const tokens = estimateMessagesTokens(history);
+    if (!needsCompress(tokens, nCtx) && history.length < 8) return false;
+    const { head } = splitHeadForCompress(history, { nCtx });
+    if (!head.length) return false;
+    compressing = true;
+    chatError.set('Compressing earlier turns…');
+    try {
+      let transcript = transcriptForSummary(head, messageContentToText);
+      const maxChars = Math.max(2000, Math.floor(nCtx * 2.5));
+      if (transcript.length > maxChars) transcript = `${transcript.slice(0, maxChars - 80)} …`;
+      const { content } = await requestChatCompletion({
+        model,
+        messages: [
+          {
+            role: 'user',
+            content: `Summarize this earlier conversation as compact notes for yourself. Keep facts, names, numbers, decisions, and unfinished tasks. No preamble.\n\n${transcript}`,
+          },
+        ],
+        options: { temperature: 0.2, max_tokens: 600, disable_thinking: true },
+      });
+      const summary = (content || '').trim();
+      if (!summary) throw new Error('empty summary');
+      const stamp = Number(head[0]?.createdAt) || Date.now() - 1;
+      for (const m of head) await deleteMessage(m.id);
+      await addMessage(convId, {
+        role: 'assistant',
+        content: `Compressed earlier conversation:\n${summary}`,
+        modelId: model,
+        createdAt: stamp,
+      });
+      await loadMessages();
+      chatError.set('Compressed earlier turns to fit the context window.');
+      return true;
+    } catch (err) {
+      chatError.set(err?.message ? `Could not compress: ${err.message}` : 'Could not compress earlier turns.');
       return false;
-    });
-    if (systemPrompt?.trim()) out.unshift({ role: 'system', content: systemPrompt.trim() });
-    return repairOpenAiToolTurns(out);
+    } finally {
+      compressing = false;
+    }
   }
 
   /** True when a model is ready; otherwise sets a setup-aware chat error and returns false. */
@@ -268,34 +322,23 @@
     if (!convId || (!hasText && !hasImages && !hasVideos)) return;
     chatError.set(null);
     if (!ensureModelSelected()) return;
-    if ((hasImages || hasVideos) && !getModelCapabilities($effectiveModelId).vision) {
-      chatError.set(`"${$effectiveModelId}" does not support image input. Switch to a vision-capable model to send images or video.`);
-      return;
-    }
-
-    let effectiveText = (text || '').trim();
-    if (get(webSearchForNextMessage) && hasText) {
-      // Stay connected: don't turn off webSearchForNextMessage after send.
-      // User toggles it off manually via the globe button.
-      webSearchInProgress.set(true);
-      try {
-        const searchResult = await searchDuckDuckGo(effectiveText);
-        webSearchConnected.set(true);
-        const formatted = formatSearchResultForChat(effectiveText, searchResult);
-        effectiveText = formatted + '\n\n---\nUser question: ' + effectiveText;
-      } catch (e) {
-        webSearchConnected.set(false);
-        chatError.set(e?.message || 'Web search failed. Click the globe to retry or send without internet.');
-        webSearchInProgress.set(false);
-        throw e; // Propagate so ChatInput restores the user's typed message.
+    if (hasImages || hasVideos) {
+      let vision = listedModelCaps($effectiveModelId, $models, $modelPricingCatalog).vision;
+      if (!vision && isQwen38FlashNextSelection($effectiveModelId)) {
+        vision = await flashNextHasVision();
       }
-      webSearchInProgress.set(false);
+      if (!vision) {
+        chatError.set(`"${$effectiveModelId}" does not support image input. Switch to a vision-capable model to send images or video.`);
+        return;
+      }
     }
 
-    // Vision: skip resize for Qwen-VL 4B/8B; otherwise resize when payload > 1 MB
+    const effectiveText = (text || '').trim();
+
+    // Vision: skip resize for Qwen-VL 4B/8B; Flash-Next always downscales to ≤512px
     const skipResize = shouldSkipImageResizeForVision($effectiveModelId);
     const urlsForApi = hasImages
-      ? (skipResize ? imageDataUrls : await resizeImageDataUrlsForVision(imageDataUrls))
+      ? (skipResize ? imageDataUrls : await resizeImageDataUrlsForVision(imageDataUrls, $effectiveModelId))
       : [];
     const userContent = hasImages
       ? [
@@ -319,6 +362,14 @@
   /** Stream a new assistant reply from the conversation's current DB history. */
   async function streamAssistantReply() {
     if (!convId) return;
+    const model = $effectiveModelId;
+    if (model && !String(model).includes(':')) {
+      const historyRaw = await getMessages(convId);
+      const nCtx = await probeLocalContextSize();
+      if (needsCompress(estimateMessagesTokens(historyRaw), nCtx)) {
+        await compressConversation();
+      }
+    }
     const history = await getMessages(convId);
     let apiMessages = buildApiMessages(history, $settings.system_prompt);
 
@@ -341,15 +392,29 @@
     const controller = new AbortController();
     chatAbortController = controller;
 
+    const grokModel = isGrokModel($effectiveModelId);
     const host = await fetchDesktopHostStatus(controller.signal);
-    const useDesktopTools = !!(host.ok && !isGrokModel($effectiveModelId));
-    if (useDesktopTools) {
-      apiMessages = mergeSystemHint(apiMessages, desktopSystemHint(host.root));
+    if (host.ok && convId && !grokModel) {
+      const prev = desktopToolsPin.get(convId);
+      desktopToolsPin.set(convId, { root: prev?.root || host.root || '' });
+    }
+    const pin = convId ? desktopToolsPin.get(convId) : null;
+    const useDesktopTools = !!(pin && !grokModel);
+    const useWebTools = !grokModel;
+    const chatTools = [
+      ...(useWebTools ? WEB_SEARCH_TOOLS : []),
+      ...(useDesktopTools ? DESKTOP_TOOLS : []),
+    ];
+    if (grokModel) {
+      apiMessages = mergeSystemHint(apiMessages, GROK_WEB_SEARCH_HINT);
+    } else {
+      if (useWebTools) apiMessages = mergeSystemHint(apiMessages, WEB_SEARCH_HINT);
+      if (useDesktopTools) apiMessages = mergeSystemHint(apiMessages, desktopSystemHint(pin.root || host.root));
       // Local llama.cpp + Qwen templates inject their own tools system block.
-      if (!String($effectiveModelId).includes(':')) {
+      if (chatTools.length && !String($effectiveModelId).includes(':')) {
         apiMessages = foldSystemIntoUserMessages(apiMessages);
       }
-      apiMessages = repairOpenAiToolTurns(apiMessages);
+      if (chatTools.length) apiMessages = repairOpenAiToolTurns(apiMessages);
     }
 
     function patchAssistant(fields) {
@@ -371,17 +436,82 @@
       frequency_penalty: $settings.frequency_penalty,
       stop: $settings.stop?.length ? $settings.stop : undefined,
       ttl: $settings.model_ttl_seconds,
+      ...pickThinkingOptions($settings),
     };
 
     let streamResult;
     try {
+      if (isGrokVoiceModel($effectiveModelId)) {
+        const apiKey = (
+          get(grokApiKey)?.trim() ||
+          (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GROK_API_KEY) ||
+          ''
+        ).trim();
+        if (!apiKey) {
+          throw new Error('Add your Grok (xAI) API key in Settings to use Eve voice.');
+        }
+        const lastUser = [...history].reverse().find((m) => m.role === 'user');
+        const userText = messageContentToText(lastUser?.content).trim();
+        if (!userText) {
+          throw new Error('Eve needs spoken or typed text — images alone are not sent to the voice model.');
+        }
+        const prior = history
+          .filter((m) => m !== lastUser)
+          .slice(-8)
+          .map((m) => `${m.role}: ${messageContentToText(m.content).trim()}`)
+          .filter((line) => !line.endsWith(':'))
+          .join('\n');
+        const voice =
+          (typeof localStorage !== 'undefined' && localStorage.getItem('xaiVoiceRoleplayVoice')) || 'eve';
+        unlockAudioPlayback();
+        const voiceResult = await runGrokVoiceTextTurn({
+          apiKey,
+          text: userText,
+          voice,
+          instructions: ($settings?.system_prompt || '').trim() || DEFAULT_ROLEPLAY_INSTRUCTIONS,
+          historyText: prior,
+          onDelta: (full) => {
+            fullContent = full;
+            patchAssistant({ content: fullContent, modelId: $effectiveModelId });
+          },
+          signal: controller.signal,
+        });
+        if (voiceResult.aborted) return;
+        fullContent = voiceResult.content || fullContent;
+        streamResult = { elapsedMs: voiceResult.elapsedMs, usage: {} };
+        if (!fullContent) {
+          throw new Error('Eve returned no transcript. Try the Eve button for live voice, or send again.');
+        }
+      } else {
+      if (!String($effectiveModelId).includes(':')) {
+        const nCtx = await probeLocalContextSize();
+        const fitted = fitMessagesToContext(apiMessages, {
+          nCtx,
+          maxTokens: Number(streamOpts.max_tokens) || 4096,
+        });
+        contextUsage.set({ promptTokens: fitted.tokens, contextMax: nCtx });
+        if (fitted.overflow) {
+          chatError.set(
+            `This message is larger than the local ${nCtx}-token window. Start a new chat or shorten it.`,
+          );
+          activeMessages.update((arr) => arr.filter((m) => m.id !== assistantMsgId));
+          return;
+        }
+        apiMessages = fitted.messages;
+        if (fitted.dropped > 0) {
+          chatError.set(
+            `Dropped older turns to fit the local ${nCtx}-token window (this thread was ~${fitted.originalTokens} tokens).`,
+          );
+        }
+      }
+
       for (let round = 0; round < MAX_DESKTOP_TOOL_ROUNDS; round += 1) {
         fullContent = '';
         streamResult = await streamChatCompletion({
           model: $effectiveModelId,
           messages: apiMessages,
           options: streamOpts,
-          tools: useDesktopTools ? DESKTOP_TOOLS : undefined,
+          tools: chatTools.length ? chatTools : undefined,
           signal: controller.signal,
           onChunk(chunk) {
             fullContent += chunk;
@@ -398,33 +528,58 @@
         if (streamResult?.aborted) return;
 
         const toolCalls = streamResult?.toolCalls;
-        if (useDesktopTools && toolCalls?.length) {
+        if (chatTools.length && toolCalls?.length) {
           patchAssistant({ toolStatus: formatToolStatus(toolCalls), content: fullContent });
-          const { messages: toolMsgs, actions } = await executeDesktopToolCalls(toolCalls, {
-            confirmWrites: async (filePath) =>
-              confirm({
-                title: 'Allow writes this session',
-                message: `ATOM wants to write files under ${host.root}. First write: ${filePath || 'a file in Documents'}. This grant lasts until you quit ATOM.`,
-                confirmLabel: 'Allow writes',
-                cancelLabel: 'Deny',
-              }),
-            confirmJobs: async (toolName, args) =>
-              confirm({
-                title: 'Allow OpenSCAD and slice this session',
-                message: `ATOM wants to run ${toolName} (${args.output || args.stl || args.scad || args.name || 'a print job'}). This allows OpenSCAD exports and OrcaSlicer slice/upload until you quit ATOM. It will not start the printer.`,
-                confirmLabel: 'Allow slice jobs',
-                cancelLabel: 'Deny',
-              }),
-            confirmStart: async (printName) =>
-              confirm({
-                title: 'Start print on the Ender-3?',
-                message: `This heats the bed and nozzle and starts ${printName || 'the staged gcode'}. Only confirm if you have reviewed the first-layer footprint.`,
-                confirmLabel: 'Start print',
-                cancelLabel: 'Not now',
-                danger: true,
-              }),
-          });
-          desktopActions.push(...actions);
+          const webCalls = toolCalls.filter((c) => isWebSearchToolName(c.function?.name));
+          const otherCalls = toolCalls.filter((c) => !isWebSearchToolName(c.function?.name));
+          let webMsgs = [];
+          if (webCalls.length) {
+            webSearchInProgress.set(true);
+            try {
+              const web = await executeWebSearchToolCalls(webCalls);
+              webMsgs = web.messages;
+              if (web.actions.some((a) => a.ok)) webSearchConnected.set(true);
+            } finally {
+              webSearchInProgress.set(false);
+            }
+          }
+          let otherMsgs = [];
+          if (useDesktopTools && otherCalls.length) {
+            const desk = await executeDesktopToolCalls(otherCalls, {
+              confirmWrites: async (filePath) =>
+                confirm({
+                  title: 'Allow writes this session',
+                  message: `ATOM wants to write files under ${host.root}. First write: ${filePath || 'a file in Documents'}. This grant lasts until you quit ATOM.`,
+                  confirmLabel: 'Allow writes',
+                  cancelLabel: 'Deny',
+                }),
+              confirmJobs: async (toolName, args) =>
+                confirm({
+                  title: 'Allow OpenSCAD and slice this session',
+                  message: `ATOM wants to run ${toolName} (${args.output || args.stl || args.scad || args.name || 'a print job'}). This allows OpenSCAD exports and OrcaSlicer slice/upload until you quit ATOM. It will not start the printer.`,
+                  confirmLabel: 'Allow slice jobs',
+                  cancelLabel: 'Deny',
+                }),
+              confirmStart: async (printName) =>
+                confirm({
+                  title: 'Start print on the Ender-3?',
+                  message: `This heats the bed and nozzle and starts ${printName || 'the staged gcode'}. Only confirm if you have reviewed the first-layer footprint.`,
+                  confirmLabel: 'Start print',
+                  cancelLabel: 'Not now',
+                  danger: true,
+                }),
+            });
+            otherMsgs = desk.messages;
+            desktopActions.push(...desk.actions);
+          } else if (otherCalls.length) {
+            otherMsgs = otherCalls.map((c) => ({
+              role: 'tool',
+              tool_call_id: c.id,
+              content: JSON.stringify({ ok: false, error: `Unknown tool ${c.function?.name || ''}` }),
+            }));
+          }
+          const byId = new Map([...webMsgs, ...otherMsgs].map((m) => [m.tool_call_id, m]));
+          const toolMsgs = toolCalls.map((c) => byId.get(c.id)).filter(Boolean);
           await addMessage(convId, {
             role: 'assistant',
             content: fullContent || '',
@@ -441,12 +596,17 @@
         }
         break;
       }
+      }
     } catch (err) {
       const raw = err?.message || '';
-      const isLoadError = raw.includes('Failed to load model') || raw.includes('Error loading model');
+      const isLoadError =
+        raw.includes('Failed to load model') ||
+        raw.includes('Error loading model') ||
+        raw.includes('model is not loaded') ||
+        raw.includes('did not become ready');
       const friendly = isLoadError
-        ? 'Model failed to load in LM Studio. Load the model in LM Studio first (or check memory). If it still fails, try re-downloading the model in case the file is corrupted.'
-        : raw || 'Failed to get response. Is your model server running and the model loaded?';
+        ? 'Could not load that local model into the llama router (VRAM or file issue). Pick another local model, or check llama-server.log. Cloud models (DeepSeek/Grok) do not need a local load.'
+        : raw || 'Failed to get response. Is llama-server / your model backend running?';
       chatError.set(friendly);
       activeMessages.update((arr) => arr.filter((m) => m.id !== assistantMsgId));
       return;
@@ -457,19 +617,34 @@
 
     if (streamResult?.aborted) return;
 
-    maybeReadAloudAssistantReply(fullContent, assistantMsgId, get(effectiveModelId));
+    if (!isGrokVoiceModel($effectiveModelId)) {
+      maybeReadAloudAssistantReply(fullContent, assistantMsgId, get(effectiveModelId));
+    }
 
     const completionTokens = streamResult?.usage?.completion_tokens ?? Math.max(1, Math.ceil(fullContent.length / 4));
-    const elapsedMs = streamResult?.elapsedMs ?? 0;
+    const elapsedMs = streamResult?.decodeMs || streamResult?.elapsedMs || 0;
+    const tokPerSec = decodeTokPerSec({
+      timings: streamResult?.timings,
+      completionTokens,
+      decodeMs: streamResult?.decodeMs,
+      elapsedMs,
+    });
     const stats =
       elapsedMs > 0
         ? {
             completion_tokens: completionTokens,
             elapsed_ms: elapsedMs,
             prompt_tokens: streamResult?.usage?.prompt_tokens ?? undefined,
+            tok_per_sec: tokPerSec,
             estimated: streamResult?.usage?.completion_tokens == null,
           }
         : null;
+    if (streamResult?.usage?.prompt_tokens != null) {
+      contextUsage.update((u) => ({
+        ...u,
+        promptTokens: streamResult.usage.prompt_tokens,
+      }));
+    }
     await addMessage(convId, {
       role: 'assistant',
       content: fullContent,
@@ -856,7 +1031,7 @@
           <button
             type="button"
             class="px-4 py-2 rounded-lg text-sm font-medium"
-            style="background: var(--ui-accent); color: var(--ui-bg-main);"
+            style="background: var(--ui-action, var(--ui-accent)); color: var(--ui-action-ink, var(--ui-bg-main));"
             onclick={handleImageModalGenerate}
             disabled={imageGenerating || !canGenerateImage}
           >{imageGenerating ? 'Generating…' : 'Generate'}</button>
@@ -910,7 +1085,7 @@
           <button
             type="button"
             class="px-4 py-2 rounded-lg text-sm font-medium"
-            style="background: var(--ui-accent); color: var(--ui-bg-main);"
+            style="background: var(--ui-action, var(--ui-accent)); color: var(--ui-action-ink, var(--ui-bg-main));"
             onclick={handleVideoModalGenerate}
             disabled={videoGenerating || !videoModalPrompt.trim()}
           >{videoGenerating ? 'Generating…' : 'Generate'}</button>

@@ -1,9 +1,11 @@
 <script>
   import { tick } from 'svelte';
-  import { getModelIcon, ensureModelIcons, modelIconOverrides } from '$lib/modelIcons.js';
+  import { getModelIcon, getQuantization, ensureModelIcons, modelIconOverrides } from '$lib/modelIcons.js';
   import { getModelTypeTag, modelSelectorPrimaryLine, modelSelectorSecondaryLine } from '$lib/api.js';
   import ModelCapabilityBadges from '$lib/components/ModelCapabilityBadges.svelte';
   import { groupModelsForSelector, bucketForModelId } from '$lib/modelGroups.js';
+  import { modelPricingCatalog, pricingSearchText } from '$lib/modelPricing.js';
+  import ModelPricingLine from '$lib/components/ModelPricingLine.svelte';
 
   let {
     models = [],
@@ -31,7 +33,9 @@
       if (!q) return true;
       const primary = modelSelectorPrimaryLine(m.id).toLowerCase();
       const tag = (getModelTypeTag(m.id) || '').toLowerCase();
-      return primary.includes(q) || m.id.toLowerCase().includes(q) || tag.includes(q);
+      const quant = (getQuantization(m.id) || '').toLowerCase();
+      const price = pricingSearchText(m.id, $modelPricingCatalog).toLowerCase();
+      return primary.includes(q) || m.id.toLowerCase().includes(q) || tag.includes(q) || quant.includes(q) || price.includes(q);
     });
   });
 
@@ -76,7 +80,7 @@
     <input
       bind:this={searchEl}
       type="text"
-      placeholder="Search name, id, or tag…"
+      placeholder="Search name, id, tag, or price…"
       bind:value={searchQuery}
       onkeydown={onSearchKeydown}
       class="w-full rounded-lg px-3 py-1.5 text-sm outline-none"
@@ -162,7 +166,7 @@
             />
             <span class="min-w-0 flex-1 flex flex-col gap-0.5">
               <span class="flex items-start gap-2 min-w-0">
-                <span class="truncate font-medium" style="color: var(--ui-text-primary);"
+                <span class="truncate min-w-0 flex-1 font-medium" style="color: var(--ui-text-primary);"
                   >{modelSelectorPrimaryLine(m.id)}</span
                 >
                 <span class="shrink-0 ml-auto flex items-center gap-1.5">
@@ -173,7 +177,7 @@
                       >{tag}</span
                     >
                   {/if}
-                  <ModelCapabilityBadges modelId={m.id} />
+                  <ModelCapabilityBadges modelId={m.id} caps={m.caps} />
                 </span>
               </span>
               {#if sub}
@@ -183,6 +187,7 @@
                   title={sub}>{sub}</span
                 >
               {/if}
+              <ModelPricingLine modelId={m.id} />
             </span>
           </button>
         {/each}
@@ -193,6 +198,13 @@
     {filteredFlat.length === models.length
       ? `${models.length} model${models.length === 1 ? '' : 's'}`
       : `${filteredFlat.length} of ${models.length} models`}
+    {#if $modelPricingCatalog.status === 'ready'}
+      · prices $/1M this launch
+    {:else if $modelPricingCatalog.status === 'loading'}
+      · loading prices…
+    {:else if $modelPricingCatalog.status === 'error'}
+      · prices unavailable
+    {/if}
   </div>
 {/if}
 

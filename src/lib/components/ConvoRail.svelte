@@ -248,7 +248,7 @@
       <button
         type="button"
         class="shrink-0 w-full min-w-0 py-1.5 px-2 rounded mx-1 text-xs font-medium flex items-center justify-center gap-1"
-        style="background: var(--ui-accent); color: var(--ui-bg-main);"
+        style="background: var(--ui-action, var(--ui-accent)); color: var(--ui-action-ink, var(--ui-bg-main));"
         onclick={newChat}
         title="New chat">
         + New

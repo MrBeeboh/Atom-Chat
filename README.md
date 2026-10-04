@@ -14,7 +14,7 @@ That's it. Pick a model, start a chat.
 ## What you need
 
 - **Node.js 18+** — [nodejs.org](https://nodejs.org)
-- **llama.cpp** — `llama-server` on `localhost:8080` (default in Settings). **Intel Arc / Intel GPU:** use a [SYCL-enabled build](https://github.com/ggml-org/llama.cpp/blob/master/docs/backend/SYCL.md) (`GGML_SYCL`); the UI only talks HTTP and does not pick the GPU backend. `./scripts/start-atom.sh` prefers `llama-server-sycl` on your `PATH`, or set `LLAMA_SERVER_BIN`. Dual Arc Pro B70: both cards, and other local models are unloaded on launch — see `TROUBLESHOOTING.md`.
+- **llama.cpp** — `llama-server` on `localhost:8080` (default in Settings). **Intel Arc / Intel GPU:** use a [SYCL-enabled build](https://github.com/ggml-org/llama.cpp/blob/master/docs/backend/SYCL.md) (`GGML_SYCL`); the UI only talks HTTP and does not pick the GPU backend. `./scripts/start-atom.sh` prefers `llama-server-sycl` on your `PATH`, or set `LLAMA_SERVER_BIN`. Dual Arc Pro B70: both cards (layer split); other local models are unloaded on launch — see `TROUBLESHOOTING.md`.
 - Any OpenAI-compatible server (LM Studio, Ollama, etc.) also works if you change the URL in Settings.
 
 Optional: Python 3 for voice input, hardware metrics, and model unloading helpers.
@@ -27,7 +27,7 @@ Optional: Python 3 for voice input, hardware metrics, and model unloading helper
 - Web search integration (Brave API or DuckDuckGo proxy)
 - Vision support — paste or drop images/PDFs/video
 - Model optimization — fetch recommended settings from Hugging Face
-- Cloud API support — DeepSeek, Grok, Cerebras, DeepInfra
+- Cloud API support — Nous, DeepSeek, Grok, Cerebras, DeepInfra
 - Voice input (Whisper via local Python server)
 - Message tools — regenerate, edit & resend, copy, pin, per-message delete
 - Conversation history (IndexedDB + pin, inline rename, bulk erase)
@@ -59,7 +59,7 @@ are offline, have local edits, or are on a different branch.
 
 The **Settings panel** (`Ctrl+,`) controls:
 - Model defaults (temperature, max tokens, top-p, top-k, penalties)
-- Cloud API keys (DeepSeek, Grok, Cerebras, DeepInfra)
+- Cloud API keys (Nous, DeepSeek, Grok, Cerebras, DeepInfra)
 - Voice server URL
 - Web search (Brave API key or local proxy)
 - Theme (Studio / Pitch Black / Light)

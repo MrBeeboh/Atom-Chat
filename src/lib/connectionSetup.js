@@ -4,6 +4,7 @@
 import { get } from 'svelte/store';
 import { checkLmStudioConnection, getModels, invalidateCloudModelCache } from '$lib/api.js';
 import { ensureModelIcons } from '$lib/modelIcons.js';
+import { ensureModelPricing } from '$lib/modelPricing.js';
 import {
   lmStudioConnected,
   models,
@@ -11,7 +12,12 @@ import {
   modelSelectionNotification,
   cloudApisAvailable,
   effectiveModelId,
+  dashboardModelA,
+  dashboardModelB,
+  dashboardModelC,
+  dashboardModelD,
 } from '$lib/stores.js';
+import { isArenaModelEligible } from '$lib/providerFunding.js';
 import { findSmallestModel } from '$lib/utils/modelSelection.js';
 
 /**
@@ -48,9 +54,18 @@ export async function refreshConnectionAndModels() {
   lmStudioConnected.set(connected);
 
   try {
+    ensureModelPricing({ force: true });
+    // getModels runs the once-per-page cloud funding check.
     const list = await getModels();
-    const ids = list.map((m) => m.id).filter(Boolean);
-    models.set(ids.map((id) => ({ id })));
+    for (const slot of [dashboardModelA, dashboardModelB, dashboardModelC, dashboardModelD]) {
+      const id = get(slot);
+      if (id && !isArenaModelEligible(id)) slot.set('');
+    }
+    const records = list
+      .filter((m) => m && m.id)
+      .map((m) => (m.caps ? { id: m.id, caps: m.caps } : { id: m.id }));
+    const ids = records.map((m) => m.id);
+    models.set(records);
     if (ids.length) ensureModelIcons(ids);
 
     const stored =
@@ -66,7 +81,7 @@ export async function refreshConnectionAndModels() {
         );
       } else if (get(cloudApisAvailable)) {
         modelSelectionNotification.set(
-          'Add a chat API key (DeepSeek, Grok, or Cerebras) in Settings to use cloud models.',
+          'Add a chat API key (Nous, DeepSeek, Grok, or Cerebras) in Settings to use cloud models.',
         );
       } else {
         modelSelectionNotification.set(

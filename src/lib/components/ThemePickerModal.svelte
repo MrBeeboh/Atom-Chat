@@ -15,7 +15,7 @@
     studio: { bg: '#0b0c10', accent: '#e8a060', text: '#f4ece3' },
     sage:   { bg: '#faf6ef', accent: '#9b2c2c', text: '#1c1917' },
     clay:   { bg: '#120a06', accent: '#fb923c', text: '#fff7ed' },
-    fern:   { bg: '#061210', accent: '#2dd4bf', text: '#ecfdf8' },
+    fern:   { bg: '#12161d', accent: '#d4a15a', text: '#e7edf5' },
   };
 </script>
 

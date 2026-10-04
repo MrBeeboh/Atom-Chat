@@ -115,7 +115,7 @@ export async function addMessage(conversationId, message) {
     tool_calls: message.tool_calls ?? null,
     tool_call_id: message.tool_call_id ?? null,
     desktopActions: Array.isArray(message.desktopActions) ? [...message.desktopActions] : null,
-    createdAt: nextMessageCreatedAt(),
+    createdAt: message.createdAt ?? nextMessageCreatedAt(),
   });
   return id;
 }

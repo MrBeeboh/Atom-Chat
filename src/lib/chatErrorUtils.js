@@ -8,6 +8,8 @@ export function isModelLoadBlockingError(message) {
   return (
     message.includes('Model failed to load') ||
     message.includes('Failed to load model') ||
-    message.includes('Error loading model')
+    message.includes('Error loading model') ||
+    message.includes('model is not loaded') ||
+    message.includes('did not become ready')
   );
 }
