@@ -8,8 +8,9 @@ export const UI_THEME_OPTIONS = [
   { value: 'sage', label: 'Paper', swatch: '#9b2c2c' },
   { value: 'clay', label: 'Ember', swatch: '#ea580c' },
   { value: 'fern', label: 'Ion', swatch: '#1b4332' },
-  { value: 'neon', label: 'Neon', swatch: '#ff2e97' },
-  { value: 'aurora', label: 'Aurora', swatch: '#34d399' },
-  { value: 'abyss', label: 'Abyss', swatch: '#38bdf8' },
-  { value: 'noir', label: 'Noir', swatch: '#d4af37' },
+  { value: 'dracula', label: 'Dracula', swatch: '#bd93f9' },
+  { value: 'catppuccin', label: 'Catppuccin', swatch: '#cba6f7' },
+  { value: 'tokyo', label: 'Tokyo Night', swatch: '#7aa2f7' },
+  { value: 'synthwave', label: 'Synthwave', swatch: '#ff7edb' },
+  { value: 'gruvbox', label: 'Gruvbox', swatch: '#fe8019' },
 ];

@@ -16,10 +16,11 @@
     sage:   { bg: '#faf6ef', accent: '#9b2c2c', text: '#1c1917' },
     clay:   { bg: '#120a06', accent: '#fb923c', text: '#fff7ed' },
     fern:   { bg: '#12161d', accent: '#d4a15a', text: '#e7edf5' },
-    neon:   { bg: '#0d0614', accent: '#ff2e97', text: '#f5ecff' },
-    aurora: { bg: '#070d1a', accent: '#34d399', text: '#e6fbf6' },
-    abyss:  { bg: '#060d18', accent: '#38bdf8', text: '#e6f1ff' },
-    noir:   { bg: '#0c0a08', accent: '#d4af37', text: '#f5efe4' },
+    dracula:    { bg: '#282a36', accent: '#bd93f9', text: '#f8f8f2' },
+    catppuccin: { bg: '#1e1e2e', accent: '#cba6f7', text: '#cdd6f4' },
+    tokyo:      { bg: '#1a1b26', accent: '#7aa2f7', text: '#c0caf5' },
+    synthwave:  { bg: '#262335', accent: '#ff7edb', text: '#f5f5f5' },
+    gruvbox:    { bg: '#282828', accent: '#fe8019', text: '#ebdbb2' },
   };
 </script>
 
