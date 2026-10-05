@@ -95,6 +95,21 @@
   let volumeWrapEl = $state(/** @type {HTMLElement | null} */ (null));
   const volumePct = $derived(Math.round(($ttsVolume ?? 0.8) * 100));
 
+  /** "More tools" menu: image/video/ctx/talk/speak/volume/web collapse behind this. */
+  let moreOpen = $state(false);
+  let moreWrapEl = $state(/** @type {HTMLElement | null} */ (null));
+  function toggleMore() {
+    moreOpen = !moreOpen;
+  }
+  $effect(() => {
+    if (!moreOpen) return;
+    function onDoc(e) {
+      if (moreWrapEl && !moreWrapEl.contains(/** @type {Node} */ (e.target))) moreOpen = false;
+    }
+    document.addEventListener('pointerdown', onDoc);
+    return () => document.removeEventListener('pointerdown', onDoc);
+  });
+
   function onVolumeClick() {
     if (($ttsVolume ?? 0) <= 0.001) {
       ttsVolume.set(0.8);
@@ -675,91 +690,6 @@
         rows="1"
       ></textarea>
     </div>
-    {#if onGenerateImageGrok || onGenerateImageDeepSeek || onGenerateVideoDeepSeek}
-    <div class="media-toolbar media-toolbar-inline">
-      {#if onGenerateImageGrok || onGenerateImageDeepSeek}
-        <button
-          type="button"
-          class="media-btn {imageGenerating ? 'media-btn-active media-btn-image-active' : ''}"
-          disabled={$isStreaming || imageGenerating}
-          onclick={handleImageClick}
-          title={imageGenerating ? 'Generating image…' : (onGenerateImageGrok ? 'Generate image (Grok)' : 'Generate image (DeepInfra)')}
-          aria-label={imageGenerating ? 'Generating image' : 'Generate image'}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="3" width="18" height="18" rx="3"/>
-            <circle cx="8.5" cy="8.5" r="1.5" fill="currentColor" stroke="none" class="{imageGenerating ? 'media-anim-flash-color' : 'media-icon-pulse-dot'}"/>
-            <path d="M3 16l5-5 3 3 4-4 6 6v2a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3v-2z" fill="currentColor" opacity="0.15" stroke="none"/>
-            <path d="M3 16l5-5 3 3 4-4 6 6"/>
-          </svg>
-          <span class="media-btn-label">{imageGenerating ? '…' : 'Image'}</span>
-        </button>
-      {/if}
-      {#if onGenerateVideoDeepSeek}
-        <button
-          type="button"
-          class="media-btn {videoGenerating ? 'media-btn-active media-btn-video-active' : ''}"
-          disabled={$isStreaming || videoGenerating}
-          onclick={handleVideoClick}
-          title={videoGenerating ? `Generating video… ${videoGenElapsed}` : 'Generate video (DeepInfra)'}
-          aria-label={videoGenerating ? 'Generating video' : 'Generate video'}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="2" y="4" width="20" height="16" rx="3"/>
-            <circle cx="5" cy="6" r="1.2" fill="currentColor" stroke="none" opacity="0.5"/>
-            <circle cx="12" cy="6" r="1.2" fill="currentColor" stroke="none" opacity="0.5"/>
-            <circle cx="19" cy="6" r="1.2" fill="currentColor" stroke="none" opacity="0.5"/>
-            <polygon points="9,9 9,17 15,13" fill="currentColor" opacity="0.3" stroke="none"/>
-            <polygon points="9,9 9,17 15,13"/>
-          </svg>
-          {#if videoGenerating}
-            <span class="media-elapsed-dot media-elapsed-dot-lg" aria-hidden="true"></span><span class="media-elapsed">{videoGenElapsed}</span>
-          {/if}
-          <span class="media-btn-label">{videoGenerating ? '' : 'Video'}</span>
-        </button>
-      {/if}
-    </div>
-  {/if}
-  <div class="composer-tools" role="toolbar" aria-label="Thinking, context, talk, dictate, speak, and web">
-  {#if $layout !== 'arena'}
-    <ThinkingControls
-      compact
-      modelId={$effectiveModelId}
-      thinking={$settings.thinking}
-      speed={$settings.thinking_speed}
-      onChange={onThinkingChange}
-    />
-  {/if}
-  <div class="tool-btn context-tool" title="Context used">
-    <span class="tool-icon-wrap">
-      <ContextRing inline />
-    </span>
-    <span class="tool-label">Ctx</span>
-  </div>
-  <button
-    type="button"
-    class="tool-btn"
-    class:tool-btn-on={openMic}
-    title={openMic ? 'Live talk on — click to hang up' : 'Live talk — hands-free: you speak, it answers out loud, then it listens again'}
-    disabled={!openMic && ($isStreaming || (voiceProcessing && !recording))}
-    onclick={toggleOpenMic}
-    aria-label={openMic ? 'Stop live talk' : 'Start live talk'}
-    aria-pressed={openMic}
-  >
-    <span class="tool-icon-wrap">
-      {#if openMic && openMicPhase === 'transcribing'}
-        <span class="mic-spinner" aria-hidden="true">⟳</span>
-      {:else}
-        <svg class="tool-glyph" class:tool-glyph-live={openMic} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M4 15v-1a8 8 0 0 1 16 0v1" />
-          <rect x="2.5" y="13" width="4.5" height="7" rx="1.6" />
-          <rect x="17" y="13" width="4.5" height="7" rx="1.6" />
-        </svg>
-      {/if}
-      {#if openMic}<span class="tool-pip tool-pip-live" aria-hidden="true"></span>{/if}
-    </span>
-    <span class="tool-label">{openMic ? 'Live' : 'Talk'}</span>
-  </button>
   <button
     type="button"
     class="tool-btn"
@@ -785,129 +715,209 @@
     </span>
     <span class="tool-label">{recording ? 'Rec' : 'Dictate'}</span>
   </button>
-  <button
-    type="button"
-    class="tool-btn"
-    class:tool-btn-on={$ttsReadAloudEnabled}
-    class:tool-btn-busy={ttsSpeaking}
-    title={$voiceRoleplaySessionActive
-      ? 'Speak is paused while Eve is active'
-      : $ttsReadAloudEnabled
-        ? (ttsSpeaking ? 'Speaking the reply… click to mute' : 'Speak on — replies are read aloud (click to mute, Shift+click for voice settings)')
-        : 'Speak off — click to read replies aloud (Shift+click for voice settings)'}
-    disabled={$voiceRoleplaySessionActive}
-    onclick={onReadAloudClick}
-    aria-label={$ttsReadAloudEnabled ? 'Speak on' : 'Speak off'}
-    aria-pressed={$ttsReadAloudEnabled}
-  >
-    <span class="tool-icon-wrap">
-      <svg class:tool-glyph-speak={ttsSpeaking} width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
-        {#if $ttsReadAloudEnabled}
-          <path class="speak-wave speak-wave-1" d="M15.5 8.5a5 5 0 0 1 0 7"></path>
-          <path class="speak-wave speak-wave-2" d="M18.7 5.8a9 9 0 0 1 0 12.4"></path>
-        {:else}
-          <line x1="16" y1="9" x2="22" y2="15"></line>
-          <line x1="22" y1="9" x2="16" y2="15"></line>
-        {/if}
-      </svg>
-      {#if $ttsReadAloudEnabled}<span class="tool-pip" class:tool-pip-busy={ttsSpeaking} aria-hidden="true"></span>{/if}
-    </span>
-    <span class="tool-label">Speak</span>
-  </button>
-  <div class="volume-wrap" bind:this={volumeWrapEl}>
+  <div class="more-wrap" bind:this={moreWrapEl}>
     <button
       type="button"
       class="tool-btn"
-      class:tool-btn-on={volumeOpen}
-      title="ATOM volume — only this app, not system volume"
-      onclick={onVolumeClick}
-      aria-label={`ATOM volume ${volumePct} percent`}
-      aria-expanded={volumeOpen}
+      class:tool-btn-on={moreOpen}
+      title="More tools"
+      onclick={toggleMore}
+      aria-label="More tools"
+      aria-expanded={moreOpen}
+      aria-haspopup="menu"
     >
       <span class="tool-icon-wrap">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
-          {#if volumePct === 0}
-            <line x1="16" y1="9" x2="22" y2="15"></line>
-            <line x1="22" y1="9" x2="16" y2="15"></line>
-          {:else if volumePct < 50}
-            <path d="M15.5 9.5a3.5 3.5 0 0 1 0 5"></path>
-          {:else}
-            <path d="M15.5 8.5a5 5 0 0 1 0 7"></path>
-            <path d="M18.7 5.8a9 9 0 0 1 0 12.4"></path>
-          {/if}
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <circle cx="12" cy="5" r="1.7" />
+          <circle cx="12" cy="12" r="1.7" />
+          <circle cx="12" cy="19" r="1.7" />
         </svg>
       </span>
-      <span class="tool-label">{volumePct}%</span>
+      <span class="tool-label">More</span>
     </button>
-    {#if volumeOpen}
-      <div class="volume-popover" role="dialog" aria-label="ATOM volume">
-        <p class="volume-popover-title">ATOM volume</p>
-        <div class="volume-popover-row">
+    {#if moreOpen}
+      <div class="more-menu" role="menu" aria-label="More tools">
+        {#if onGenerateImageGrok || onGenerateImageDeepSeek || onGenerateVideoDeepSeek}
+          <div class="more-menu-group" role="group" aria-label="Image and video generation">
+            {#if onGenerateImageGrok || onGenerateImageDeepSeek}
+              <button
+                type="button"
+                class="media-btn {imageGenerating ? 'media-btn-active media-btn-image-active' : ''}"
+                disabled={$isStreaming || imageGenerating}
+                onclick={handleImageClick}
+                title={imageGenerating ? 'Generating image…' : (onGenerateImageGrok ? 'Generate image (Grok)' : 'Generate image (DeepInfra)')}
+                aria-label={imageGenerating ? 'Generating image' : 'Generate image'}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="3" width="18" height="18" rx="3"/>
+                  <circle cx="8.5" cy="8.5" r="1.5" fill="currentColor" stroke="none" class="{imageGenerating ? 'media-anim-flash-color' : 'media-icon-pulse-dot'}"/>
+                  <path d="M3 16l5-5 3 3 4-4 6 6v2a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3v-2z" fill="currentColor" opacity="0.15" stroke="none"/>
+                  <path d="M3 16l5-5 3 3 4-4 6 6"/>
+                </svg>
+                <span class="media-btn-label">{imageGenerating ? '…' : 'Image'}</span>
+              </button>
+            {/if}
+            {#if onGenerateVideoDeepSeek}
+              <button
+                type="button"
+                class="media-btn {videoGenerating ? 'media-btn-active media-btn-video-active' : ''}"
+                disabled={$isStreaming || videoGenerating}
+                onclick={handleVideoClick}
+                title={videoGenerating ? `Generating video… ${videoGenElapsed}` : 'Generate video (DeepInfra)'}
+                aria-label={videoGenerating ? 'Generating video' : 'Generate video'}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="2" y="4" width="20" height="16" rx="3"/>
+                  <circle cx="5" cy="6" r="1.2" fill="currentColor" stroke="none" opacity="0.5"/>
+                  <circle cx="12" cy="6" r="1.2" fill="currentColor" stroke="none" opacity="0.5"/>
+                  <circle cx="19" cy="6" r="1.2" fill="currentColor" stroke="none" opacity="0.5"/>
+                  <polygon points="9,9 9,17 15,13" fill="currentColor" opacity="0.3" stroke="none"/>
+                  <polygon points="9,9 9,17 15,13"/>
+                </svg>
+                {#if videoGenerating}
+                  <span class="media-elapsed-dot media-elapsed-dot-lg" aria-hidden="true"></span><span class="media-elapsed">{videoGenElapsed}</span>
+                {/if}
+                <span class="media-btn-label">{videoGenerating ? '' : 'Video'}</span>
+              </button>
+            {/if}
+          </div>
+        {/if}
+        {#if $layout !== 'arena'}
+          <div class="more-menu-thinking">
+            <ThinkingControls
+              compact
+              modelId={$effectiveModelId}
+              thinking={$settings.thinking}
+              speed={$settings.thinking_speed}
+              onChange={onThinkingChange}
+            />
+          </div>
+        {/if}
+        <div class="more-menu-item" title="Context used" onclick={toggleMore}>
+          <span class="tool-icon-wrap"><ContextRing inline /></span>
+          <span class="more-menu-label">Context</span>
+        </div>
+        <button
+          type="button"
+          class="more-menu-item"
+          class:more-menu-item-on={openMic}
+          title={openMic ? 'Live talk on — click to hang up' : 'Live talk — hands-free: you speak, it answers out loud, then it listens again'}
+          disabled={!openMic && ($isStreaming || (voiceProcessing && !recording))}
+          onclick={toggleOpenMic}
+          aria-pressed={openMic}
+        >
+          <span class="tool-icon-wrap">
+            {#if openMic && openMicPhase === 'transcribing'}
+              <span class="mic-spinner" aria-hidden="true">⟳</span>
+            {:else}
+              <svg class="tool-glyph" class:tool-glyph-live={openMic} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M4 15v-1a8 8 0 0 1 16 0v1" />
+                <rect x="2.5" y="13" width="4.5" height="7" rx="1.6" />
+                <rect x="17" y="13" width="4.5" height="7" rx="1.6" />
+              </svg>
+            {/if}
+          </span>
+          <span class="more-menu-label">{openMic ? 'Live talk' : 'Talk'}</span>
+        </button>
+        <button
+          type="button"
+          class="more-menu-item"
+          class:more-menu-item-on={$ttsReadAloudEnabled}
+          title={$voiceRoleplaySessionActive
+            ? 'Speak is paused while Eve is active'
+            : $ttsReadAloudEnabled
+              ? (ttsSpeaking ? 'Speaking the reply… click to mute' : 'Speak on — replies are read aloud (click to mute, Shift+click for voice settings)')
+              : 'Speak off — click to read replies aloud (Shift+click for voice settings)'}
+          disabled={$voiceRoleplaySessionActive}
+          onclick={onReadAloudClick}
+          aria-pressed={$ttsReadAloudEnabled}
+        >
+          <span class="tool-icon-wrap">
+            <svg class:tool-glyph-speak={ttsSpeaking} width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+              {#if $ttsReadAloudEnabled}
+                <path class="speak-wave speak-wave-1" d="M15.5 8.5a5 5 0 0 1 0 7"></path>
+                <path class="speak-wave speak-wave-2" d="M18.7 5.8a9 9 0 0 1 0 12.4"></path>
+              {:else}
+                <line x1="16" y1="9" x2="22" y2="15"></line>
+                <line x1="22" y1="9" x2="16" y2="15"></line>
+              {/if}
+            </svg>
+            {#if $ttsReadAloudEnabled}<span class="tool-pip" class:tool-pip-busy={ttsSpeaking} aria-hidden="true"></span>{/if}
+          </span>
+          <span class="more-menu-label">Speak</span>
+        </button>
+        <div class="more-menu-volume" role="group" aria-label="ATOM volume">
+          <span class="tool-icon-wrap">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+              {#if volumePct === 0}
+                <line x1="16" y1="9" x2="22" y2="15"></line>
+                <line x1="22" y1="9" x2="16" y2="15"></line>
+              {:else if volumePct < 50}
+                <path d="M15.5 9.5a3.5 3.5 0 0 1 0 5"></path>
+              {:else}
+                <path d="M15.5 8.5a5 5 0 0 1 0 7"></path>
+                <path d="M18.7 5.8a9 9 0 0 1 0 12.4"></path>
+              {/if}
+            </svg>
+          </span>
           <input
-            id="atom-chat-volume"
             type="range"
             min="0"
             max="1"
             step="0.01"
             bind:value={$ttsVolume}
             class="volume-slider"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={volumePct}
             aria-label="ATOM playback volume"
           />
-          <span class="volume-popover-pct">{volumePct}%</span>
+          <span class="more-menu-label more-menu-volume-pct">{volumePct}%</span>
         </div>
-        <p class="volume-popover-hint">Only ATOM. Does not change system volume.</p>
+        <button
+          type="button"
+          class="more-menu-item"
+          class:more-menu-item-on={webButtonOn}
+          title={webSearchWarmingUp ? 'Connecting to the web…' : chatHasLiveWeb ? ($webSearchConnected ? 'Web on — the model can search and fetch pages (click to reconnect)' : 'Web on — Brave not connected yet (click to retry)') : $webSearchForNextMessage ? ($webSearchConnected ? 'Web on — Arena will attach search results (click to turn off)' : 'Web on — not connected yet (click again to retry)') : 'Web off — click to attach web results in Arena'}
+          disabled={$isStreaming}
+          onclick={() => {
+            if (chatHasLiveWeb) {
+              webSearchWarmUpAttempted = false;
+              runWarmUp();
+              return;
+            }
+            const on = $webSearchForNextMessage;
+            const connected = $webSearchConnected;
+            if (on && !connected && !webSearchWarmingUp) {
+              webSearchWarmUpAttempted = false;
+              runWarmUp();
+              return;
+            }
+            if (on) {
+              webSearchForNextMessage.set(false);
+              webSearchConnected.set(false);
+              return;
+            }
+            webSearchForNextMessage.set(true);
+            runWarmUp();
+          }}
+          aria-pressed={webButtonOn}
+          aria-busy={webSearchWarmingUp}
+        >
+          <span class="tool-icon-wrap">
+            <svg class:web-search-icon-spin={webSearchWarmingUp} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M3 12h18" />
+              <path d="M12 3a14 14 0 0 1 0 18" />
+              <path d="M12 3a14 14 0 0 0 0 18" />
+            </svg>
+            {#if webButtonOn}
+              <span class="tool-pip" class:tool-pip-live={$webSearchConnected} class:tool-pip-rec={!$webSearchConnected} class:tool-pip-busy={webSearchWarmingUp} aria-hidden="true"></span>
+            {/if}
+          </span>
+          <span class="more-menu-label">Web search</span>
+        </button>
       </div>
     {/if}
-  </div>
-  <button
-    type="button"
-    class="tool-btn"
-    class:tool-btn-on={webButtonOn}
-    title={webSearchWarmingUp ? 'Connecting to the web…' : chatHasLiveWeb ? ($webSearchConnected ? 'Web on — the model can search and fetch pages (click to reconnect)' : 'Web on — Brave not connected yet (click to retry)') : $webSearchForNextMessage ? ($webSearchConnected ? 'Web on — Arena will attach search results (click to turn off)' : 'Web on — not connected yet (click again to retry)') : 'Web off — click to attach web results in Arena'}
-    disabled={$isStreaming}
-    onclick={() => {
-      if (chatHasLiveWeb) {
-        webSearchWarmUpAttempted = false;
-        runWarmUp();
-        return;
-      }
-      const on = $webSearchForNextMessage;
-      const connected = $webSearchConnected;
-      if (on && !connected && !webSearchWarmingUp) {
-        webSearchWarmUpAttempted = false;
-        runWarmUp();
-        return;
-      }
-      if (on) {
-        webSearchForNextMessage.set(false);
-        webSearchConnected.set(false);
-        return;
-      }
-      webSearchForNextMessage.set(true);
-      runWarmUp();
-    }}
-    aria-label={webSearchWarmingUp ? 'Connecting to the web' : webButtonOn ? 'Web search on' : 'Web search off'}
-    aria-pressed={webButtonOn}
-    aria-busy={webSearchWarmingUp}
-  >
-    <span class="tool-icon-wrap">
-      <svg class:web-search-icon-spin={webSearchWarmingUp} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <circle cx="12" cy="12" r="9" />
-        <path d="M3 12h18" />
-        <path d="M12 3a14 14 0 0 1 0 18" />
-        <path d="M12 3a14 14 0 0 0 0 18" />
-      </svg>
-      {#if webButtonOn}
-        <span class="tool-pip" class:tool-pip-live={$webSearchConnected} class:tool-pip-rec={!$webSearchConnected} class:tool-pip-busy={webSearchWarmingUp} aria-hidden="true"></span>
-      {/if}
-    </span>
-    <span class="tool-label">Web</span>
-  </button>
   </div>
   {#if $isStreaming && onStop}
     <button type="button" class="send-button" style="background: var(--ui-accent-hot, #dc2626);" onclick={() => onStop()} title="Stop">Stop</button>
@@ -1221,6 +1231,89 @@
     margin: 6px 0 0;
     font-size: 10px;
     line-height: 1.3;
+    color: var(--ui-text-secondary);
+  }
+  .more-wrap {
+    position: relative;
+    flex-shrink: 0;
+    display: flex;
+    align-items: stretch;
+  }
+  .more-menu {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    right: 0;
+    z-index: 90;
+    min-width: 220px;
+    padding: 6px;
+    border-radius: 12px;
+    border: 1px solid var(--ui-border);
+    background: var(--ui-bg-main);
+    box-shadow: 0 12px 32px color-mix(in srgb, #000 22%, transparent);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .more-menu-group {
+    display: flex;
+    gap: 6px;
+    padding: 4px;
+  }
+  .more-menu-group .media-btn {
+    flex: 1;
+    min-width: 0;
+    height: 40px;
+  }
+  .more-menu-thinking {
+    padding: 4px 8px;
+    margin-bottom: 4px;
+    border-bottom: 1px solid color-mix(in srgb, var(--ui-border) 50%, transparent);
+  }
+  .more-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 8px 10px;
+    border: none;
+    background: transparent;
+    border-radius: 8px;
+    color: var(--ui-text-primary);
+    font-size: 13px;
+    font-weight: 500;
+    text-align: left;
+    cursor: pointer;
+    transition: background 120ms;
+  }
+  .more-menu-item:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--ui-accent) 10%, transparent);
+  }
+  .more-menu-item:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .more-menu-item-on {
+    color: var(--ui-accent);
+  }
+  .more-menu-label {
+    flex: 1;
+  }
+  .more-menu-volume {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 8px 10px;
+    border-radius: 8px;
+    color: var(--ui-text-primary);
+  }
+  .more-menu-volume .volume-slider {
+    flex: 1;
+  }
+  .more-menu-volume-pct {
+    flex: none;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
     color: var(--ui-text-secondary);
   }
   .tool-glyph-live {
