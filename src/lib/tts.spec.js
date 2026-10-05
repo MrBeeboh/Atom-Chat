@@ -52,10 +52,6 @@ describe('shouldAutoSpeakReply', () => {
     expect(shouldAutoSpeakReply({ readAloudEnabled: true, openMicActive: false, roleplayActive: false })).toBe(true);
     expect(shouldAutoSpeakReply({ readAloudEnabled: false, openMicActive: false, roleplayActive: false })).toBe(false);
   });
-
-  it('never speaks over Eve roleplay', () => {
-    expect(shouldAutoSpeakReply({ readAloudEnabled: true, openMicActive: true, roleplayActive: true })).toBe(false);
-  });
 });
 
 describe('deepinfraInferenceUrl', () => {

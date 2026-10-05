@@ -26,7 +26,6 @@
   import DashboardArena from '$lib/components/DashboardArena.svelte';
   import ConfirmModal from '$lib/components/ConfirmModal.svelte';
   import ShortcutsModal from '$lib/components/ShortcutsModal.svelte';
-  import VoiceRoleplayPanel from '$lib/components/VoiceRoleplayPanel.svelte';
   import AtomLogo from '$lib/components/AtomLogo.svelte';
   import { refreshConnectionAndModels } from '$lib/connectionSetup.js';
   import { COCKPIT_LM_CHECKING, COCKPIT_LM_CONNECTED, COCKPIT_LM_UNREACHABLE, COCKPIT_CLOUD_APIS_AVAILABLE, pickWitty } from '$lib/cockpitCopy.js';
@@ -137,8 +136,6 @@
     sidebarTabBounce = true;
     setTimeout(() => (sidebarTabBounce = false), 420);
   }
-
-  let voiceRoleplayOpen = $state(false);
 </script>
 
 <div class="atom-shell h-screen overflow-hidden">
@@ -147,15 +144,6 @@
   <CommandPalette />
   <ConfirmModal />
   <ShortcutsModal />
-  <VoiceRoleplayPanel
-    bind:open={voiceRoleplayOpen}
-    conversationId={$activeConversationId || ''}
-    onMessagesAdded={async () => {
-      const cid = get(activeConversationId);
-      if (cid) activeMessages.set(await getMessages(cid));
-    }}
-  />
-
   {#if $layout === 'cockpit'}
     <div class="flex h-full flex-col">
       <!-- Cockpit header: 3-zone layout — left (brand+layout), center (model+preset), right (theme+status) -->
@@ -192,14 +180,6 @@
             <UiThemeSelect compact={true} />
             <ThemeToggle />
           </div>
-          <button
-            type="button"
-            class="flex items-center gap-1 shrink-0 text-xs font-medium rounded-md px-1.5 py-1 transition-opacity hover:opacity-80"
-            style="color: var(--ui-accent);"
-            title="Eve voice roleplay"
-            aria-label="Open voice roleplay"
-            onclick={() => (voiceRoleplayOpen = true)}
-          >🎭 <span class="hidden sm:inline">Eve</span></button>
           <button
             type="button"
             class="flex items-center gap-1.5 shrink-0 text-xs font-medium rounded-md px-1.5 py-1 -mr-1.5 transition-opacity hover:opacity-80"
@@ -284,14 +264,6 @@
         </div>
         <div class="flex-1 min-w-4 shrink" aria-hidden="true"></div>
         <div class="flex items-center shrink-0 gap-3 ml-auto" role="group" aria-label="Status">
-          <button
-            type="button"
-            class="flex items-center gap-1 shrink-0 text-xs font-medium rounded-md px-1.5 py-1 transition-opacity hover:opacity-80"
-            style="color: var(--ui-accent);"
-            title="Eve voice roleplay"
-            aria-label="Open voice roleplay"
-            onclick={() => (voiceRoleplayOpen = true)}
-          >🎭 <span class="hidden sm:inline">Eve</span></button>
           <button
             type="button"
             class="flex items-center gap-1.5 shrink-0 text-xs rounded-md px-1.5 py-1 transition-opacity hover:opacity-80"

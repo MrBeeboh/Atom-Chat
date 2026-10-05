@@ -13,7 +13,6 @@ import {
   ttsReadAloudEnabled,
   ttsVoiceUri,
   ttsVolume,
-  voiceRoleplaySessionActive,
 } from '$lib/stores.js';
 
 export const KOKORO_VOICES = [
@@ -251,7 +250,6 @@ export function isTtsBusy() {
  * Eve roleplay uses its own voice path.
  */
 export function shouldAutoSpeakReply(opts = {}) {
-  if (opts.roleplayActive ?? get(voiceRoleplaySessionActive)) return false;
   return !!(opts.readAloudEnabled ?? get(ttsReadAloudEnabled));
 }
 

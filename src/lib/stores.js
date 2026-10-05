@@ -257,9 +257,6 @@ export const cloudApisAvailable = derived(
 /** Focus a Settings section when opened: 'connection' | 'api-keys'. Cleared after open. */
 export const settingsFocus = writable(null);
 
-/** True while xAI Eve voice roleplay session is active — read-aloud stays disabled. */
-export const voiceRoleplaySessionActive = writable(false);
-
 /** Hands-free open-mic loop is running (listen → send → TTS → listen). */
 export const openMicActive = writable(false);
 

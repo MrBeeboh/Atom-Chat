@@ -1,7 +1,7 @@
 <script>
   import { get } from 'svelte/store';
   import { tick, onMount } from 'svelte';
-  import { isStreaming, voiceServerUrl, micDeviceId, pendingDroppedFiles, insertChatPrompt, webSearchForNextMessage, webSearchInProgress, webSearchConnected, layout, braveApiKey, openMicActive, ttsReadAloudEnabled, ttsActiveMessageId, ttsPreparing, ttsError, ttsVolume, voiceRoleplaySessionActive, settingsOpen, settingsFocus, ttsEngine, effectiveModelId, settings, setPerModelOverride } from '$lib/stores.js';
+  import { isStreaming, voiceServerUrl, micDeviceId, pendingDroppedFiles, insertChatPrompt, webSearchForNextMessage, webSearchInProgress, webSearchConnected, layout, braveApiKey, openMicActive, ttsReadAloudEnabled, ttsActiveMessageId, ttsPreparing, ttsError, ttsVolume, settingsOpen, settingsFocus, ttsEngine, effectiveModelId, settings, setPerModelOverride } from '$lib/stores.js';
   import ThinkingAtom from '$lib/components/ThinkingAtom.svelte';
   import ThinkingControls from '$lib/components/ThinkingControls.svelte';
   import ContextRing from '$lib/components/ContextRing.svelte';
@@ -65,7 +65,6 @@
   const ttsSpeaking = $derived(!!$ttsActiveMessageId || $ttsPreparing);
 
   function toggleReadAloud() {
-    if (get(voiceRoleplaySessionActive)) return;
     const next = !get(ttsReadAloudEnabled);
     if (next) unlockAudioPlayback();
     ttsReadAloudEnabled.set(next);
@@ -823,12 +822,9 @@
           type="button"
           class="more-menu-item"
           class:more-menu-item-on={$ttsReadAloudEnabled}
-          title={$voiceRoleplaySessionActive
-            ? 'Speak is paused while Eve is active'
-            : $ttsReadAloudEnabled
-              ? (ttsSpeaking ? 'Speaking the reply… click to mute' : 'Speak on — replies are read aloud (click to mute, Shift+click for voice settings)')
-              : 'Speak off — click to read replies aloud (Shift+click for voice settings)'}
-          disabled={$voiceRoleplaySessionActive}
+          title={$ttsReadAloudEnabled
+            ? (ttsSpeaking ? 'Speaking the reply… click to mute' : 'Speak on — replies are read aloud (click to mute, Shift+click for voice settings)')
+            : 'Speak off — click to read replies aloud (Shift+click for voice settings)'}
           onclick={onReadAloudClick}
           aria-pressed={$ttsReadAloudEnabled}
         >

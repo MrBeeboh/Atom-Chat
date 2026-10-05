@@ -5,7 +5,6 @@
   import { deriveSetupStatus } from '$lib/connectionSetup.js';
   import { getMessages, addMessage, clearMessages, deleteMessage, getMessageCount, updateConversation, listConversations } from '$lib/db.js';
   import { streamChatCompletion, requestChatCompletion, requestGrokImageGeneration, requestDeepInfraImageGeneration, requestDeepInfraVideoGeneration, isGrokModel, isDeepSeekModel, decodeTokPerSec, probeLocalContextSize, isQwen38FlashNextSelection, flashNextHasVision } from '$lib/api.js';
-  import { isGrokVoiceModel, runGrokVoiceTextTurn, DEFAULT_ROLEPLAY_INSTRUCTIONS } from '$lib/grokVoice.js';
   import { pickThinkingOptions } from '$lib/thinkingControls.js';
   import MessageList from '$lib/components/MessageList.svelte';
   import ChatInput from '$lib/components/ChatInput.svelte';
@@ -13,7 +12,7 @@
   import { generateId, resizeImageDataUrlsForVision, shouldSkipImageResizeForVision, messageContentToText } from '$lib/utils.js';
   import { listedModelCaps } from '$lib/modelCapabilities.js';
   import { modelPricingCatalog } from '$lib/modelPricing.js';
-  import { maybeReadAloudAssistantReply, unlockAudioPlayback } from '$lib/tts.js';
+  import { maybeReadAloudAssistantReply } from '$lib/tts.js';
   import {
     DESKTOP_TOOLS,
     MAX_DESKTOP_TOOL_ROUNDS,
@@ -441,48 +440,6 @@
 
     let streamResult;
     try {
-      if (isGrokVoiceModel($effectiveModelId)) {
-        const apiKey = (
-          get(grokApiKey)?.trim() ||
-          (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GROK_API_KEY) ||
-          ''
-        ).trim();
-        if (!apiKey) {
-          throw new Error('Add your Grok (xAI) API key in Settings to use Eve voice.');
-        }
-        const lastUser = [...history].reverse().find((m) => m.role === 'user');
-        const userText = messageContentToText(lastUser?.content).trim();
-        if (!userText) {
-          throw new Error('Eve needs spoken or typed text — images alone are not sent to the voice model.');
-        }
-        const prior = history
-          .filter((m) => m !== lastUser)
-          .slice(-8)
-          .map((m) => `${m.role}: ${messageContentToText(m.content).trim()}`)
-          .filter((line) => !line.endsWith(':'))
-          .join('\n');
-        const voice =
-          (typeof localStorage !== 'undefined' && localStorage.getItem('xaiVoiceRoleplayVoice')) || 'eve';
-        unlockAudioPlayback();
-        const voiceResult = await runGrokVoiceTextTurn({
-          apiKey,
-          text: userText,
-          voice,
-          instructions: ($settings?.system_prompt || '').trim() || DEFAULT_ROLEPLAY_INSTRUCTIONS,
-          historyText: prior,
-          onDelta: (full) => {
-            fullContent = full;
-            patchAssistant({ content: fullContent, modelId: $effectiveModelId });
-          },
-          signal: controller.signal,
-        });
-        if (voiceResult.aborted) return;
-        fullContent = voiceResult.content || fullContent;
-        streamResult = { elapsedMs: voiceResult.elapsedMs, usage: {} };
-        if (!fullContent) {
-          throw new Error('Eve returned no transcript. Try the Eve button for live voice, or send again.');
-        }
-      } else {
       if (!String($effectiveModelId).includes(':')) {
         const nCtx = await probeLocalContextSize();
         const fitted = fitMessagesToContext(apiMessages, {
@@ -596,7 +553,6 @@
         }
         break;
       }
-      }
     } catch (err) {
       const raw = err?.message || '';
       const isLoadError =
@@ -617,9 +573,7 @@
 
     if (streamResult?.aborted) return;
 
-    if (!isGrokVoiceModel($effectiveModelId)) {
-      maybeReadAloudAssistantReply(fullContent, assistantMsgId, get(effectiveModelId));
-    }
+    maybeReadAloudAssistantReply(fullContent, assistantMsgId, get(effectiveModelId));
 
     const completionTokens = streamResult?.usage?.completion_tokens ?? Math.max(1, Math.ceil(fullContent.length / 4));
     const elapsedMs = streamResult?.decodeMs || streamResult?.elapsedMs || 0;
