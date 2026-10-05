@@ -9,7 +9,7 @@ import {
   parseLlamaRouterModelsList,
   probeLlamaRouterModelsList,
 } from '$lib/llamaRouter.js';
-import { mergeUniqueModelItems, mergeServerAndDiskModels, ggufBasenameLower } from '$lib/modelIdUtils.js';
+import { mergeUniqueModelItems, mergeServerAndDiskModels, ggufBasenameLower, QWEN38_FLASH_NEXT_MODEL_ID, isQwen38FlashNextSelection } from '$lib/modelIdUtils.js';
 import { attachFlashNextLiveCaps } from '$lib/flashNext.js';
 import { fetchCloudModels } from '$lib/cloudCatalog.js';
 
@@ -57,6 +57,13 @@ async function getCloudModels() {
   } catch {
     return [];
   }
+}
+
+/** Flash-Next is proxied on :8080; keep its id in the chat list even if a stale proxy omits it. */
+function ensureFlashNextListed(items) {
+  if (!Array.isArray(items)) return items;
+  if (items.some((m) => isQwen38FlashNextSelection(m?.id))) return items;
+  return [...items, { id: QWEN38_FLASH_NEXT_MODEL_ID }];
 }
 
 /**
@@ -116,14 +123,16 @@ export async function getLocalModelsFromServer() {
  * @returns {Promise<{ id: string }[]>}
  */
 async function getLocalModels() {
-  const fromServer = await attachFlashNextLiveCaps(await getLocalModelsFromServer());
+  const fromServer = await attachFlashNextLiveCaps(
+    ensureFlashNextListed(await getLocalModelsFromServer()),
+  );
   // getLocalModelsFromServer sets llamaRouterModelsSupported when GET /models works.
   if (fromServer.length > 0 && apiState.llamaRouterModelsSupported === true) {
     apiState.lastLocalModelIds = fromServer.map((x) => x.id);
     return fromServer;
   }
   const fromDisk = await fetchDiskModelInventory();
-  const merged = mergeServerAndDiskModels(fromServer, fromDisk);
+  const merged = ensureFlashNextListed(mergeServerAndDiskModels(fromServer, fromDisk));
   apiState.lastLocalModelIds = merged.map((x) => x.id);
   return merged;
 }

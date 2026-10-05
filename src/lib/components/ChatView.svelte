@@ -318,7 +318,7 @@
     const hasText = (text || '').trim().length > 0;
     const hasImages = imageDataUrls?.length > 0;
     const hasVideos = videoDataUrls?.length > 0;
-    if (!convId || (!hasText && !hasImages && !hasVideos)) return;
+    if (!convId || $isStreaming || (!hasText && !hasImages && !hasVideos)) return;
     chatError.set(null);
     if (!ensureModelSelected()) return;
     if (hasImages || hasVideos) {

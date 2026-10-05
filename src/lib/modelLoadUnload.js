@@ -16,6 +16,14 @@ import { getLocalModelsFromServer, probeLmsRestModelsList } from '$lib/modelList
 import { isQwen38FlashNextSelection } from '$lib/modelIdUtils.js';
 import { FLASH_NEXT_CHAT_BASE, assertFlashNextCanChat } from '$lib/flashNext.js';
 
+/** @param {AbortSignal} [signal] */
+export function throwIfAborted(signal) {
+  if (!signal?.aborted) return;
+  const err = new Error('Aborted');
+  err.name = 'AbortError';
+  throw err;
+}
+
 /**
  * Get model keys that are currently loaded in VRAM.
  * llama.cpp router: GET /models. LM Studio: GET /api/v1/models + loaded_instances.
@@ -85,11 +93,12 @@ export async function unloadByInstanceId(instanceId) {
  * @returns {Promise<void>}
  */
 export async function waitUntilUnloaded(modelIds, opts = {}) {
-  const { pollIntervalMs = 400, timeoutMs = 25000 } = opts;
+  const { pollIntervalMs = 400, timeoutMs = 25000, signal } = opts;
   if (!modelIds.length) return;
   const ids = modelIds.map((id) => String(id).trim()).filter(Boolean);
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
+    throwIfAborted(signal);
     const loaded = await getLoadedModelKeys();
     const anyStillLoaded = ids.some((id) => loaded.some((k) => modelIdsLooselyMatch(k, id)));
     if (!anyStillLoaded) return;
@@ -150,31 +159,32 @@ export async function isLocalModelChatReady(modelId) {
  */
 export async function ensureLocalModelReadyForChat(modelId, signal) {
   if (!modelId || typeof modelId !== 'string' || modelId.includes(':')) return;
-  if (isQwen38FlashNextSelection(modelId)) {
-    await assertFlashNextCanChat();
+  // Flash-Next load is requested on :8080 (proxy starts Docker); chat still uses :8081.
+  const router = await probeLlamaRouterModelsList();
+  if (!router && !isQwen38FlashNextSelection(modelId)) return;
+  throwIfAborted(signal);
+  if (await isLocalModelChatReady(modelId)) {
+    if (isQwen38FlashNextSelection(modelId)) await assertFlashNextCanChat();
     return;
   }
-  if (!(await probeLlamaRouterModelsList())) return;
-  if (signal?.aborted) {
-    const err = new Error('Aborted');
-    err.name = 'AbortError';
-    throw err;
-  }
-  if (await isLocalModelChatReady(modelId)) return;
-  await loadModel(modelId);
-  if (signal?.aborted) {
-    const err = new Error('Aborted');
-    err.name = 'AbortError';
-    throw err;
+  if (router) {
+    await loadModel(modelId);
+    throwIfAborted(signal);
   }
   const ready = await waitUntilLoaded(modelId, {
     pollIntervalMs: 500,
     timeoutMs: 600000,
+    signal,
   });
   if (!ready) {
     throw new Error(
-      `Model failed to load: "${modelId}" did not become ready (bad GGUF, VRAM, or llama-server). Check llama-server.log.`,
+      isQwen38FlashNextSelection(modelId)
+        ? 'Qwen3.8-Flash-Next did not become ready on :8081. Pick it in Atom so :8080 can start it, or: systemctl --user start llama-flash-next.service'
+        : `Model failed to load: "${modelId}" did not become ready (bad GGUF, VRAM, or llama-server). Check llama-server.log.`,
     );
+  }
+  if (isQwen38FlashNextSelection(modelId)) {
+    await assertFlashNextCanChat();
   }
 }
 
@@ -186,14 +196,24 @@ export async function ensureLocalModelReadyForChat(modelId, signal) {
  * @returns {Promise<boolean>}
  */
 export async function waitUntilLoaded(modelId, opts = {}) {
-  const { pollIntervalMs = 400, timeoutMs = 600000 } = opts;
+  const { pollIntervalMs = 400, timeoutMs = 600000, signal } = opts;
   if (!modelId || typeof modelId !== 'string' || !modelId.trim()) return false;
-  if (isQwen38FlashNextSelection(modelId)) return true;
   const base = getLmStudioBase();
   const start = Date.now();
   let sawLoading = false;
   while (Date.now() - start < timeoutMs) {
+    throwIfAborted(signal);
     try {
+      if (isQwen38FlashNextSelection(modelId)) {
+        const healthCtrl = new AbortController();
+        const healthTo = setTimeout(() => healthCtrl.abort(), 2500);
+        try {
+          const health = await fetch(`${FLASH_NEXT_CHAT_BASE}/health`, { signal: healthCtrl.signal });
+          if (health.ok) return true;
+        } finally {
+          clearTimeout(healthTo);
+        }
+      }
       if (await probeLlamaRouterModelsList()) {
         const ctrl = new AbortController();
         const to = setTimeout(() => ctrl.abort(), 8000);
@@ -201,7 +221,7 @@ export async function waitUntilLoaded(modelId, opts = {}) {
           const res = await fetch(`${base}/models`, { signal: ctrl.signal });
           if (res.ok) {
             const data = await res.json();
-            if (isRouterModelFullyLoaded(data, modelId)) return true;
+            if (isRouterModelFullyLoaded(data, modelId) && !isQwen38FlashNextSelection(modelId)) return true;
             const row = findRouterModelRow(data, modelId);
             const st = row ? getRouterModelStatusValue(row) : '';
             if (st === 'loading') sawLoading = true;
@@ -214,12 +234,17 @@ export async function waitUntilLoaded(modelId, opts = {}) {
         } finally {
           clearTimeout(to);
         }
-      } else {
+      } else if (!isQwen38FlashNextSelection(modelId)) {
         const loaded = await getLoadedModelKeys();
         if (loaded.some((k) => modelIdsLooselyMatch(k, modelId))) return true;
       }
     } catch (e) {
-      if (e && /failed to load/i.test(String(e.message || e))) throw e;
+      if (e?.name === 'AbortError') {
+        throwIfAborted(signal);
+        /* Inner poll timed out — keep waiting for Stop or readiness. */
+      } else if (e && /failed to load/i.test(String(e.message || e))) {
+        throw e;
+      }
       /* keep polling */
     }
     await new Promise((r) => setTimeout(r, pollIntervalMs));
@@ -241,12 +266,11 @@ export async function loadModel(modelId, loadConfig = {}) {
   if (!modelId || typeof modelId !== 'string' || !modelId.trim()) {
     throw new Error('loadModel: model id required');
   }
-  if (isQwen38FlashNextSelection(modelId)) {
-    return { success: true, alreadyRunning: true };
-  }
+  // Flash-Next: POST /models/load on :8080; proxy starts Docker llama-flash-next on demand.
   const base = getLmStudioBase();
   const ctrl = new AbortController();
-  const to = setTimeout(() => ctrl.abort(), 180000);
+  const loadTimeoutMs = isQwen38FlashNextSelection(modelId) ? 600000 : 180000;
+  const to = setTimeout(() => ctrl.abort(), loadTimeoutMs);
   try {
     if (await probeLlamaRouterModelsList()) {
       const id = modelId.trim();

@@ -44,6 +44,7 @@ export {
   getLoadedModelKeys,
   unloadByInstanceId,
   waitUntilUnloaded,
+  throwIfAborted,
   isLocalModelChatReady,
   ensureLocalModelReadyForChat,
   waitUntilLoaded,

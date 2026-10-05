@@ -1,14 +1,14 @@
 /**
- * Qwen3.8-Flash-Next special-casing: the model runs on its own direct llama-server
- * on :8081 (not the :8080 router), with live mmproj caps and a health/stall probe.
- * Extracted from api.js.
+ * Qwen3.8-Flash-Next special-casing: chat hits the direct llama-server on :8081.
+ * The :8080 proxy only lists/loads this id (on-demand Docker start). Completions
+ * sent to :8080 can sit until the proxy's 180s timeout with zero tokens.
  */
 import { isQwen38FlashNextSelection } from '$lib/modelIdUtils.js';
 import { endpointCapsFromRow } from '$lib/modelCapabilities.js';
 
-/** Direct llama-server for Flash-Next. Do not send this id to the :8080 router. */
+/** Direct llama-server for Flash-Next. Do not send completions to the :8080 router. */
 export const FLASH_NEXT_CHAT_BASE = 'http://127.0.0.1:8081';
-const FLASH_NEXT_START_HINT = 'llama-flash-next restart';
+const FLASH_NEXT_START_HINT = 'select Qwen3.8-Flash-Next in Atom (loads via :8080) or: systemctl --user restart llama-flash-next.service';
 
 function sleepMs(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -113,11 +113,13 @@ export async function assertFlashNextCanChat() {
   try {
     const health = await fetch(`${FLASH_NEXT_CHAT_BASE}/health`, { signal: healthCtrl.signal });
     if (!health.ok) {
-      throw new Error(`Qwen3.8-Flash-Next is not running (health ${health.status}). Start it with: llama-flash-next start`);
+      throw new Error(`Qwen3.8-Flash-Next is not running (health ${health.status}). Pick it in Atom so :8080 can start it, or: systemctl --user start llama-flash-next.service`);
     }
   } catch (err) {
     if (err?.message && /Qwen3\.8-Flash-Next is not running/.test(err.message)) throw err;
-    return;
+    throw new Error(
+      'Qwen3.8-Flash-Next is not running (sidecar unreachable on :8081). Pick it in Atom so :8080 can start it, or: systemctl --user start llama-flash-next.service',
+    );
   } finally {
     clearTimeout(healthTo);
   }

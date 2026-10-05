@@ -33,7 +33,10 @@ describe('transcribeBlob', () => {
     vi.stubGlobal('fetch', mock);
     const text = await transcribeBlob(new Blob(['x']), 'http://localhost:8765');
     expect(text).toBe('hello');
-    expect(mock).toHaveBeenCalledWith('http://localhost:8765/transcribe', expect.objectContaining({ method: 'POST' }));
+    expect(mock).toHaveBeenCalledWith(
+      'http://localhost:8765/transcribe',
+      expect.objectContaining({ method: 'POST', signal: expect.anything() }),
+    );
     vi.unstubAllGlobals();
   });
 

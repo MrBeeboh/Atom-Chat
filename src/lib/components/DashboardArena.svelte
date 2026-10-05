@@ -50,8 +50,10 @@
     requestChatCompletion,
     loadModel,
     waitUntilLoaded,
+    unloadModel,
     unloadAllModelsNative,
     isLocalModelChatReady,
+    assertFlashNextCanChat,
     modelSelectorPrimaryLine,
     decodeTokPerSec,
     isQwen38FlashNextSelection,
@@ -135,6 +137,7 @@
     arenaRoundRunAllSendOpts,
     getRunAllBlockReason,
     getRunAllButtonTitle,
+    isArenaBusy,
     isStaleArenaStreaming,
   } from "$lib/arenaRunAllGate.js";
 
@@ -598,8 +601,11 @@
       })
       .join(". ");
   });
-  let judgmentInFlight = false;
+  let judgmentInFlight = $state(false);
   let lastJudgedRunId = /** @type {string | null} */ (null);
+  let loadAbortController = /** @type {AbortController | null} */ (null);
+  let judgeAborter = /** @type {AbortController | null} */ (null);
+  let lastLoadedLocalContestant = /** @type {string | null} */ (null);
 
   // ---------- Judge instructions (custom rubric) ----------
   let judgeInstructions = $state(
@@ -643,6 +649,14 @@
 
   const runAllGateInput = $derived.by(() => buildRunAllGateInput());
   const runAllButtonTitle = $derived(getRunAllButtonTitle(runAllGateInput));
+  const arenaBusy = $derived(isArenaBusy(runAllGateInput));
+
+  function arenaLoadSignal() {
+    if (!loadAbortController || loadAbortController.signal.aborted) {
+      loadAbortController = new AbortController();
+    }
+    return loadAbortController.signal;
+  }
 
   // ---------- Arena message persistence (survive refresh) ----------
   function saveArenaMessages() {
@@ -1061,7 +1075,8 @@
   function runClassLineup(quantity) {
     arenaPickQuantity = quantity;
     if (arenaPickMode !== "anonymous") return;
-    if ($isStreaming || runAllActive) {
+    if (isStaleArenaStreaming(buildRunAllGateInput())) stopAll();
+    if (isArenaBusy(buildRunAllGateInput())) {
       chatError.set("A run is already going.");
       return;
     }
@@ -1118,11 +1133,13 @@
 
   async function loadContestantReady(modelId) {
     if (!modelId) return false;
+    const signal = arenaLoadSignal();
     if (isCloudModel(modelId)) {
       arenaTransitionPhase = null;
       return true;
     }
     if (await isLocalModelChatReady(modelId)) {
+      if (isQwen38FlashNextSelection(modelId)) await assertFlashNextCanChat();
       arenaTransitionPhase = null;
       return true;
     }
@@ -1131,6 +1148,7 @@
     try {
       await loadModel(modelId);
     } catch (loadErr) {
+      if (loadErr?.name === "AbortError") throw loadErr;
       const msg = String(loadErr?.message || loadErr || "");
       if (typeof console !== "undefined" && console.warn) {
         console.warn("[Arena] loadModel:", modelId, msg);
@@ -1139,7 +1157,9 @@
     const ready = await waitUntilLoaded(modelId, {
       pollIntervalMs: 250,
       timeoutMs: 600000,
+      signal,
     });
+    if (isQwen38FlashNextSelection(modelId)) await assertFlashNextCanChat();
     arenaTransitionPhase = null;
     if (!ready) {
       throw new Error(
@@ -1372,7 +1392,13 @@
     const onlySlot = sendOpts.onlySlot ? String(sendOpts.onlySlot) : null;
     const skipJudgment = sendOpts.skipJudgment === true;
     const assumeModelLoaded = sendOpts.assumeModelLoaded === true;
-    if (!text || !String(text).trim() || (!internalRun && $isStreaming)) return;
+    if (
+      !text ||
+      !String(text).trim() ||
+      (!internalRun && (isArenaBusy(buildRunAllGateInput()) || $isStreaming))
+    ) {
+      return;
+    }
     chatError.set(null);
     if ((imageDataUrls?.length > 0)) {
       const slotModels = [$dashboardModelA, $dashboardModelB, $dashboardModelC, $dashboardModelD].filter(Boolean);
@@ -1596,13 +1622,8 @@
         }
         if (!slotOk && !failedSlots.includes(s.slot)) failedSlots.push(s.slot);
       }
-      /* All contestants have run. Score once here — Run All must not call runJudgment again. */
+      /* Keep isStreaming true through scoring so Ask/Next cannot start a second run. */
       if (!skipJudgment && runId === currentRun) {
-        if (!internalRun) {
-          isStreaming.set(false);
-          liveTokens.set(null);
-          liveTokPerSec.set(null);
-        }
         judgeLoadingMessageIndex = getNextWittyJudgeLoading();
         arenaTransitionPhase = "loading_judge";
         await runJudgment();
@@ -1631,7 +1652,8 @@
   async function sendDirectQuestion(slot, text) {
     const question = String(text || "").trim();
     if (!question) return;
-    if ($isStreaming) {
+    if (isStaleArenaStreaming(buildRunAllGateInput())) stopAll();
+    if (isArenaBusy(buildRunAllGateInput()) || $isStreaming) {
       chatError.set("A run is already going. Wait for it to finish, then ask that column.");
       return;
     }
@@ -1663,9 +1685,18 @@
   function stopAll() {
     runId += 1;
     arenaTransitionPhase = null;
+    judgmentInFlight = false;
     // Cancel Run All if active (prevents zombie question loops)
     runAllActive = false;
     runAllProgress = { current: 0, total: 0 };
+    try {
+      loadAbortController?.abort();
+    } catch (_) {}
+    loadAbortController = null;
+    try {
+      judgeAborter?.abort();
+    } catch (_) {}
+    judgeAborter = null;
     for (const slot of ["A", "B", "C", "D"]) {
       try {
         aborters[slot]?.abort();
@@ -1707,7 +1738,8 @@
 
   /** Ask: send the currently selected question to the models. (Standard test flow: select question, click Ask.) */
   function askCurrentQuestion() {
-    if ($isStreaming) return;
+    if (isStaleArenaStreaming(buildRunAllGateInput())) stopAll();
+    if (isArenaBusy(buildRunAllGateInput()) || $isStreaming) return;
     const questions = parsedQuestions;
     if (questions.length === 0) return;
     const idx = questionIndex % questions.length;
@@ -1728,7 +1760,8 @@
 
   /** Next: advance to the next question AND immediately send it. One-click to keep the competition moving. */
   function askNextQuestion() {
-    if ($isStreaming) return;
+    if (isStaleArenaStreaming(buildRunAllGateInput())) stopAll();
+    if (isArenaBusy(buildRunAllGateInput()) || $isStreaming) return;
     const questions = parsedQuestions;
     if (questions.length === 0) return;
     questionIndex = (questionIndex + 1) % questions.length;
@@ -1843,7 +1876,20 @@
                   s.slot === step.slot,
               );
             if (isFirstQuestionForContestant) {
+              if (
+                lastLoadedLocalContestant &&
+                lastLoadedLocalContestant !== contestant.modelId &&
+                !isCloudModel(lastLoadedLocalContestant) &&
+                !isCloudModel(contestant.modelId)
+              ) {
+                try {
+                  await unloadModel(lastLoadedLocalContestant);
+                } catch (_) {}
+              }
               await loadContestantReady(contestant.modelId);
+              if (!isCloudModel(contestant.modelId)) {
+                lastLoadedLocalContestant = contestant.modelId;
+              }
             }
             setMessages(step.slot, []);
             await sendUserMessage(toSend, [], item?.id ?? null, {
@@ -1986,7 +2032,6 @@
   }
 
   async function runJudgmentBody() {
-    if ($isStreaming && !runAllActive) return;
     const n = get(arenaPanelCount);
     const slotAIsJudge = get(arenaSlotAIsJudge);
     /** Contestant model IDs (when Slot A is judge, only B/C/D are contestants so A can be used as judge). */
@@ -2051,19 +2096,33 @@
       judgeLoadingMessageIndex = getNextWittyJudgeLoading();
       arenaTransitionPhase = "loading_judge";
       if (!isCloudModel(judgeId)) {
+        arenaTransitionPhase = "ejecting";
+        for (const id of contestantIds) {
+          if (!id || id === judgeId || isCloudModel(id)) continue;
+          try {
+            await unloadModel(id);
+          } catch (_) {}
+        }
+        lastLoadedLocalContestant = null;
+        arenaTransitionPhase = "loading_judge";
         try {
           if (!(await isLocalModelChatReady(judgeId))) {
             await loadModel(judgeId);
             await waitUntilLoaded(judgeId, {
               pollIntervalMs: 500,
               timeoutMs: 600000,
+              signal: arenaLoadSignal(),
             });
           }
-        } catch (_) {}
+        } catch (loadErr) {
+          if (loadErr?.name === "AbortError") throw loadErr;
+        }
       }
       arenaTransitionPhase = null;
     } finally {
-      arenaTransitionPhase = null;
+      if (arenaTransitionPhase === "loading_judge" || arenaTransitionPhase === "ejecting") {
+        arenaTransitionPhase = null;
+      }
     }
 
     const lastUserMsg = slotsWithResponses[0].msgs
@@ -2125,7 +2184,7 @@
         });
     chatError.set(null);
     const controller = new AbortController();
-    aborters["A"] = controller;
+    judgeAborter = controller;
     const judgeTimeoutId = setTimeout(() => controller.abort(), ARENA_TIMEOUT_MS);
     let fullContent = "";
     const judgeOpts = getSettingsForSlot("A");
@@ -2144,7 +2203,7 @@
           frequency_penalty: judgeOpts.frequency_penalty,
           stop: judgeOpts.stop?.length ? judgeOpts.stop : undefined,
           ttl: judgeOpts.model_ttl_seconds,
-          request_timeout_ms: $arenaRequestTimeoutSeconds * 1000,
+          request_timeout_ms: ARENA_TIMEOUT_MS,
           ...pickThinkingOptions(judgeOpts),
         },
         signal: controller.signal,
@@ -2241,7 +2300,7 @@
       }
     } finally {
       clearTimeout(judgeTimeoutId);
-      aborters["A"] = null;
+      if (judgeAborter === controller) judgeAborter = null;
       arenaTransitionPhase = null;
     }
   }
@@ -2571,9 +2630,10 @@
     runAllActive={runAllActive}
     runAllProgress={runAllProgress}
     sequentialByContestant={$arenaSequentialByContestant}
-    sequentialToggleDisabled={runAllActive || $isStreaming}
+    sequentialToggleDisabled={arenaBusy}
+    controlsBusy={arenaBusy}
     onToggleSequential={(on) => {
-      if (runAllActive || $isStreaming) return;
+      if (arenaBusy) return;
       arenaSequentialByContestant.set(!!on);
     }}
     arenaWebWarmingUp={arenaWebWarmingUp}
@@ -2778,7 +2838,7 @@
   {/if}
 
   <!-- Minimal footer: chat error + send. Hidden for the whole run, including scoring. -->
-  {#if $chatError || !(runAllActive || $isStreaming || arenaTransitionPhase)}
+  {#if $chatError || !arenaBusy}
   <div
     class="shrink-0 px-4 py-3"
     style="background: color-mix(in srgb, var(--ui-border) 6%, var(--ui-bg-sidebar));"
@@ -2798,7 +2858,7 @@
         >
       </div>
     {/if}
-    {#if !(runAllActive || $isStreaming || arenaTransitionPhase)}
+    {#if !arenaBusy}
     <section class="max-w-2xl mx-auto w-full" aria-label="Send prompt">
       <div class="flex flex-wrap items-center gap-3 mb-2">
         <label class="flex items-center gap-1.5 text-xs font-semibold" style="color: var(--ui-text-primary);">

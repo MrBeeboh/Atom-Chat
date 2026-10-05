@@ -64,6 +64,20 @@ export function isStaleArenaStreaming(input) {
 }
 
 /**
+ * True when Ask / Next / lineup / composer must not start another arena send.
+ * Stale streaming (flag stuck, no work) is not busy — Run all / Ask can recover.
+ * @param {Parameters<typeof isStaleArenaStreaming>[0]} input
+ */
+export function isArenaBusy(input) {
+  if (input.runAllActive) return true;
+  if (input.anySlotRunning) return true;
+  if (input.arenaTransitionPhase) return true;
+  if (input.judgmentInFlight) return true;
+  if (input.isStreaming && !isStaleArenaStreaming(input)) return true;
+  return false;
+}
+
+/**
  * User-visible reason Run all cannot start, or null if it may proceed (incl. stale stream recovery).
  * @param {{
  *   questionCount: number,

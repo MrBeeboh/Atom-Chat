@@ -23,6 +23,7 @@ import { probeLlamaRouterModelsList } from '$lib/llamaRouter.js';
 import { resolveEffectiveLocalChatModelId, probeLmsRestModelsList } from '$lib/modelListing.js';
 import { ensureLocalModelReadyForChat } from '$lib/modelLoadUnload.js';
 import { FLASH_NEXT_CHAT_BASE, firstTokenTimeoutError, flashNextSlotIsAlive } from '$lib/flashNext.js';
+import { fetchWithTimeout } from '$lib/fetchWithTimeout.js';
 import { parseChatApiError } from '$lib/chatErrorUtils.js';
 import { applyThinkingToChatBody, applyThinkingToGrokBody } from '$lib/thinkingControls.js';
 import { normalizeChatUsage } from '$lib/modelPricing.js';
@@ -86,14 +87,14 @@ function reasoningDeltaText(delta) {
  */
 export function openaiChatCompletionsUrl(base, model, opts = {}) {
   const flashNext = isQwen38FlashNextSelection(model);
-  // Chat the already-loaded server on :8081. The :8080 proxy only exists to
-  // list this id; sending completions there can sit until the proxy's 180s
-  // timeout with zero tokens. Disk-path IDs are rewritten to the alias.
+  // Chat the already-loaded sidecar on :8081. The :8080 proxy lists/loads this id;
+  // sending completions there can sit until the proxy's 180s timeout with zero tokens.
   const normalizedBase = flashNext ? FLASH_NEXT_CHAT_BASE : normalizeLocalLmBaseUrl(base);
   if (isDeepinfraModel(model)) return joinUrl(normalizedBase, 'chat/completions');
   const path = normalizedBase.endsWith('/v1')
     ? joinUrl(normalizedBase, 'chat/completions')
     : joinUrl(normalizedBase, 'v1/chat/completions');
+  // Flash-Next is a single-model sidecar — skip ?autoload on the router.
   if (opts.routerAutoload && !flashNext) return `${path}?autoload=true`;
   return path;
 }
@@ -204,33 +205,16 @@ export async function requestChatCompletion({ model, messages, options = {} }) {
   };
   applyThinkingToChatBody(body, { model, options, local: !isCloud });
   const fetchOpts = { method: 'POST', headers, body: JSON.stringify(body) };
-  if (isCloud) {
-    const ctrl = new AbortController();
-    const to = setTimeout(() => ctrl.abort(), CLOUD_REQUEST_TIMEOUT_MS);
-    fetchOpts.signal = ctrl.signal;
-    try {
-      const res = await fetch(url, fetchOpts);
-      clearTimeout(to);
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(parseChatApiError(res.status, text, model));
-      }
-      const data = await res.json();
-      if (isDeepSeekModel(model)) {
-        recordDeepSeekCacheUsage(data.usage, { site: 'requestChatCompletion', model });
-      }
-      return { content: assistantTextFromChatCompletion(data), usage: data.usage };
-    } catch (err) {
-      clearTimeout(to);
-      throw err;
-    }
-  }
-  const res = await fetch(url, fetchOpts);
+  const timeoutMs = isCloud ? CLOUD_REQUEST_TIMEOUT_MS : 600000;
+  const res = await fetchWithTimeout(url, fetchOpts, timeoutMs);
   if (!res.ok) {
     const text = await res.text();
     throw new Error(parseChatApiError(res.status, text, model));
   }
   const data = await res.json();
+  if (isDeepSeekModel(model)) {
+    recordDeepSeekCacheUsage(data.usage, { site: 'requestChatCompletion', model });
+  }
   return { content: assistantTextFromChatCompletion(data), usage: data.usage };
 }
 
@@ -363,12 +347,17 @@ export async function streamChatCompletion({ model, messages, options = {}, onCh
   const firstTokenMs = firstTokenBudgetMs(model, messages, options);
   const flashNext = isQwen38FlashNextSelection(model);
   const firstTokenCtrl = new AbortController();
+  const MAX_FIRST_TOKEN_RENEWS = 4;
+  let firstTokenRenews = 0;
   const armFirstTokenTimer = () => {
     if (firstTokenTimer) clearTimeout(firstTokenTimer);
     firstTokenTimer = setTimeout(async () => {
       if (firstTokenAt) return;
       // Healthy Flash-Next decode can outrun SSE parsing; do not abort a live slot.
-      if (flashNext && (await flashNextSlotIsAlive())) {
+      // Cap renewals so a sidecar that looks busy while the browser never sees
+      // tokens cannot hold the stream open forever.
+      if (flashNext && firstTokenRenews < MAX_FIRST_TOKEN_RENEWS && (await flashNextSlotIsAlive())) {
+        firstTokenRenews += 1;
         armFirstTokenTimer();
         return;
       }

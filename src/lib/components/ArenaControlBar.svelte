@@ -13,6 +13,7 @@
     runAllProgress = { current: 0, total: 0 },
     sequentialByContestant = false,
     sequentialToggleDisabled = false,
+    controlsBusy = false,
     onToggleSequential = () => {},
     onOpenLoadModal = () => {},
     onBuildArena = () => {},
@@ -109,14 +110,14 @@
       type="button"
       class="arena-btn"
       class:arena-btn-primary={hasQuestions}
-      disabled={$isStreaming || !hasQuestions}
+      disabled={controlsBusy || $isStreaming || !hasQuestions}
       onclick={askCurrentQuestion}
       title="Send the current question to every active panel"
     >Ask</button>
     <button
       type="button"
       class="arena-btn"
-      disabled={$isStreaming || !hasQuestions || currentQuestionNum >= currentQuestionTotal}
+      disabled={controlsBusy || $isStreaming || !hasQuestions || currentQuestionNum >= currentQuestionTotal}
       onclick={askNextQuestion}
       title="Advance to the next question and send it"
     >Next</button>

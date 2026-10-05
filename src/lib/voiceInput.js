@@ -4,7 +4,10 @@
  * definitions and unit-testable.
  */
 
+import { fetchWithTimeout } from '$lib/fetchWithTimeout.js';
+
 export const DEFAULT_VOICE_SERVER_URL = 'http://localhost:8765';
+const TRANSCRIBE_TIMEOUT_MS = 60000;
 
 /** Resolve the voice server base URL from a store value + localStorage fallback. */
 export function resolveVoiceServerUrl(storeValue) {
@@ -27,10 +30,11 @@ export async function checkVoiceServerHealth(url) {
 }
 
 /** POST an audio blob to /transcribe and return the trimmed text. */
-export async function transcribeBlob(blob, url) {
+export async function transcribeBlob(blob, url, opts = {}) {
   const form = new FormData();
   form.append('audio', blob, 'audio.webm');
-  const res = await fetch(`${url}/transcribe`, { method: 'POST', body: form });
+  const timeoutMs = Number(opts.timeoutMs) > 0 ? Number(opts.timeoutMs) : TRANSCRIBE_TIMEOUT_MS;
+  const res = await fetchWithTimeout(`${url}/transcribe`, { method: 'POST', body: form }, timeoutMs);
   if (!res.ok) {
     const err = await res.text();
     throw new Error(err || `Server ${res.status}`);

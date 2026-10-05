@@ -6,6 +6,7 @@ import {
   getRunAllBlockReason,
   getRunAllButtonTitle,
   isArenaSendBlockedByStreamingGuard,
+  isArenaBusy,
   isStaleArenaStreaming,
 } from './arenaRunAllGate.js';
 
@@ -48,6 +49,22 @@ describe('arenaRunAllGate', () => {
       expect(
         isStaleArenaStreaming({ isStreaming: true, runAllActive: true }),
       ).toBe(false);
+    });
+  });
+
+  describe('isArenaBusy', () => {
+    it('is busy during judgment or a live transition even if streaming is false', () => {
+      expect(isArenaBusy({ isStreaming: false, judgmentInFlight: true })).toBe(true);
+      expect(isArenaBusy({ isStreaming: false, arenaTransitionPhase: 'loading' })).toBe(true);
+      expect(isArenaBusy({ isStreaming: false, runAllActive: true })).toBe(true);
+    });
+    it('is not busy for a stale streaming flag with no work', () => {
+      expect(
+        isArenaBusy({ isStreaming: true, anySlotRunning: false, arenaTransitionPhase: null }),
+      ).toBe(false);
+    });
+    it('is busy while a slot is actively streaming', () => {
+      expect(isArenaBusy({ isStreaming: true, anySlotRunning: true })).toBe(true);
     });
   });
 
