@@ -1131,187 +1131,187 @@ body {
 }
 
 /*
-  Dracula — the iconic purple theme. Neon multi-color accents on violet-black.
+  Matrix — hacker-green terminal on near-black.
 */
-[data-ui-theme="dracula"] {
-  --ui-bg-main: #f8f8f2;
-  --ui-bg-sidebar: #ececf0;
-  --ui-accent: #7c66c4;
-  --ui-accent-hot: #e95678;
-  --ui-accent-cool: #0184bc;
-  --ui-text-primary: #282a36;
-  --ui-text-secondary: #5b6388;
-  --ui-border: #d5d5e0;
-  --ui-sidebar-active: #e2e2ea;
-  --ui-sidebar-hover: #eaeaf2;
-  --ui-input-bg: #fcfcfd;
-  --ui-input-border: #d5d5e0;
-  --ui-glow: rgba(149, 128, 214, 0.25);
-  --ui-selected-bg: var(--ui-accent);
-  --ui-selected-fg: var(--ui-bg-main);
-  --atom-accent: #9580d6;
-  --atom-accent-light: #e95678;
-  --atom-teal: #0184bc;
-  --atom-amber: #c77720;
-}
-.dark[data-ui-theme="dracula"] {
-  --ui-bg-main: #282a36;
-  --ui-bg-sidebar: #21222c;
-  --ui-accent: #bd93f9;
-  --ui-accent-hot: #ff5555;
-  --ui-accent-cool: #8be9fd;
-  --ui-text-primary: #f8f8f2;
-  --ui-text-secondary: #a4abcc;
-  --ui-border: #44475a;
-  --ui-sidebar-active: #383a4a;
-  --ui-sidebar-hover: #44475a;
-  --ui-input-bg: #21222c;
-  --ui-input-border: #44475a;
-  --ui-glow: rgba(189, 147, 249, 0.35);
-  --ui-selected-bg: var(--ui-accent);
-  --ui-selected-fg: var(--ui-bg-main);
-  --atom-accent: #bd93f9;
-  --atom-accent-light: #ff79c6;
-  --atom-teal: #8be9fd;
-  --atom-amber: #ffb86c;
-}
-
-/*
-  Catppuccin — the hot modern pastel theme (Mocha / Latte).
-*/
-[data-ui-theme="catppuccin"] {
-  --ui-bg-main: #eff1f5;
-  --ui-bg-sidebar: #e6e9ef;
-  --ui-accent: #8839ef;
-  --ui-accent-hot: #d20f39;
-  --ui-accent-cool: #1e66f5;
-  --ui-text-primary: #4c4f69;
-  --ui-text-secondary: #6c6f85;
-  --ui-border: #ccd0da;
-  --ui-sidebar-active: #dce0e8;
-  --ui-sidebar-hover: #ccd0da;
-  --ui-input-bg: #f4f6fa;
-  --ui-input-border: #ccd0da;
-  --ui-glow: rgba(136, 57, 239, 0.2);
-  --ui-selected-bg: var(--ui-accent);
-  --ui-selected-fg: var(--ui-bg-main);
-  --atom-accent: #8839ef;
-  --atom-accent-light: #ea76cb;
-  --atom-teal: #179299;
-  --atom-amber: #fe640b;
-}
-.dark[data-ui-theme="catppuccin"] {
-  --ui-bg-main: #1e1e2e;
-  --ui-bg-sidebar: #181825;
-  --ui-accent: #cba6f7;
-  --ui-accent-hot: #f38ba8;
-  --ui-accent-cool: #89b4fa;
-  --ui-text-primary: #cdd6f4;
-  --ui-text-secondary: #a6adc8;
-  --ui-border: #313244;
-  --ui-sidebar-active: #313244;
-  --ui-sidebar-hover: #45475a;
-  --ui-input-bg: #181825;
-  --ui-input-border: #313244;
-  --ui-glow: rgba(203, 166, 247, 0.3);
-  --ui-selected-bg: var(--ui-accent);
-  --ui-selected-fg: var(--ui-bg-main);
-  --atom-accent: #cba6f7;
-  --atom-accent-light: #f5c2e7;
-  --atom-teal: #94e2d5;
-  --atom-amber: #fab387;
-}
-
-/*
-  Tokyo Night — calm indigo neon inspired by Tokyo's skyline.
-*/
-[data-ui-theme="tokyo"] {
-  --ui-bg-main: #e1e2e7;
-  --ui-bg-sidebar: #d5d6db;
-  --ui-accent: #34548a;
-  --ui-accent-hot: #f7768e;
-  --ui-accent-cool: #0f4b6e;
-  --ui-text-primary: #343b58;
-  --ui-text-secondary: #5a6288;
-  --ui-border: #c4c8da;
-  --ui-sidebar-active: #c4c8da;
-  --ui-sidebar-hover: #cbd0e0;
-  --ui-input-bg: #e9eaf0;
-  --ui-input-border: #c4c8da;
-  --ui-glow: rgba(52, 84, 138, 0.2);
-  --ui-selected-bg: var(--ui-accent);
-  --ui-selected-fg: var(--ui-bg-main);
-  --atom-accent: #34548a;
-  --atom-accent-light: #9854f1;
-  --atom-teal: #118c74;
-  --atom-amber: #b15c00;
-}
-.dark[data-ui-theme="tokyo"] {
-  --ui-bg-main: #1a1b26;
-  --ui-bg-sidebar: #16161e;
-  --ui-accent: #7aa2f7;
-  --ui-accent-hot: #f7768e;
-  --ui-accent-cool: #7dcfff;
-  --ui-text-primary: #c0caf5;
-  --ui-text-secondary: #8b93b8;
-  --ui-border: #24283b;
-  --ui-sidebar-active: #24283b;
-  --ui-sidebar-hover: #292e42;
-  --ui-input-bg: #16161e;
-  --ui-input-border: #24283b;
-  --ui-glow: rgba(122, 162, 247, 0.3);
-  --ui-selected-bg: var(--ui-accent);
-  --ui-selected-fg: var(--ui-bg-main);
-  --atom-accent: #7aa2f7;
-  --atom-accent-light: #bb9af7;
-  --atom-teal: #73daca;
-  --atom-amber: #e0af68;
-}
-
-/*
-  Synthwave — neon retro with hot pink and electric cyan.
-*/
-[data-ui-theme="synthwave"] {
-  --ui-bg-main: #f6f2ff;
-  --ui-bg-sidebar: #ece6f7;
-  --ui-accent: #c4409e;
-  --ui-accent-hot: #d97706;
+[data-ui-theme="matrix"] {
+  --ui-bg-main: #f0fbf0;
+  --ui-bg-sidebar: #e0f5e0;
+  --ui-accent: #008f11;
+  --ui-accent-hot: #dc2626;
   --ui-accent-cool: #0891b2;
-  --ui-text-primary: #2a1a33;
-  --ui-text-secondary: #6a5a75;
-  --ui-border: #e0d5f0;
-  --ui-sidebar-active: #dcd0ee;
-  --ui-sidebar-hover: #e5dcf4;
-  --ui-input-bg: #faf7ff;
-  --ui-input-border: #dcd0ee;
-  --ui-glow: rgba(196, 64, 158, 0.2);
+  --ui-text-primary: #0a1a0a;
+  --ui-text-secondary: #3f5a3f;
+  --ui-border: #b8e0b8;
+  --ui-sidebar-active: #c8e8c8;
+  --ui-sidebar-hover: #d4eed4;
+  --ui-input-bg: #f7fcf7;
+  --ui-input-border: #b8e0b8;
+  --ui-glow: rgba(0, 143, 17, 0.25);
   --ui-selected-bg: var(--ui-accent);
   --ui-selected-fg: var(--ui-bg-main);
-  --atom-accent: #c4409e;
-  --atom-accent-light: #a855f7;
-  --atom-teal: #0891b2;
+  --atom-accent: #008f11;
+  --atom-accent-light: #22c55e;
+  --atom-teal: #0d9488;
   --atom-amber: #d97706;
 }
-.dark[data-ui-theme="synthwave"] {
-  --ui-bg-main: #262335;
-  --ui-bg-sidebar: #241b2f;
-  --ui-accent: #ff7edb;
-  --ui-accent-hot: #ff8b39;
-  --ui-accent-cool: #36f9f6;
-  --ui-text-primary: #f5f5f5;
-  --ui-text-secondary: #a89984;
-  --ui-border: #34294f;
-  --ui-sidebar-active: #2c2440;
-  --ui-sidebar-hover: #34294f;
-  --ui-input-bg: #241b2f;
-  --ui-input-border: #34294f;
-  --ui-glow: rgba(255, 126, 219, 0.35);
+.dark[data-ui-theme="matrix"] {
+  --ui-bg-main: #0d0d0d;
+  --ui-bg-sidebar: #0a0a0a;
+  --ui-accent: #00ff41;
+  --ui-accent-hot: #ff3b30;
+  --ui-accent-cool: #00e5ff;
+  --ui-text-primary: #ccffcc;
+  --ui-text-secondary: #7a997a;
+  --ui-border: #1a3a1a;
+  --ui-sidebar-active: #122012;
+  --ui-sidebar-hover: #1a2e1a;
+  --ui-input-bg: #0a0a0a;
+  --ui-input-border: #1a3a1a;
+  --ui-glow: rgba(0, 255, 65, 0.35);
   --ui-selected-bg: var(--ui-accent);
   --ui-selected-fg: var(--ui-bg-main);
-  --atom-accent: #ff7edb;
-  --atom-accent-light: #b381c5;
-  --atom-teal: #36f9f6;
-  --atom-amber: #fede5d;
+  --atom-accent: #00ff41;
+  --atom-accent-light: #66ff99;
+  --atom-teal: #00e5ff;
+  --atom-amber: #ffb300;
+}
+
+/*
+  Crimson — deep red and gold, warm and bold.
+*/
+[data-ui-theme="crimson"] {
+  --ui-bg-main: #fdf6f4;
+  --ui-bg-sidebar: #f7e8e4;
+  --ui-accent: #a4161a;
+  --ui-accent-hot: #dc2626;
+  --ui-accent-cool: #0f766e;
+  --ui-text-primary: #1c0f0e;
+  --ui-text-secondary: #6b5550;
+  --ui-border: #e8c9c4;
+  --ui-sidebar-active: #ecd6d1;
+  --ui-sidebar-hover: #f0deda;
+  --ui-input-bg: #fefbfa;
+  --ui-input-border: #e8c9c4;
+  --ui-glow: rgba(164, 22, 26, 0.22);
+  --ui-selected-bg: var(--ui-accent);
+  --ui-selected-fg: var(--ui-bg-main);
+  --atom-accent: #a4161a;
+  --atom-accent-light: #dc2626;
+  --atom-teal: #0f766e;
+  --atom-amber: #b45309;
+}
+.dark[data-ui-theme="crimson"] {
+  --ui-bg-main: #160a0b;
+  --ui-bg-sidebar: #1e0e0f;
+  --ui-accent: #ef4444;
+  --ui-accent-hot: #f87171;
+  --ui-accent-cool: #2dd4bf;
+  --ui-text-primary: #fbe9e7;
+  --ui-text-secondary: #b89b96;
+  --ui-border: #3a1a1c;
+  --ui-sidebar-active: #2a1214;
+  --ui-sidebar-hover: #33181a;
+  --ui-input-bg: #1e0e0f;
+  --ui-input-border: #3a1a1c;
+  --ui-glow: rgba(239, 68, 68, 0.3);
+  --ui-selected-bg: var(--ui-accent);
+  --ui-selected-fg: var(--ui-bg-main);
+  --atom-accent: #ef4444;
+  --atom-accent-light: #fca5a5;
+  --atom-teal: #2dd4bf;
+  --atom-amber: #d4af37;
+}
+
+/*
+  Noir — luxury gold on near-black.
+*/
+[data-ui-theme="noir"] {
+  --ui-bg-main: #faf9f6;
+  --ui-bg-sidebar: #efece6;
+  --ui-accent: #a16207;
+  --ui-accent-hot: #dc2626;
+  --ui-accent-cool: #0f766e;
+  --ui-text-primary: #1c1917;
+  --ui-text-secondary: #57534e;
+  --ui-border: rgba(161, 98, 7, 0.22);
+  --ui-sidebar-active: #e3ddcf;
+  --ui-sidebar-hover: #eae4d8;
+  --ui-input-bg: #fefdfb;
+  --ui-input-border: #d8d0c2;
+  --ui-glow: rgba(161, 98, 7, 0.2);
+  --ui-selected-bg: var(--ui-accent);
+  --ui-selected-fg: var(--ui-bg-main);
+  --atom-accent: #a16207;
+  --atom-accent-light: #ca8a04;
+  --atom-teal: #0f766e;
+  --atom-amber: #d4af37;
+}
+.dark[data-ui-theme="noir"] {
+  --ui-bg-main: #0c0a08;
+  --ui-bg-sidebar: #14110d;
+  --ui-accent: #d4af37;
+  --ui-accent-hot: #f87171;
+  --ui-accent-cool: #2dd4bf;
+  --ui-text-primary: #f5efe4;
+  --ui-text-secondary: #a89f92;
+  --ui-border: rgba(212, 175, 55, 0.22);
+  --ui-sidebar-active: #1d1812;
+  --ui-sidebar-hover: #2a221a;
+  --ui-input-bg: #16120d;
+  --ui-input-border: #2a231b;
+  --ui-glow: rgba(212, 175, 55, 0.26);
+  --ui-selected-bg: var(--ui-accent);
+  --ui-selected-fg: var(--ui-bg-main);
+  --atom-accent: #d4af37;
+  --atom-accent-light: #e6c85c;
+  --atom-teal: #2dd4bf;
+  --atom-amber: #fbbf24;
+}
+
+/*
+  Graphite — neutral slate with a single warm amber accent.
+*/
+[data-ui-theme="graphite"] {
+  --ui-bg-main: #f5f5f4;
+  --ui-bg-sidebar: #e7e5e4;
+  --ui-accent: #b45309;
+  --ui-accent-hot: #dc2626;
+  --ui-accent-cool: #0f766e;
+  --ui-text-primary: #1c1917;
+  --ui-text-secondary: #57534e;
+  --ui-border: #d6d3d1;
+  --ui-sidebar-active: #d6d3d1;
+  --ui-sidebar-hover: #e0ddda;
+  --ui-input-bg: #fafaf9;
+  --ui-input-border: #d6d3d1;
+  --ui-glow: rgba(180, 83, 9, 0.2);
+  --ui-selected-bg: var(--ui-accent);
+  --ui-selected-fg: var(--ui-bg-main);
+  --atom-accent: #b45309;
+  --atom-accent-light: #d97706;
+  --atom-teal: #0f766e;
+  --atom-amber: #b45309;
+}
+.dark[data-ui-theme="graphite"] {
+  --ui-bg-main: #111111;
+  --ui-bg-sidebar: #171717;
+  --ui-accent: #f59e0b;
+  --ui-accent-hot: #f87171;
+  --ui-accent-cool: #2dd4bf;
+  --ui-text-primary: #e7e5e4;
+  --ui-text-secondary: #a8a29e;
+  --ui-border: #292524;
+  --ui-sidebar-active: #1f1d1c;
+  --ui-sidebar-hover: #292524;
+  --ui-input-bg: #171717;
+  --ui-input-border: #292524;
+  --ui-glow: rgba(245, 158, 11, 0.26);
+  --ui-selected-bg: var(--ui-accent);
+  --ui-selected-fg: var(--ui-bg-main);
+  --atom-accent: #f59e0b;
+  --atom-accent-light: #fbbf24;
+  --atom-teal: #2dd4bf;
+  --atom-amber: #fbbf24;
 }
 
 /*
