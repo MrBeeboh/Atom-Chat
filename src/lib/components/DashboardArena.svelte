@@ -1804,7 +1804,11 @@
           messagesD = [];
           chatError.set(null);
           try {
-            await sendUserMessage(toSend, [], item?.id ?? null);
+            // internalRun: Run All already owns isStreaming; without this flag
+            // sendUserMessage early-returns on $isStreaming and skips every question.
+            await sendUserMessage(toSend, [], item?.id ?? null, {
+              internalRun: true,
+            });
           } catch (e) {
             chatError.set(e?.message || `Failed on question ${i + 1}.`);
             continue;
