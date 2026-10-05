@@ -636,6 +636,16 @@ if (typeof localStorage !== 'undefined') {
   arenaDeterministicJudge.subscribe((v) => localStorage.setItem('arenaDeterministicJudge', v ? '1' : '0'));
 }
 
+/** Arena Run All: one contestant answers every question before the next model loads (reduces local VRAM thrash). */
+export const arenaSequentialByContestant = writable(
+  typeof localStorage !== 'undefined' ? (localStorage.getItem('arenaSequentialByContestant') ?? '0') === '1' : false
+);
+if (typeof localStorage !== 'undefined') {
+  arenaSequentialByContestant.subscribe((v) =>
+    localStorage.setItem('arenaSequentialByContestant', v ? '1' : '0')
+  );
+}
+
 /** Clamp Arena stream timeout to 60–900 seconds (local LM Studio: no separate API cap). */
 function normalizeArenaRequestTimeoutSeconds(v) {
   const n = parseInt(String(v), 10);

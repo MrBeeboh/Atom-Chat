@@ -11,6 +11,9 @@
     buildArenaError = "",
     runAllActive = false,
     runAllProgress = { current: 0, total: 0 },
+    sequentialByContestant = false,
+    sequentialToggleDisabled = false,
+    onToggleSequential = () => {},
     onOpenLoadModal = () => {},
     onBuildArena = () => {},
     prevQuestion = () => {},
@@ -116,6 +119,27 @@
       onclick={askNextQuestion}
       title="Advance to the next question and send it"
     >Next</button>
+    <div
+      class="arena-seq-pills"
+      role="group"
+      aria-label="Run order"
+      title="One model at a time: each contestant answers every question before the next model loads"
+    >
+      <button
+        type="button"
+        class="arena-seq-pill"
+        aria-pressed={!sequentialByContestant}
+        disabled={sequentialToggleDisabled}
+        onclick={() => onToggleSequential(false)}
+      >Round</button>
+      <button
+        type="button"
+        class="arena-seq-pill"
+        aria-pressed={sequentialByContestant}
+        disabled={sequentialToggleDisabled}
+        onclick={() => onToggleSequential(true)}
+      >Sequential</button>
+    </div>
     {#if runAllActive}
       <button type="button" class="arena-btn arena-btn-stop" onclick={stopRunAll} title="Stop Run All">
         Stop {runAllProgress.current}/{runAllProgress.total}
@@ -257,6 +281,38 @@
     font-size: 12px;
     font-weight: 650;
     white-space: nowrap;
+  }
+  .arena-seq-pills {
+    display: inline-flex;
+    align-items: stretch;
+    height: 30px;
+    border: 1px solid var(--ui-border);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--ui-input-bg);
+  }
+  .arena-seq-pill {
+    height: 30px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--ui-text-secondary);
+    font-size: 12px;
+    font-weight: 650;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .arena-seq-pill + .arena-seq-pill {
+    border-left: 1px solid var(--ui-border);
+  }
+  .arena-seq-pill[aria-pressed="true"] {
+    background: var(--ui-action, var(--ui-accent));
+    color: var(--ui-action-ink, var(--ui-bg-main));
+  }
+  .arena-seq-pill:disabled {
+    opacity: 0.4;
+    cursor: default;
   }
   .arena-build-error,
   .arena-built-count {

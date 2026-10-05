@@ -35,6 +35,8 @@ import {
   pickJudgeModel,
   isCloudModel,
   sanitizeContestantResponse,
+  buildArenaRunAllSteps,
+  isArenaQuestionRoundComplete,
 } from './arenaLogic.js';
 
 // ---------- parseQuestionsAndAnswers ----------
@@ -1070,6 +1072,43 @@ describe('extractOpenScadSource', () => {
     expect(extractOpenScadSource('Final Answer: 4')).toBeNull();
     expect(extractOpenScadSource('use a cube in the answer')).toBeNull();
     expect(extractOpenScadSource('')).toBeNull();
+  });
+});
+
+describe('buildArenaRunAllSteps', () => {
+  const contestants = [{ slot: 'A' }, { slot: 'B' }, { slot: 'C' }];
+
+  it('uses one question round per question in parallel mode', () => {
+    expect(
+      buildArenaRunAllSteps({ sequentialByContestant: false, questionCount: 3, contestants })
+    ).toEqual([
+      { kind: 'question_round', questionIndex: 0 },
+      { kind: 'question_round', questionIndex: 1 },
+      { kind: 'question_round', questionIndex: 2 },
+    ]);
+  });
+
+  it('runs every question per contestant before advancing in sequential mode', () => {
+    expect(
+      buildArenaRunAllSteps({ sequentialByContestant: true, questionCount: 2, contestants })
+    ).toEqual([
+      { kind: 'contestant_answer', slot: 'A', questionIndex: 0 },
+      { kind: 'contestant_answer', slot: 'A', questionIndex: 1 },
+      { kind: 'contestant_answer', slot: 'B', questionIndex: 0 },
+      { kind: 'contestant_answer', slot: 'B', questionIndex: 1 },
+      { kind: 'contestant_answer', slot: 'C', questionIndex: 0 },
+      { kind: 'contestant_answer', slot: 'C', questionIndex: 1 },
+    ]);
+  });
+
+  it('detects when all slots have answered a question', () => {
+    const partial = {
+      A: { slot: 'A', msgs: [{ role: 'user' }, { role: 'assistant' }] },
+      B: { slot: 'B', msgs: [{ role: 'assistant' }] },
+    };
+    expect(isArenaQuestionRoundComplete(partial, ['A', 'B', 'C'])).toBe(false);
+    partial.C = { slot: 'C', msgs: [{ role: 'assistant' }] };
+    expect(isArenaQuestionRoundComplete(partial, ['A', 'B', 'C'])).toBe(true);
   });
 });
 

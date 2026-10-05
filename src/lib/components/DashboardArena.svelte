@@ -41,6 +41,7 @@
     arenaDebugMode,
     arenaSlotAIsJudge,
     arenaRequestTimeoutSeconds,
+    arenaSequentialByContestant,
     braveApiKey,
   } from "$lib/stores.js";
   import { playClick, playComplete } from "$lib/audio.js";
@@ -123,6 +124,8 @@
     computeTotals,
     contestCategoryTotals,
     clearScoreHistory,
+    buildArenaRunAllSteps,
+    isArenaQuestionRoundComplete,
   } from "$lib/arenaLogic.js";
   import { buildArenaReport, roundEntryFromMessages } from "$lib/arenaReport.js";
   import { rowsForJudgedRound } from "$lib/arenaRecordRows.js";
@@ -1054,6 +1057,92 @@
     return run;
   }
 
+  function getSelectedArenaContestants() {
+    const n = get(arenaPanelCount);
+    const slotAIsJudge = get(arenaSlotAIsJudge);
+    const slotsActive = [
+      "A",
+      ...(n >= 2 ? ["B"] : []),
+      ...(n >= 3 ? ["C"] : []),
+      ...(n >= 4 ? ["D"] : []),
+    ];
+    const picked = [
+      { slot: "A", modelId: get(dashboardModelA) },
+      { slot: "B", modelId: get(dashboardModelB) },
+      { slot: "C", modelId: get(dashboardModelC) },
+      { slot: "D", modelId: get(dashboardModelD) },
+    ].filter(
+      (s) =>
+        s.modelId &&
+        slotsActive.includes(s.slot) &&
+        !(slotAIsJudge && s.slot === "A") &&
+        readArenaColumnVisible(s.slot),
+    );
+    return picked.filter((s) => isArenaModelEligible(s.modelId));
+  }
+
+  async function loadContestantReady(modelId) {
+    if (!modelId) return false;
+    if (isCloudModel(modelId)) {
+      arenaTransitionPhase = null;
+      return true;
+    }
+    if (await isLocalModelChatReady(modelId)) {
+      arenaTransitionPhase = null;
+      return true;
+    }
+    loadingModelMessageIndex = getNextWittyLoadingModel();
+    arenaTransitionPhase = "loading";
+    try {
+      await loadModel(modelId);
+    } catch (loadErr) {
+      const msg = String(loadErr?.message || loadErr || "");
+      if (typeof console !== "undefined" && console.warn) {
+        console.warn("[Arena] loadModel:", modelId, msg);
+      }
+    }
+    const ready = await waitUntilLoaded(modelId, {
+      pollIntervalMs: 250,
+      timeoutMs: 600000,
+    });
+    arenaTransitionPhase = null;
+    if (!ready) {
+      throw new Error(
+        `Model "${modelId}" did not become ready (still loading or failed). Check llama-server.log.`,
+      );
+    }
+    return true;
+  }
+
+  function applySnapshotMessages(snapshotsBySlot) {
+    const map = snapshotsBySlot && typeof snapshotsBySlot === "object" ? snapshotsBySlot : {};
+    for (const slot of ["A", "B", "C", "D"]) {
+      const row = map[slot];
+      setMessages(slot, row && Array.isArray(row.msgs) ? [...row.msgs] : []);
+    }
+  }
+
+  async function runJudgmentWithSnapshots(snapshotsBySlot, qIdx) {
+    const saved = {
+      A: messagesA,
+      B: messagesB,
+      C: messagesC,
+      D: messagesD,
+    };
+    const prevIndex = questionIndex;
+    questionIndex = qIdx;
+    applySnapshotMessages(snapshotsBySlot);
+    try {
+      await runJudgment();
+    } finally {
+      questionIndex = prevIndex;
+      messagesA = saved.A;
+      messagesB = saved.B;
+      messagesC = saved.C;
+      messagesD = saved.D;
+    }
+  }
+
   function applySvgAsk(question) {
     if (!svgPictures) return question;
     if (typeof question === "string") return question + "\n\n" + ARENA_SVG_ASK;
@@ -1243,8 +1332,12 @@
     return { latency_ms: elapsedMs, token_count: tokenCount, timestamp: Date.now() };
   }
 
-  async function sendUserMessage(text, imageDataUrls = [], questionId = null) {
-    if (!text || !String(text).trim() || $isStreaming) return;
+  async function sendUserMessage(text, imageDataUrls = [], questionId = null, sendOpts = {}) {
+    const internalRun = sendOpts.internalRun === true;
+    const onlySlot = sendOpts.onlySlot ? String(sendOpts.onlySlot) : null;
+    const skipJudgment = sendOpts.skipJudgment === true;
+    const assumeModelLoaded = sendOpts.assumeModelLoaded === true;
+    if (!text || !String(text).trim() || (!internalRun && $isStreaming)) return;
     chatError.set(null);
     if ((imageDataUrls?.length > 0)) {
       const slotModels = [$dashboardModelA, $dashboardModelB, $dashboardModelC, $dashboardModelD].filter(Boolean);
@@ -1306,6 +1399,9 @@
       { slot: "D", modelId: $dashboardModelD },
     ].filter((s) => s.modelId && slotsActive.includes(s.slot) && !(slotAIsJudge && s.slot === "A") && readArenaColumnVisible(s.slot));
     let selected = picked.filter((s) => isArenaModelEligible(s.modelId));
+    if (onlySlot) {
+      selected = selected.filter((s) => s.slot === onlySlot);
+    }
 
     if (!selected.length) {
       chatError.set(
@@ -1320,7 +1416,7 @@
     const currentRun = runId;
     liveTokens.set(0);
     if (arenaPickMode === "anonymous") identityRevealed = false;
-    isStreaming.set(true);
+    if (!internalRun) isStreaming.set(true);
     try {
       let rulesPrefix = (typeof contestRules === "string"
         ? contestRules
@@ -1391,49 +1487,12 @@
       }
       scrambleWittyMessages();
 
-      /* Clear all slot messages so old responses/judge text don't leak into new run. */
-      messagesA = [];
-      messagesB = [];
-      messagesC = [];
-      messagesD = [];
-
-      /**
-       * Router fast path: if this id is already the loaded child, chat immediately.
-       * Otherwise POST /models/load (LRU-evicts the occupant when --models-max 1).
-       * Do NOT unload-all + wait-empty + delay — that made Arena unusable.
-       * Cloud ids skip VRAM entirely.
-       */
-      async function loadContestantReady(modelId) {
-        if (!modelId) return false;
-        if (isCloudModel(modelId)) {
-          arenaTransitionPhase = null;
-          return true;
-        }
-        if (await isLocalModelChatReady(modelId)) {
-          arenaTransitionPhase = null;
-          return true;
-        }
-        loadingModelMessageIndex = getNextWittyLoadingModel();
-        arenaTransitionPhase = "loading";
-        try {
-          await loadModel(modelId);
-        } catch (loadErr) {
-          const msg = String(loadErr?.message || loadErr || "");
-          if (typeof console !== "undefined" && console.warn) {
-            console.warn("[Arena] loadModel:", modelId, msg);
-          }
-        }
-        const ready = await waitUntilLoaded(modelId, {
-          pollIntervalMs: 250,
-          timeoutMs: 600000,
-        });
-        arenaTransitionPhase = null;
-        if (!ready) {
-          throw new Error(
-            `Model "${modelId}" did not become ready (still loading or failed). Check llama-server.log.`,
-          );
-        }
-        return true;
+      /* Clear slot messages so old responses/judge text don't leak into new run. */
+      if (!onlySlot) {
+        messagesA = [];
+        messagesB = [];
+        messagesC = [];
+        messagesD = [];
       }
 
       let completedCount = 0;
@@ -1448,7 +1507,9 @@
           setMessages(s.slot, []);
           setSlotError(s.slot, "");
           try {
-            await loadContestantReady(s.modelId);
+            if (!assumeModelLoaded) {
+              await loadContestantReady(s.modelId);
+            }
             if (runId !== currentRun) break;
             const metrics = await sendToSlot(
               s.slot,
@@ -1501,10 +1562,12 @@
         if (!slotOk && !failedSlots.includes(s.slot)) failedSlots.push(s.slot);
       }
       /* All contestants have run. Score once here — Run All must not call runJudgment again. */
-      if (runId === currentRun) {
-        isStreaming.set(false);
-        liveTokens.set(null);
-        liveTokPerSec.set(null);
+      if (!skipJudgment && runId === currentRun) {
+        if (!internalRun) {
+          isStreaming.set(false);
+          liveTokens.set(null);
+          liveTokPerSec.set(null);
+        }
         judgeLoadingMessageIndex = getNextWittyJudgeLoading();
         arenaTransitionPhase = "loading_judge";
         await runJudgment();
@@ -1521,10 +1584,12 @@
     } finally {
       /* Don't clear transition when judge phase is starting (runJudgment will clear it). */
       if (arenaTransitionPhase !== "loading_judge") arenaTransitionPhase = null;
-      isStreaming.set(false);
-      liveTokens.set(null);
-      liveTokPerSec.set(null);
-      if (arenaPickMode === "anonymous") identityRevealed = true;
+      if (!internalRun) {
+        isStreaming.set(false);
+        liveTokens.set(null);
+        liveTokPerSec.set(null);
+        if (arenaPickMode === "anonymous") identityRevealed = true;
+      }
     }
   }
 
@@ -1653,10 +1718,19 @@
     if ($isStreaming || runAllActive) return;
     const questions = parsedQuestions;
     if (questions.length === 0) return;
+    const sequential = get(arenaSequentialByContestant);
+    const contestants = getSelectedArenaContestants();
+    if (!contestants.length) {
+      chatError.set("Select at least one visible model (A–D) before Run all.");
+      return;
+    }
     const hasJudgeModel = get(models).length > 0; // judge will be auto-selected from non-contestants
+    const orderNote = sequential
+      ? " Models run one at a time (each answers every question before the next loads)."
+      : "";
     const ok = await confirm({
       title: "Run all questions",
-      message: `This will run ${questions.length} question${questions.length > 1 ? "s" : ""} sequentially${hasJudgeModel ? " with automated scoring after each" : ""}. This may take a while.`,
+      message: `This will run ${questions.length} question${questions.length > 1 ? "s" : ""} in order${hasJudgeModel ? " with automated scoring after each" : ""}.${orderNote} This may take a while.`,
       confirmLabel: "Run all",
       cancelLabel: "Cancel",
       danger: false,
@@ -1664,30 +1738,91 @@
     if (!ok) return;
     runAllActive = true;
     runAllProgress = { current: 0, total: questions.length };
+    isStreaming.set(true);
+    if (arenaPickMode === "anonymous") identityRevealed = false;
     try {
-      for (let i = 0; i < questions.length; i++) {
-        if (!runAllActive) break; // user cancelled
-        questionIndex = i;
-        runAllProgress = { current: i + 1, total: questions.length };
-        const item = questions[i];
-        const toSend = item?.text != null ? String(item.text).trim() : "";
-        if (!toSend) continue;
-        messagesA = [];
-        messagesB = [];
-        messagesC = [];
-        messagesD = [];
-        chatError.set(null);
-        try {
-          await sendUserMessage(toSend, [], item?.id ?? null);
-        } catch (e) {
-          chatError.set(e?.message || `Failed on question ${i + 1}.`);
-          continue;
+      if (!sequential) {
+        for (let i = 0; i < questions.length; i++) {
+          if (!runAllActive) break; // user cancelled
+          questionIndex = i;
+          runAllProgress = { current: i + 1, total: questions.length };
+          const item = questions[i];
+          const toSend = item?.text != null ? String(item.text).trim() : "";
+          if (!toSend) continue;
+          messagesA = [];
+          messagesB = [];
+          messagesC = [];
+          messagesD = [];
+          chatError.set(null);
+          try {
+            await sendUserMessage(toSend, [], item?.id ?? null);
+          } catch (e) {
+            chatError.set(e?.message || `Failed on question ${i + 1}.`);
+            continue;
+          }
+          // sendUserMessage already waited for contestants and ran judgment once.
         }
-        // sendUserMessage already waited for contestants and ran judgment once.
+      } else {
+        const requiredSlots = contestants.map((c) => c.slot);
+        /** @type {Record<number, Record<string, { slot: string, msgs: object[] }>>} */
+        const snapshotsByQuestion = {};
+        const steps = buildArenaRunAllSteps({
+          sequentialByContestant: true,
+          questionCount: questions.length,
+          contestants,
+        });
+        let stepNum = 0;
+        for (const step of steps) {
+          if (!runAllActive || step.kind !== "contestant_answer") break;
+          stepNum += 1;
+          const i = step.questionIndex;
+          questionIndex = i;
+          runAllProgress = { current: i + 1, total: questions.length };
+          const contestant = contestants.find((c) => c.slot === step.slot);
+          if (!contestant) continue;
+          const item = questions[i];
+          const toSend = item?.text != null ? String(item.text).trim() : "";
+          if (!toSend) continue;
+          chatError.set(null);
+          try {
+            const isFirstQuestionForContestant =
+              !steps.some(
+                (s, idx) =>
+                  idx < stepNum - 1 &&
+                  s.kind === "contestant_answer" &&
+                  s.slot === step.slot,
+              );
+            if (isFirstQuestionForContestant) {
+              await loadContestantReady(contestant.modelId);
+            }
+            setMessages(step.slot, []);
+            await sendUserMessage(toSend, [], item?.id ?? null, {
+              internalRun: true,
+              onlySlot: step.slot,
+              skipJudgment: true,
+              assumeModelLoaded: true,
+            });
+            if (!snapshotsByQuestion[i]) snapshotsByQuestion[i] = {};
+            snapshotsByQuestion[i][step.slot] = {
+              slot: step.slot,
+              msgs: [...getMessages(step.slot)],
+            };
+            if (isArenaQuestionRoundComplete(snapshotsByQuestion[i], requiredSlots)) {
+              await runJudgmentWithSnapshots(snapshotsByQuestion[i], i);
+            }
+          } catch (e) {
+            chatError.set(e?.message || `Failed on question ${i + 1} (${step.slot}).`);
+          }
+        }
       }
     } finally {
       runAllActive = false;
       runAllProgress = { current: 0, total: 0 };
+      isStreaming.set(false);
+      liveTokens.set(null);
+      liveTokPerSec.set(null);
+      arenaTransitionPhase = null;
+      if (arenaPickMode === "anonymous") identityRevealed = true;
     }
   }
 
@@ -1801,7 +1936,7 @@
   }
 
   async function runJudgmentBody() {
-    if ($isStreaming) return;
+    if ($isStreaming && !runAllActive) return;
     const n = get(arenaPanelCount);
     const slotAIsJudge = get(arenaSlotAIsJudge);
     /** Contestant model IDs (when Slot A is judge, only B/C/D are contestants so A can be used as judge). */
@@ -2385,6 +2520,12 @@
     onOpenLoadModal={() => { loadQuestionsOpen = true; }}
     runAllActive={runAllActive}
     runAllProgress={runAllProgress}
+    sequentialByContestant={$arenaSequentialByContestant}
+    sequentialToggleDisabled={runAllActive || $isStreaming}
+    onToggleSequential={(on) => {
+      if (runAllActive || $isStreaming) return;
+      arenaSequentialByContestant.set(!!on);
+    }}
     arenaWebWarmingUp={arenaWebWarmingUp}
     arenaWebWarmUpAttempted={arenaWebWarmUpAttempted}
     resetWebWarmUpAttempted={() => { arenaWebWarmUpAttempted = false; }}

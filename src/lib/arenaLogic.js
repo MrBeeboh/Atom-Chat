@@ -1533,6 +1533,49 @@ export function pickJudgeModel({ userChoice, contestantIds, availableModels, req
   return { id: scored[0].id, fallback: true };
 }
 
+// ---------- Run All execution order ----------
+
+/**
+ * Steps for Run All. Default: one full multi-contestant round per question.
+ * Sequential: each contestant answers every question before the next contestant loads.
+ *
+ * @param {{ sequentialByContestant?: boolean, questionCount: number, contestants: { slot: string }[] }} opts
+ * @returns {Array<{ kind: 'question_round', questionIndex: number } | { kind: 'contestant_answer', slot: string, questionIndex: number }>}
+ */
+export function buildArenaRunAllSteps({ sequentialByContestant = false, questionCount, contestants } = {}) {
+  const qCount = Math.max(0, Math.floor(Number(questionCount)) || 0);
+  const list = Array.isArray(contestants) ? contestants.filter((c) => c && c.slot) : [];
+  if (!sequentialByContestant) {
+    return Array.from({ length: qCount }, (_, questionIndex) => ({
+      kind: 'question_round',
+      questionIndex,
+    }));
+  }
+  const steps = [];
+  for (const c of list) {
+    for (let questionIndex = 0; questionIndex < qCount; questionIndex++) {
+      steps.push({ kind: 'contestant_answer', slot: c.slot, questionIndex });
+    }
+  }
+  return steps;
+}
+
+/**
+ * True when every required slot has a stored response snapshot for this question.
+ *
+ * @param {Record<string, unknown>} snapshotsBySlot
+ * @param {string[]} requiredSlots
+ */
+export function isArenaQuestionRoundComplete(snapshotsBySlot, requiredSlots) {
+  const slots = Array.isArray(requiredSlots) ? requiredSlots.filter(Boolean) : [];
+  if (!slots.length) return false;
+  const map = snapshotsBySlot && typeof snapshotsBySlot === 'object' ? snapshotsBySlot : {};
+  return slots.every((slot) => {
+    const row = map[slot];
+    return row && typeof row === 'object' && Array.isArray(row.msgs) && row.msgs.length > 0;
+  });
+}
+
 // ---------- Standing labels ----------
 
 const ORDINAL_LABELS = ['1st', '2nd', '3rd', '4th'];
