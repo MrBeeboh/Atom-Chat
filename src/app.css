@@ -1129,3 +1129,187 @@ body {
 .arena-matrix-slot.arena-col-D {
   background: var(--arena-head);
 }
+
+/*
+  Neon — cyberpunk synthwave. Electric pink + cyan on deep violet.
+*/
+[data-ui-theme="neon"] {
+  --ui-bg-main: #f6f2fb;
+  --ui-bg-sidebar: #ebe3f6;
+  --ui-accent: #c026d3;
+  --ui-accent-hot: #e11d48;
+  --ui-accent-cool: #0891b2;
+  --ui-text-primary: #17112a;
+  --ui-text-secondary: #5b5470;
+  --ui-border: rgba(192, 38, 211, 0.22);
+  --ui-sidebar-active: #ddd0ee;
+  --ui-sidebar-hover: #e5daf3;
+  --ui-input-bg: #fbf8fe;
+  --ui-input-border: #d8cbe8;
+  --ui-glow: rgba(192, 38, 211, 0.22);
+  --ui-selected-bg: var(--ui-accent);
+  --ui-selected-fg: var(--ui-bg-main);
+  --atom-accent: #c026d3;
+  --atom-accent-light: #e879f9;
+  --atom-teal: #0891b2;
+  --atom-amber: #f59e0b;
+}
+.dark[data-ui-theme="neon"] {
+  --ui-bg-main: #0d0614;
+  --ui-bg-sidebar: #140a1f;
+  --ui-accent: #ff2e97;
+  --ui-accent-hot: #ff477e;
+  --ui-accent-cool: #00e5ff;
+  --ui-text-primary: #f5ecff;
+  --ui-text-secondary: #a99bb8;
+  --ui-border: rgba(255, 46, 151, 0.24);
+  --ui-sidebar-active: #1e1130;
+  --ui-sidebar-hover: #291743;
+  --ui-input-bg: #170b24;
+  --ui-input-border: #2d1a44;
+  --ui-glow: rgba(255, 46, 151, 0.32);
+  --ui-selected-bg: var(--ui-accent);
+  --ui-selected-fg: var(--ui-bg-main);
+  --atom-accent: #ff2e97;
+  --atom-accent-light: #ff8ac2;
+  --atom-teal: #00e5ff;
+  --atom-amber: #ffb02e;
+}
+
+/*
+  Aurora — northern lights. Emerald + cyan + violet on arctic night.
+*/
+[data-ui-theme="aurora"] {
+  --ui-bg-main: #f0fbf8;
+  --ui-bg-sidebar: #e0f4ee;
+  --ui-accent: #0d9488;
+  --ui-accent-hot: #f43f5e;
+  --ui-accent-cool: #7c3aed;
+  --ui-text-primary: #0e1a16;
+  --ui-text-secondary: #3f5a52;
+  --ui-border: rgba(13, 148, 136, 0.24);
+  --ui-sidebar-active: #c9ebe2;
+  --ui-sidebar-hover: #d7f1ea;
+  --ui-input-bg: #f6fdfb;
+  --ui-input-border: #bfe5dc;
+  --ui-glow: rgba(13, 148, 136, 0.22);
+  --ui-selected-bg: var(--ui-accent);
+  --ui-selected-fg: var(--ui-bg-main);
+  --atom-accent: #0d9488;
+  --atom-accent-light: #2dd4bf;
+  --atom-teal: #22d3ee;
+  --atom-amber: #f59e0b;
+}
+.dark[data-ui-theme="aurora"] {
+  --ui-bg-main: #070d1a;
+  --ui-bg-sidebar: #0a1224;
+  --ui-accent: #34d399;
+  --ui-accent-hot: #fb7185;
+  --ui-accent-cool: #22d3ee;
+  --ui-text-primary: #e6fbf6;
+  --ui-text-secondary: #8ba5b8;
+  --ui-border: rgba(52, 211, 153, 0.22);
+  --ui-sidebar-active: #0e1b2f;
+  --ui-sidebar-hover: #132541;
+  --ui-input-bg: #0b1526;
+  --ui-input-border: #1a2b45;
+  --ui-glow: rgba(52, 211, 153, 0.28);
+  --ui-selected-bg: var(--ui-accent);
+  --ui-selected-fg: var(--ui-bg-main);
+  --atom-accent: #34d399;
+  --atom-accent-light: #6ee7b7;
+  --atom-teal: #22d3ee;
+  --atom-amber: #fbbf24;
+}
+
+/*
+  Abyss — deep ocean. Electric cyan + blue on near-black navy.
+*/
+[data-ui-theme="abyss"] {
+  --ui-bg-main: #f0f6ff;
+  --ui-bg-sidebar: #e0eafa;
+  --ui-accent: #0369a1;
+  --ui-accent-hot: #f43f5e;
+  --ui-accent-cool: #06b6d4;
+  --ui-text-primary: #0c1a2b;
+  --ui-text-secondary: #46617f;
+  --ui-border: rgba(3, 105, 161, 0.22);
+  --ui-sidebar-active: #cfe4f5;
+  --ui-sidebar-hover: #ddeaf7;
+  --ui-input-bg: #f8fbff;
+  --ui-input-border: #c7dcef;
+  --ui-glow: rgba(3, 105, 161, 0.24);
+  --ui-selected-bg: var(--ui-accent);
+  --ui-selected-fg: var(--ui-bg-main);
+  --atom-accent: #0369a1;
+  --atom-accent-light: #38bdf8;
+  --atom-teal: #06b6d4;
+  --atom-amber: #f59e0b;
+}
+.dark[data-ui-theme="abyss"] {
+  --ui-bg-main: #060d18;
+  --ui-bg-sidebar: #081423;
+  --ui-accent: #38bdf8;
+  --ui-accent-hot: #fb7185;
+  --ui-accent-cool: #22d3ee;
+  --ui-text-primary: #e6f1ff;
+  --ui-text-secondary: #7fa4c8;
+  --ui-border: rgba(56, 189, 248, 0.22);
+  --ui-sidebar-active: #0c1c30;
+  --ui-sidebar-hover: #102741;
+  --ui-input-bg: #0a1728;
+  --ui-input-border: #16293f;
+  --ui-glow: rgba(56, 189, 248, 0.28);
+  --ui-selected-bg: var(--ui-accent);
+  --ui-selected-fg: var(--ui-bg-main);
+  --atom-accent: #38bdf8;
+  --atom-accent-light: #7dd3fc;
+  --atom-teal: #22d3ee;
+  --atom-amber: #fbbf24;
+}
+
+/*
+  Noir — luxury. Gold + bronze on near-black.
+*/
+[data-ui-theme="noir"] {
+  --ui-bg-main: #faf9f6;
+  --ui-bg-sidebar: #efece6;
+  --ui-accent: #a16207;
+  --ui-accent-hot: #dc2626;
+  --ui-accent-cool: #0f766e;
+  --ui-text-primary: #1c1917;
+  --ui-text-secondary: #57534e;
+  --ui-border: rgba(161, 98, 7, 0.22);
+  --ui-sidebar-active: #e3ddcf;
+  --ui-sidebar-hover: #eae4d8;
+  --ui-input-bg: #fefdfb;
+  --ui-input-border: #d8d0c2;
+  --ui-glow: rgba(161, 98, 7, 0.2);
+  --ui-selected-bg: var(--ui-accent);
+  --ui-selected-fg: var(--ui-bg-main);
+  --atom-accent: #a16207;
+  --atom-accent-light: #ca8a04;
+  --atom-teal: #0f766e;
+  --atom-amber: #d4af37;
+}
+.dark[data-ui-theme="noir"] {
+  --ui-bg-main: #0c0a08;
+  --ui-bg-sidebar: #14110d;
+  --ui-accent: #d4af37;
+  --ui-accent-hot: #f87171;
+  --ui-accent-cool: #2dd4bf;
+  --ui-text-primary: #f5efe4;
+  --ui-text-secondary: #a89f92;
+  --ui-border: rgba(212, 175, 55, 0.22);
+  --ui-sidebar-active: #1d1812;
+  --ui-sidebar-hover: #2a221a;
+  --ui-input-bg: #16120d;
+  --ui-input-border: #2a231b;
+  --ui-glow: rgba(212, 175, 55, 0.26);
+  --ui-selected-bg: var(--ui-accent);
+  --ui-selected-fg: var(--ui-bg-main);
+  --atom-accent: #d4af37;
+  --atom-accent-light: #e6c85c;
+  --atom-teal: #2dd4bf;
+  --atom-amber: #fbbf24;
+}

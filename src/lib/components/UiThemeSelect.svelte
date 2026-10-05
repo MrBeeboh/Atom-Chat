@@ -8,16 +8,17 @@
   let pickerOpen = $state(false);
 
   const currentLabel = $derived(UI_THEME_OPTIONS.find((o) => o.value === $uiTheme)?.label ?? $uiTheme);
+  const currentSwatch = $derived(UI_THEME_OPTIONS.find((o) => o.value === $uiTheme)?.swatch ?? '#e8a060');
 </script>
 
 <button
   type="button"
   class="ui-theme-btn rounded-lg px-2 text-xs font-semibold cursor-pointer border transition-colors focus:outline-none focus:ring-1 truncate inline-flex items-center gap-1.5 {compact ? 'py-1.5' : 'py-2'}"
   style="background: var(--ui-input-bg); color: var(--ui-text-primary); border-color: var(--ui-border); min-width: {compact ? '6rem' : '8rem'}; letter-spacing: 0.02em; text-transform: none;"
-  title="Palette: Orbit, Paper, Ember, Ion"
+  title="Palette — color theme for the app chrome"
   aria-label="UI palette — color theme for the app chrome"
   onclick={() => (pickerOpen = true)}>
-  <span class="ui-theme-swatch" style="background: {currentLabel === 'Ember' ? '#ea580c' : currentLabel === 'Ion' ? '#1b4332' : currentLabel === 'Paper' ? '#9b2c2c' : '#e8a060'};"></span>
+  <span class="ui-theme-swatch" style="background: {currentSwatch};"></span>
   {currentLabel}
 </button>
 

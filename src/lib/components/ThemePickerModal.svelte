@@ -16,6 +16,10 @@
     sage:   { bg: '#faf6ef', accent: '#9b2c2c', text: '#1c1917' },
     clay:   { bg: '#120a06', accent: '#fb923c', text: '#fff7ed' },
     fern:   { bg: '#12161d', accent: '#d4a15a', text: '#e7edf5' },
+    neon:   { bg: '#0d0614', accent: '#ff2e97', text: '#f5ecff' },
+    aurora: { bg: '#070d1a', accent: '#34d399', text: '#e6fbf6' },
+    abyss:  { bg: '#060d18', accent: '#38bdf8', text: '#e6f1ff' },
+    noir:   { bg: '#0c0a08', accent: '#d4af37', text: '#f5efe4' },
   };
 </script>
 

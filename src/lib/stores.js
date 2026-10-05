@@ -121,8 +121,8 @@ export const cockpitIntelOpen = writable(false);
 export const pinnedContent = writable(null);
 
 
-/** Color scheme: studio (Orbit) | sage (Paper) | clay (Ember) | fern (Ion) */
-const VALID_UI_THEMES = ['sage', 'clay', 'fern', 'studio'];
+/** Color scheme: studio (Orbit) | sage (Paper) | clay (Ember) | fern (Ion) | neon | aurora | abyss | noir */
+const VALID_UI_THEMES = ['sage', 'clay', 'fern', 'studio', 'neon', 'aurora', 'abyss', 'noir'];
 function getInitialUiTheme() {
   if (typeof localStorage === 'undefined') return 'studio';
   const raw = localStorage.getItem('uiTheme') || 'studio';
