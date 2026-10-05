@@ -127,6 +127,12 @@
   import { buildArenaReport, roundEntryFromMessages } from "$lib/arenaReport.js";
   import { rowsForJudgedRound } from "$lib/arenaRecordRows.js";
   import { bytesToBase64, lastTps } from "$lib/arenaView.js";
+  import {
+    arenaContestantCounts,
+    getRunAllBlockReason,
+    getRunAllButtonTitle,
+    isStaleArenaStreaming,
+  } from "$lib/arenaRunAllGate.js";
 
   // ---------- State ----------
   let messagesA = $state([]);
@@ -605,6 +611,34 @@
   // ---------- Run All automation ----------
   let runAllActive = $state(false);
   let runAllProgress = $state({ current: 0, total: 0 });
+
+  function buildRunAllGateInput() {
+    const { pickedCount, eligibleCount } = arenaContestantCounts({
+      panelCount: get(arenaPanelCount),
+      slotAIsJudge: get(arenaSlotAIsJudge),
+      modelIdsBySlot: {
+        A: get(dashboardModelA),
+        B: get(dashboardModelB),
+        C: get(dashboardModelC),
+        D: get(dashboardModelD),
+      },
+      isEligible: isArenaModelEligible,
+      isColumnVisible: readArenaColumnVisible,
+    });
+    return {
+      questionCount: parsedQuestions.length,
+      pickedCount,
+      eligibleCount,
+      isStreaming: get(isStreaming),
+      runAllActive,
+      anySlotRunning: running.A || running.B || running.C || running.D,
+      arenaTransitionPhase,
+      judgmentInFlight,
+    };
+  }
+
+  const runAllGateInput = $derived.by(() => buildRunAllGateInput());
+  const runAllButtonTitle = $derived(getRunAllButtonTitle(runAllGateInput));
 
   // ---------- Arena message persistence (survive refresh) ----------
   function saveArenaMessages() {
@@ -1650,7 +1684,21 @@
 
   /** Run All: iterate through all questions, send each, then run automated scoring after each. */
   async function runAllQuestions() {
-    if ($isStreaming || runAllActive) return;
+    if (runAllActive) return;
+
+    let gate = buildRunAllGateInput();
+    if (isStaleArenaStreaming(gate)) {
+      stopAll();
+      gate = buildRunAllGateInput();
+      chatError.set("Cleared a stuck run state. Confirm Run all to continue.");
+    }
+
+    const block = getRunAllBlockReason(gate);
+    if (block) {
+      chatError.set(block);
+      return;
+    }
+
     const questions = parsedQuestions;
     if (questions.length === 0) return;
     const hasJudgeModel = get(models).length > 0; // judge will be auto-selected from non-contestants
@@ -1662,6 +1710,7 @@
       danger: false,
     });
     if (!ok) return;
+    chatError.set(null);
     runAllActive = true;
     runAllProgress = { current: 0, total: questions.length };
     try {
@@ -2394,6 +2443,7 @@
     askCurrentQuestion={askCurrentQuestion}
     askNextQuestion={askNextQuestion}
     runAllQuestions={runAllQuestions}
+    runAllButtonTitle={runAllButtonTitle}
     stopRunAll={stopRunAll}
     runArenaWarmUp={runArenaWarmUp}
     startOver={startOver}

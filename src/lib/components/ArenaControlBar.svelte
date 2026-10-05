@@ -19,6 +19,7 @@
     askCurrentQuestion = () => {},
     askNextQuestion = () => {},
     runAllQuestions = () => {},
+    runAllButtonTitle = "Run every question in order; judge scores after each",
     stopRunAll = () => {},
     startOver = () => {},
     onToggleQuestionPanel = () => {},
@@ -124,9 +125,10 @@
       <button
         type="button"
         class="arena-btn"
-        disabled={$isStreaming || currentQuestionTotal < 2}
+        class:arena-btn-muted={!runAllActive && ($isStreaming || currentQuestionTotal < 2)}
         onclick={runAllQuestions}
-        title="Run every question in order; judge scores after each"
+        title={runAllButtonTitle}
+        aria-label={runAllButtonTitle}
       >Run all</button>
     {/if}
   </div>
@@ -203,6 +205,9 @@
     color: var(--ui-accent-hot, #9f2d2d);
     background: color-mix(in srgb, var(--ui-accent-hot, #9f2d2d) 8%, var(--ui-input-bg));
     font-weight: 700;
+  }
+  .arena-btn-muted:not(:disabled) {
+    opacity: 0.72;
   }
   .arena-icon {
     width: 30px;
