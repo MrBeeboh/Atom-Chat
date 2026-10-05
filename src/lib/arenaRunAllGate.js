@@ -115,3 +115,22 @@ export function getRunAllButtonTitle(input) {
   }
   return 'Run every question in order; judge scores after each';
 }
+
+/**
+ * Mirrors sendUserMessage's streaming guard: blocked when isStreaming unless internalRun.
+ * @param {{ text?: string, isStreaming: boolean, sendOpts?: { internalRun?: boolean } }} input
+ */
+export function isArenaSendBlockedByStreamingGuard(input) {
+  const text = input.text;
+  if (!text || !String(text).trim()) return true;
+  const internalRun = input.sendOpts?.internalRun === true;
+  return !internalRun && input.isStreaming;
+}
+
+/**
+ * sendUserMessage opts for Round-mode Run All (loop owns isStreaming via isStreaming.set(true)).
+ * @returns {{ internalRun: true }}
+ */
+export function arenaRoundRunAllSendOpts() {
+  return { internalRun: true };
+}

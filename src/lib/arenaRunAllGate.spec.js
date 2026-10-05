@@ -2,8 +2,10 @@ import { describe, it, expect } from 'vitest';
 import {
   activeArenaSlots,
   arenaContestantCounts,
+  arenaRoundRunAllSendOpts,
   getRunAllBlockReason,
   getRunAllButtonTitle,
+  isArenaSendBlockedByStreamingGuard,
   isStaleArenaStreaming,
 } from './arenaRunAllGate.js';
 
@@ -91,6 +93,29 @@ describe('arenaRunAllGate', () => {
         isStreaming: false,
       });
       expect(title).toMatch(/two questions/i);
+    });
+  });
+
+  describe('Round Run All send contract', () => {
+    it('arenaRoundRunAllSendOpts sets internalRun so streaming guard does not no-op', () => {
+      expect(arenaRoundRunAllSendOpts()).toEqual({ internalRun: true });
+    });
+
+    it('isArenaSendBlockedByStreamingGuard matches sendUserMessage early-return', () => {
+      const text = 'Question 1';
+      expect(
+        isArenaSendBlockedByStreamingGuard({
+          text,
+          isStreaming: true,
+          sendOpts: arenaRoundRunAllSendOpts(),
+        }),
+      ).toBe(false);
+      expect(
+        isArenaSendBlockedByStreamingGuard({ text, isStreaming: true, sendOpts: {} }),
+      ).toBe(true);
+      expect(
+        isArenaSendBlockedByStreamingGuard({ text, isStreaming: false, sendOpts: {} }),
+      ).toBe(false);
     });
   });
 });

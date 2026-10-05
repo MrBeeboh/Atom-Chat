@@ -132,6 +132,7 @@
   import { bytesToBase64, lastTps } from "$lib/arenaView.js";
   import {
     arenaContestantCounts,
+    arenaRoundRunAllSendOpts,
     getRunAllBlockReason,
     getRunAllButtonTitle,
     isStaleArenaStreaming,
@@ -1804,11 +1805,7 @@
           messagesD = [];
           chatError.set(null);
           try {
-            // internalRun: Run All already owns isStreaming; without this flag
-            // sendUserMessage early-returns on $isStreaming and skips every question.
-            await sendUserMessage(toSend, [], item?.id ?? null, {
-              internalRun: true,
-            });
+            await sendUserMessage(toSend, [], item?.id ?? null, arenaRoundRunAllSendOpts());
           } catch (e) {
             chatError.set(e?.message || `Failed on question ${i + 1}.`);
             continue;
