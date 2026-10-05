@@ -211,6 +211,7 @@
       <div>
         <h2 class="text-base font-semibold" style="color: var(--ui-text-primary);">Settings</h2>
         <p class="text-xs mt-0.5" style="color: var(--ui-text-secondary);">Connection &amp; API keys. Model/load settings are in the Intel panel (right).</p>
+        <p class="text-[10px] mt-1 font-mono" style="color: var(--ui-text-secondary); opacity: 0.55;">build {__GIT_REV__}</p>
       </div>
       <button type="button" class="shrink-0 p-1.5 rounded-lg text-xl leading-none transition-colors settings-hover-close" onclick={() => onclose?.()} title="Close" aria-label="Close">✕</button>
     </div>

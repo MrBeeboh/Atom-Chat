@@ -151,7 +151,6 @@
         <!-- Left: brand + layout pill -->
         <div class="cockpit-header-brand flex items-center gap-2 sm:gap-3 shrink-0" role="group" aria-label="Brand and layout">
           <span class="atom-brand flex items-center gap-2 shrink-0"><span class="atom-brand-mark"><AtomLogo size={18} /></span>ATOM</span>
-          <span class="font-mono text-[9px] px-1.5 py-0.5 rounded shrink-0 select-none" style="background: color-mix(in srgb, var(--ui-accent) 12%, transparent); color: var(--ui-accent); opacity: 0.65;" title="Build revision">{__GIT_REV__}</span>
           <nav class="layout-pill flex rounded-full p-0.5 shrink-0 text-xs font-medium" style="background: color-mix(in srgb, var(--ui-border) 60%, transparent);" aria-label="Layout: Cockpit or Arena">
             {#each LAYOUT_OPTS as opt}
               <button type="button" class="layout-pill-btn rounded-full px-3 py-1.5 transition-all" style="background: {$layout === opt.value ? 'var(--ui-selected-bg, var(--ui-accent))' : 'transparent'}; color: {$layout === opt.value ? 'var(--ui-selected-fg, var(--ui-bg-main))' : 'var(--ui-text-secondary)'};" onclick={() => layout.set(opt.value)}>{opt.label}</button>
@@ -243,7 +242,6 @@
         <div class="flex items-center shrink-0 gap-3" role="group" aria-label="Brand and layout">
           <button type="button" class="md:hidden p-2 rounded-md min-h-[44px] min-w-[44px] flex items-center justify-center transition-opacity hover:opacity-80" style="color: var(--ui-text-secondary);" onclick={() => sidebarOpen.set(true)} aria-label="Open menu">☰</button>
           <span class="atom-brand flex items-center gap-2 shrink-0"><span class="atom-brand-mark"><AtomLogo size={18} /></span>ATOM</span>
-          <span class="font-mono text-[9px] px-1.5 py-0.5 rounded shrink-0 select-none" style="background: color-mix(in srgb, var(--ui-accent) 12%, transparent); color: var(--ui-accent); opacity: 0.65;" title="Build revision">{__GIT_REV__}</span>
           <nav class="layout-pill flex rounded-full p-0.5 shrink-0 text-xs font-medium" style="background: color-mix(in srgb, var(--ui-border) 60%, transparent);" aria-label="Layout: Cockpit or Arena">
             {#each LAYOUT_OPTS as opt}
               <button type="button" class="layout-pill-btn rounded-full px-3 py-1.5 transition-all" style="background: {$layout === opt.value ? 'var(--ui-selected-bg, var(--ui-accent))' : 'transparent'}; color: {$layout === opt.value ? 'var(--ui-selected-fg, var(--ui-bg-main))' : 'var(--ui-text-secondary)'};" onclick={() => layout.set(opt.value)}>{opt.label}</button>
