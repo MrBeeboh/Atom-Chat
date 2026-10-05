@@ -58,6 +58,7 @@ function localHasThinkingToggle(name) {
     /deepseek[-_.]?r1|[-_.]r1[-_.]/.test(name) ||
     /gpt[-_.]?oss|oss[-_.]?120b/.test(name) ||
     /glm[-_.]?4|glm[-_.]?5/.test(name) ||
+    /mimo[-_.]?v?2/.test(name) ||
     /\b(thinking|reasoning)\b/.test(name)
   );
 }

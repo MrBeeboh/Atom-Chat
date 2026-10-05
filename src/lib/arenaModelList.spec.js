@@ -56,11 +56,33 @@ describe('prepareArenaModelList', () => {
     const rows = prepareArenaModelList([{ id: shard }]);
     expect(rows.map((r) => r.id)).toEqual([shard]);
   });
-});
-
   it('keeps local Muse Glimmer when the row has no capability fields', () => {
     const id = 'Muse-Glimmer-30B-KQuant-Dynamic-Q4_K_XL';
     const rows = prepareArenaModelList([{ id }]);
     expect(rows.map((r) => r.id)).toEqual([id]);
   });
+
+  it('keeps exactly one MiMo row even if Q4 and Q8 both appear, preferring the capped live row', () => {
+    const rows = prepareArenaModelList([
+      { id: 'MiMo-V2.6-Distill-Qwen-9B-Q4_K_M', origin: 'fallback' },
+      { id: 'MiMo-V2.6-Distill-Qwen-9B-Q8_0', origin: 'live', caps: { vision: true, tools: true, thinking: true } },
+      { id: 'mystery-blob' },
+    ]);
+    const mimo = rows.filter((r) => /mimo/i.test(r.id));
+    expect(mimo).toHaveLength(1);
+    expect(mimo[0].id).toBe('MiMo-V2.6-Distill-Qwen-9B-Q8_0');
+    expect(rows.map((r) => r.id)).not.toContain('mystery-blob');
+  });
+
+  it('includes MiMo even when the live /v1/models row has text-only modalities (name heuristic)', () => {
+    const rows = prepareArenaModelList([
+      {
+        id: 'MiMo-V2.6-Distill-Qwen-9B-Q8_0',
+        origin: 'live',
+        architecture: { input_modalities: ['text'], output_modalities: ['text'] },
+      },
+    ]);
+    expect(rows.map((r) => r.id)).toEqual(['MiMo-V2.6-Distill-Qwen-9B-Q8_0']);
+  });
+});
 

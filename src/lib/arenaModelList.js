@@ -17,10 +17,19 @@ function leafName(id) {
   return leaf.trim().toLowerCase().replace(/_/g, '-');
 }
 
+/** Strip trailing GGUF quant tags so Q4_K_M / Q8_0 of the same model share one arena slot. */
+function stripQuantSuffix(leaf) {
+  // After leafName(), underscores are dashes: Q4_K_M -> q4-k-m, Q8_0 -> q8-0, IQ4_NL -> iq4-nl.
+  return String(leaf || '').replace(
+    /-(?:iq[1-4](?:-[a-z0-9]+)?|q[2-8](?:-[a-z0-9]+)+|q[2-8]|bf16|f16|f32)$/i,
+    '',
+  );
+}
+
 /** Identity that ignores provider prefix and directory. Flash-Next shards share one key. */
 export function arenaModelKey(id) {
   if (isQwen38FlashNextSelection(id)) return 'local:qwen3.8-flash-next';
-  return leafName(id);
+  return stripQuantSuffix(leafName(id));
 }
 
 function explicitCaps(row) {

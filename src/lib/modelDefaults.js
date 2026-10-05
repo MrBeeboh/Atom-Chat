@@ -160,6 +160,7 @@ const FAMILY_DEFAULTS = {
 /** Match model id (lowercase) to family key. Order matters: more specific first. */
 const FAMILY_PATTERNS = [
   { key: 'muse', test: (id) => /muse-glimmer/i.test(id) },
+  { key: 'mimo', test: (id) => /mimo[-_.]?v?2/i.test(id) },
   { key: 'codellama', test: (id) => /codellama|code.?llama/i.test(id) },
   { key: 'minicpm', test: (id) => /minicpm/i.test(id) },
   { key: 'qwen', test: (id) => /qwen/i.test(id) },

@@ -87,11 +87,11 @@ export function getModelCapabilities(modelId, catalog = null, endpointCaps = nul
   // Vision / multimodal (images, video) — name heuristic used when the list row has no architecture.
   let vision =
     /\b(vl|vision|vlm|multimodal)\b/.test(lower) ||
-    /llava|qwen2[-.]?vl|qwen2\.5[-.]?vl|qwen3[-.]?vl|minicpm[-.]?v|phi[-.]?3[-.]?vision|idefics|paligemma|pixtral|moondream|cogvlm|minigpt|gpt[-.]?4o|claude[-.]?3[-.]?5[-.]?sonnet|gemini[-.]?pro[-.]?vision|ministral|glm[-.]?4.*v|glm.*[-.]v|muse[-.]?glimmer/i.test(lower);
+    /llava|qwen2[-.]?vl|qwen2\.5[-.]?vl|qwen3[-.]?vl|minicpm[-.]?v|phi[-.]?3[-.]?vision|idefics|paligemma|pixtral|moondream|cogvlm|minigpt|gpt[-.]?4o|claude[-.]?3[-.]?5[-.]?sonnet|gemini[-.]?pro[-.]?vision|ministral|glm[-.]?4.*v|glm.*[-.]v|muse[-.]?glimmer|mimo[-_.]?v?2/i.test(lower);
   // Tools / function calling
   let tools =
     /\b(tool|tools|fc|function[-.]?call|agent)\b/.test(lower) ||
-    /qwen2\.5|qwen2\.7|qwen3|llama[-.]?3\.1|llama[-.]?3\.2|llama[-.]?4|claude|gpt[-.]?4|mistral[-.]?large|command[-.]?r|deepseek|gemma|phi[-.]?4|minicpm|yi[-.]?1\.5|yi[-.]?2|schematron|ministral|glm[-.]?4|grok/i.test(lower);
+    /qwen2\.5|qwen2\.7|qwen3|llama[-.]?3\.1|llama[-.]?3\.2|llama[-.]?4|claude|gpt[-.]?4|mistral[-.]?large|command[-.]?r|deepseek|gemma|phi[-.]?4|minicpm|yi[-.]?1\.5|yi[-.]?2|schematron|ministral|glm[-.]?4|grok|mimo[-_.]?v?2/i.test(lower);
   let thinking = modelSupportsThinking(modelId);
   // JSON / structured output
   let json = /\bjson\b/.test(lower) || /schematron/i.test(lower);

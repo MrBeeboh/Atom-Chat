@@ -63,4 +63,11 @@ describe('model capability marks', () => {
     expect(bare.thinking).toBe(false);
     expect(bare.json).toBe(false);
   });
+
+  it('marks MiMo-V2.6 Distill as vision + tools + thinking from the id alone', () => {
+    const caps = getModelCapabilities('MiMo-V2.6-Distill-Qwen-9B-Q8_0');
+    expect(caps.vision).toBe(true);
+    expect(caps.tools).toBe(true);
+    expect(caps.thinking).toBe(true);
+  });
 });
