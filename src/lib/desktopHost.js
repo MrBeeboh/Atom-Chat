@@ -133,6 +133,7 @@ export function desktopSystemHint(root) {
     'Only write when the user asked you to change or create a file. Do not try to access anything outside Documents.',
     'For 3D printing: export_scad writes an STL, slice_print slices with OrcaSlicer and uploads to the printer but does NOT start.',
     'shell runs a bash command on this PC and returns stdout, stderr, and the exit code. Use it when the user asks you to run something.',
+    'When you create or save an image under Documents (.png/.jpg/.webp/etc.), include it in your reply as markdown ![caption](relative/path.png) or [Image: relative/path.png] so ATOM shows it inline in the chat bubble.',
     'Never claim you cannot run OpenSCAD, slice_print, or shell — those tools exist.',
     'start_print heats the printer. Call it only after the user clearly says to start that named job.',
   ].join(' ');

@@ -1,6 +1,7 @@
 import { marked } from 'marked';
 import hljs from 'highlight.js';
 import 'highlight.js/styles/github-dark.css';
+import { rewriteLocalMarkdownImages } from '$lib/localImagePaths.js';
 
 marked.setOptions({
   highlight(code, lang) {
@@ -19,7 +20,7 @@ marked.setOptions({
  */
 export function renderMarkdown(raw) {
   if (!raw || typeof raw !== 'string') return '';
-  return marked.parse(raw, { async: false });
+  return marked.parse(rewriteLocalMarkdownImages(raw), { async: false });
 }
 
 /**

@@ -14,6 +14,8 @@ export const MAX_READ_BYTES = 256 * 1024;
 export const MAX_WRITE_BYTES = 512 * 1024;
 export const MAX_LIST_ENTRIES = 400;
 export const MAX_BODY_BYTES = 1024 * 1024;
+export const MAX_FILE_SERVE_BYTES = 25 * 1024 * 1024;
+export const IMAGE_SERVE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp']);
 export const MAX_JOB_LOG_CHARS = 16 * 1024;
 export const OPENSCAD_TIMEOUT_MS = 180_000;
 export const SLICE_TIMEOUT_MS = 600_000;
@@ -537,6 +539,28 @@ export function createDesktopHost({ root, runArgv, fetchImpl, binaries } = {}) {
   };
 }
 
+
+export function mimeForImagePath(filePath) {
+  const ext = path.extname(String(filePath || '')).toLowerCase();
+  switch (ext) {
+    case '.png':
+      return 'image/png';
+    case '.jpg':
+    case '.jpeg':
+      return 'image/jpeg';
+    case '.gif':
+      return 'image/gif';
+    case '.webp':
+      return 'image/webp';
+    case '.svg':
+      return 'image/svg+xml';
+    case '.bmp':
+      return 'image/bmp';
+    default:
+      return '';
+  }
+}
+
 function sendJson(res, status, body) {
   const payload = JSON.stringify(body);
   res.statusCode = status;
@@ -638,6 +662,41 @@ export async function handleDesktopHostRequest(host, req, res, next) {
       const args = body?.arguments && typeof body.arguments === 'object' ? body.arguments : {};
       const result = await host.invoke(name, args);
       sendJson(res, 200, result);
+      return true;
+    }
+    if (route === '/file' && (method === 'GET' || method === 'HEAD')) {
+      const u = new URL(req.url || '/', 'http://localhost');
+      const filePath = u.searchParams.get('path') || '';
+      if (!filePath.trim()) {
+        sendJson(res, 400, { ok: false, code: 'INVALID_PATH', error: 'path is required.' });
+        return true;
+      }
+      const abs = await host.resolveInRoot(filePath, { mustExist: true });
+      const ext = path.extname(abs).toLowerCase();
+      if (!IMAGE_SERVE_EXTS.has(ext)) {
+        sendJson(res, 415, { ok: false, code: 'NOT_IMAGE', error: 'Only image files under Documents can be served.' });
+        return true;
+      }
+      const st = await fs.stat(abs);
+      if (!st.isFile()) {
+        sendJson(res, 400, { ok: false, code: 'NOT_A_FILE', error: 'Not a file.' });
+        return true;
+      }
+      if (st.size > MAX_FILE_SERVE_BYTES) {
+        sendJson(res, 413, { ok: false, code: 'TOO_LARGE', error: `Image exceeds ${MAX_FILE_SERVE_BYTES} bytes.` });
+        return true;
+      }
+      const mime = mimeForImagePath(abs) || 'application/octet-stream';
+      res.statusCode = 200;
+      res.setHeader('Content-Type', mime);
+      res.setHeader('Content-Length', String(st.size));
+      res.setHeader('Cache-Control', 'private, max-age=60');
+      if (method === 'HEAD') {
+        res.end();
+        return true;
+      }
+      const buf = await fs.readFile(abs);
+      res.end(buf);
       return true;
     }
     sendJson(res, 404, { ok: false, code: 'NOT_FOUND', error: 'Unknown desktop-host route.' });

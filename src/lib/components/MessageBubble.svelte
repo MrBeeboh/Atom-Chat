@@ -9,6 +9,10 @@
   import { modelDisplayName } from "$lib/api.js";
   import { assistantShowsModelName } from "$lib/providerFunding.js";
   import ThinkingAtom from "$lib/components/ThinkingAtom.svelte";
+  import {
+    extractLocalImagePaths,
+    localImageServeUrl,
+  } from "$lib/localImagePaths.js";
 
   const modelLabel = $derived(
     message.modelId ? modelDisplayName(message.modelId) : "",
@@ -96,6 +100,17 @@
           (m) => m[1],
         )
       : [],
+  );
+  /** Local Documents paths mentioned in the reply → served via desktop-host. */
+  const localImageUrls = $derived(
+    isAssistant && content
+      ? extractLocalImagePaths(content).map(localImageServeUrl).filter(Boolean)
+      : [],
+  );
+  const displayImageUrls = $derived(
+    [...(imageUrls || []), ...(localImageUrls || [])].filter(
+      (url, i, arr) => url && arr.indexOf(url) === i,
+    ),
   );
 
   let copyFeedback = $state(false);
@@ -328,13 +343,13 @@
           {/each}
         </div>
       {/if}
-      {#if isAssistant && imageUrls.length}
+      {#if isAssistant && displayImageUrls.length}
         <div
           class="mt-3 flex gap-2 overflow-x-auto pb-1 rounded-lg"
           role="list"
           aria-label="Generated images"
         >
-          {#each imageUrls as url (url)}
+          {#each displayImageUrls as url (url)}
             <div
               class="shrink-0 rounded overflow-hidden" style="border: 1px solid var(--ui-border); background-color: var(--ui-bg-sidebar);"
               role="listitem"
@@ -365,7 +380,7 @@
           {/each}
         </div>
       {/if}
-      {#if isAssistant && (content.includes("Generated image") || content.includes("Generated video")) && !imageUrls.length && !videoUrls.length}
+      {#if isAssistant && (content.includes("Generated image") || content.includes("Generated video")) && !displayImageUrls.length && !videoUrls.length}
         <p class="mt-2 text-sm text-amber-600 dark:text-amber-400">
           Media could not be loaded. Try generating again and ensure your
           DeepInfra API key is set in Settings.
