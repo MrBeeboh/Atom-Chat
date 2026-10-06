@@ -1,5 +1,5 @@
 #!/bin/bash
-echo "=== ATOM LM Studio UI ==="
+echo "=== ATOM (llama.cpp backend) ==="
 
 cd "$(dirname "$0")" || exit 1
 

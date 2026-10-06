@@ -12,6 +12,41 @@ NC='\033[0m'
 
 echo -e "${GREEN}Starting ATOM UI...${NC}"
 
+# --- Auto-sync from GitHub on launch (set ATOM_SKIP_SYNC=1 to disable) -------
+# Never blocks launch: offline, local edits, or a diverged branch all fall
+# through to starting the current version.
+if [ -z "${ATOM_SKIP_SYNC:-}" ] && [ -d .git ] && command -v git >/dev/null 2>&1; then
+    SYNC_BRANCH="${ATOM_SYNC_BRANCH:-main}"
+    echo -e "${GREEN}Checking GitHub for updates (origin/$SYNC_BRANCH)...${NC}"
+    if git fetch --quiet origin "$SYNC_BRANCH" 2>/dev/null; then
+        LOCAL_REF="$(git rev-parse HEAD 2>/dev/null || true)"
+        REMOTE_REF="$(git rev-parse "origin/$SYNC_BRANCH" 2>/dev/null || true)"
+        CUR_BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+        if [ -z "$REMOTE_REF" ] || [ "$LOCAL_REF" = "$REMOTE_REF" ]; then
+            echo "Already up to date."
+        elif [ "$CUR_BRANCH" != "$SYNC_BRANCH" ]; then
+            echo -e "${YELLOW}On branch '$CUR_BRANCH' (not '$SYNC_BRANCH') — skipping auto-sync.${NC}"
+        elif [ -n "$(git status --porcelain 2>/dev/null)" ]; then
+            echo -e "${YELLOW}Local changes detected — skipping auto-sync so nothing is overwritten.${NC}"
+        else
+            OLD_LOCK="$(git rev-parse HEAD:package-lock.json 2>/dev/null || true)"
+            if git merge --ff-only "origin/$SYNC_BRANCH" >/dev/null 2>&1; then
+                echo -e "${GREEN}Updated to $(git rev-parse --short HEAD).${NC}"
+                NEW_LOCK="$(git rev-parse HEAD:package-lock.json 2>/dev/null || true)"
+                if [ "$OLD_LOCK" != "$NEW_LOCK" ]; then
+                    echo "Dependencies changed — running npm install..."
+                    npm install --no-audit --no-fund --legacy-peer-deps \
+                        || echo -e "${YELLOW}WARNING: npm install failed; continuing with existing node_modules.${NC}"
+                fi
+            else
+                echo -e "${YELLOW}Local history differs from origin/$SYNC_BRANCH — skipping auto-sync.${NC}"
+            fi
+        fi
+    else
+        echo -e "${YELLOW}Offline or GitHub unreachable — starting with current version.${NC}"
+    fi
+fi
+
 check_port() {
     if lsof -Pi :"$1" -sTCP:LISTEN -t >/dev/null 2>&1; then return 1; else return 0; fi
 }

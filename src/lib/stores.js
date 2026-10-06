@@ -7,6 +7,43 @@
 import { writable, derived, get } from 'svelte/store';
 import { detectHardware } from '$lib/hardware.js';
 import { getRecommendedSettingsForModel } from '$lib/modelDefaults.js';
+import { LOCAL_LLAMA_CTX_SIZE, migrateLocalContextSettings } from '$lib/localHardwareConfig.js';
+
+/**
+ * Read optional secrets from `.env.local` (Vite `VITE_*`). Gitignored; keeps keys in your project folder.
+ * Used only when localStorage has no value for that key yet (new browser profile or different port).
+ * Uses static `import.meta.env.*` so Vite inlines values at build time.
+ */
+function readViteEnv(key) {
+  const map = {
+    VITE_LM_STUDIO_BASE_URL: import.meta.env.VITE_LM_STUDIO_BASE_URL,
+    VITE_DEEPSEEK_API_KEY: import.meta.env.VITE_DEEPSEEK_API_KEY,
+    VITE_GROK_API_KEY: import.meta.env.VITE_GROK_API_KEY,
+    VITE_TOGETHER_API_KEY: import.meta.env.VITE_TOGETHER_API_KEY,
+    VITE_DEEPINFRA_API_KEY: import.meta.env.VITE_DEEPINFRA_API_KEY,
+    VITE_BRAVE_API_KEY: import.meta.env.VITE_BRAVE_API_KEY,
+    VITE_CEREBRAS_API_KEY: import.meta.env.VITE_CEREBRAS_API_KEY,
+    VITE_NOUS_API_KEY: import.meta.env.VITE_NOUS_API_KEY,
+    VITE_TOGETHER_IMAGE_ENDPOINT: import.meta.env.VITE_TOGETHER_IMAGE_ENDPOINT,
+  };
+  const v = map[key];
+  return typeof v === 'string' ? v.trim() : '';
+}
+
+function apiKeyFromStorageOrEnv(storageKey, envName) {
+  const fromEnv = readViteEnv(envName);
+  if (fromEnv) return fromEnv;
+  if (typeof localStorage !== 'undefined') {
+    return (localStorage.getItem(storageKey) ?? '').trim();
+  }
+  return '';
+}
+
+/** Persist API key to localStorage; skip null/undefined so a bad bind cannot wipe stored keys. */
+function persistApiKey(storageKey, v) {
+  if (typeof localStorage === 'undefined' || typeof v !== 'string') return;
+  localStorage.setItem(storageKey, v.trim());
+}
 
 /** Currently selected conversation id or null */
 export const activeConversationId = writable(null);
@@ -23,7 +60,7 @@ export const pendingDroppedFiles = writable(null);
 /** Loaded LM Studio model list { id }[] */
 export const models = writable([]);
 
-export const contextUsage = writable({ promptTokens: 0, contextMax: 128000 });
+export const contextUsage = writable({ promptTokens: 0, contextMax: 0 });
 export const summarizeAndContinueTrigger = writable(0);
 
 /** Hardware detected on startup (CPU logical cores; GPU not available from browser). */
@@ -84,26 +121,38 @@ export const cockpitIntelOpen = writable(false);
 export const pinnedContent = writable(null);
 
 
-/** Color scheme: forge | sage | obsidian (see themeOptions.js) */
-const VALID_UI_THEMES = ['forge', 'sage', 'obsidian'];
+/** Color scheme: studio | sage | clay | fern | gruvbox | matrix | crimson | noir | graphite */
+const VALID_UI_THEMES = ['sage', 'clay', 'fern', 'studio', 'gruvbox', 'matrix', 'crimson', 'noir', 'graphite'];
 function getInitialUiTheme() {
-  if (typeof localStorage === 'undefined') return 'forge';
-  const raw = localStorage.getItem('uiTheme') || 'forge';
-  const migrated = raw === 'lavender' ? 'forge' : raw;
+  if (typeof localStorage === 'undefined') return 'studio';
+  const raw = localStorage.getItem('uiTheme') || 'studio';
+  const migrated = (raw === 'lavender' || raw === 'forge') ? 'studio'
+    : raw === 'obsidian' ? 'clay'
+    : raw === 'nova' ? 'fern'
+    : raw;
   if (VALID_UI_THEMES.includes(migrated)) {
     if (migrated !== raw) localStorage.setItem('uiTheme', migrated);
     return migrated;
   }
-  localStorage.setItem('uiTheme', 'forge');
-  return 'forge';
+  localStorage.setItem('uiTheme', 'studio');
+  return 'studio';
 }
 export const uiTheme = writable(getInitialUiTheme());
 
 /** LM Studio server base URL (e.g. http://localhost:1234 or http://10.0.0.51:1234). Empty = use default. */
-const getStoredLmStudioUrl = () => (typeof localStorage !== 'undefined' ? localStorage.getItem('lmStudioBaseUrl') : null) || '';
+const getStoredLmStudioUrl = () => {
+  if (typeof localStorage !== 'undefined') {
+    const u = (localStorage.getItem('lmStudioBaseUrl') ?? '').trim();
+    if (u) return u;
+  }
+  return readViteEnv('VITE_LM_STUDIO_BASE_URL');
+};
 export const lmStudioBaseUrl = writable(getStoredLmStudioUrl());
 if (typeof localStorage !== 'undefined') {
-  lmStudioBaseUrl.subscribe((v) => localStorage.setItem('lmStudioBaseUrl', v ?? ''));
+  lmStudioBaseUrl.subscribe((v) => {
+    if (typeof v !== 'string') return;
+    localStorage.setItem('lmStudioBaseUrl', v);
+  });
 }
 
 /** Voice-to-text server URL (e.g. http://localhost:8765). Empty = voice mic disabled. */
@@ -113,6 +162,14 @@ if (typeof localStorage !== 'undefined') {
   voiceServerUrl.subscribe((v) => localStorage.setItem('voiceServerUrl', v ?? ''));
 }
 
+/** Preferred microphone deviceId from enumerateDevices; empty = system default. */
+const getStoredMicDeviceId = () =>
+  typeof localStorage !== 'undefined' ? localStorage.getItem('micDeviceId') || '' : '';
+export const micDeviceId = writable(getStoredMicDeviceId());
+if (typeof localStorage !== 'undefined') {
+  micDeviceId.subscribe((v) => localStorage.setItem('micDeviceId', v ?? ''));
+}
+
 /** Unload helper URL (Python SDK server at e.g. http://localhost:8766). When set, eject uses POST /unload-all. */
 const getStoredUnloadHelperUrl = () => (typeof localStorage !== 'undefined' ? localStorage.getItem('lmStudioUnloadHelperUrl') : null) || '';
 export const lmStudioUnloadHelperUrl = writable(getStoredUnloadHelperUrl());
@@ -120,53 +177,165 @@ if (typeof localStorage !== 'undefined') {
   lmStudioUnloadHelperUrl.subscribe((v) => localStorage.setItem('lmStudioUnloadHelperUrl', v ?? ''));
 }
 
+/** Extra folders to scan for .gguf files (one path per line). */
+const getStoredLocalModelDirs = () =>
+  typeof localStorage !== 'undefined' ? localStorage.getItem('localModelDirs') || '' : '';
+export const localModelDirs = writable(getStoredLocalModelDirs());
+if (typeof localStorage !== 'undefined') {
+  localModelDirs.subscribe((v) => localStorage.setItem('localModelDirs', v ?? ''));
+}
+
 /** DeepSeek API key (optional). When set, DeepSeek models appear in the model list and can be used for chat. Stored trimmed to avoid copy-paste spaces. */
-const getStoredDeepSeekApiKey = () => (typeof localStorage !== 'undefined' ? (localStorage.getItem('deepSeekApiKey') ?? '').trim() : null) ?? '';
+const getStoredDeepSeekApiKey = () => apiKeyFromStorageOrEnv('deepSeekApiKey', 'VITE_DEEPSEEK_API_KEY');
 export const deepSeekApiKey = writable(getStoredDeepSeekApiKey());
 if (typeof localStorage !== 'undefined') {
-  deepSeekApiKey.subscribe((v) => localStorage.setItem('deepSeekApiKey', (typeof v === 'string' ? v : '').trim()));
+  deepSeekApiKey.subscribe((v) => persistApiKey('deepSeekApiKey', v));
 }
 
 /** Grok (xAI) API key (optional). When set, Grok models appear in the model list and can be used for chat. Stored trimmed to avoid copy-paste spaces. */
-const getStoredGrokApiKey = () => (typeof localStorage !== 'undefined' ? (localStorage.getItem('grokApiKey') ?? '').trim() : null) ?? '';
+const getStoredGrokApiKey = () => apiKeyFromStorageOrEnv('grokApiKey', 'VITE_GROK_API_KEY');
 export const grokApiKey = writable(getStoredGrokApiKey());
 if (typeof localStorage !== 'undefined') {
-  grokApiKey.subscribe((v) => localStorage.setItem('grokApiKey', (typeof v === 'string' ? v : '').trim()));
+  grokApiKey.subscribe((v) => persistApiKey('grokApiKey', v));
 }
 
 /** Together AI API key: used only for image generation when DeepSeek is selected (DeepSeek has no native image API). Separate endpoint from Grok. */
-const getStoredTogetherApiKey = () => (typeof localStorage !== 'undefined' ? (localStorage.getItem('togetherApiKey') ?? '').trim() : null) ?? '';
+const getStoredTogetherApiKey = () => apiKeyFromStorageOrEnv('togetherApiKey', 'VITE_TOGETHER_API_KEY');
 export const togetherApiKey = writable(getStoredTogetherApiKey());
 if (typeof localStorage !== 'undefined') {
-  togetherApiKey.subscribe((v) => localStorage.setItem('togetherApiKey', (typeof v === 'string' ? v : '').trim()));
+  togetherApiKey.subscribe((v) => persistApiKey('togetherApiKey', v));
 }
 
 /** DeepInfra API key: image + video generation when DeepSeek is selected. Single key for both. */
-const getStoredDeepinfraApiKey = () => (typeof localStorage !== 'undefined' ? (localStorage.getItem('deepinfraApiKey') ?? '').trim() : null) ?? '';
+const getStoredDeepinfraApiKey = () => apiKeyFromStorageOrEnv('deepinfraApiKey', 'VITE_DEEPINFRA_API_KEY');
 export const deepinfraApiKey = writable(getStoredDeepinfraApiKey());
 if (typeof localStorage !== 'undefined') {
-  deepinfraApiKey.subscribe((v) => localStorage.setItem('deepinfraApiKey', (typeof v === 'string' ? v : '').trim()));
+  deepinfraApiKey.subscribe((v) => persistApiKey('deepinfraApiKey', v));
 }
 
 /** Brave Search API key: web search (globe). Stored in browser, sent to search proxy. */
-const getStoredBraveApiKey = () => (typeof localStorage !== 'undefined' ? (localStorage.getItem('braveApiKey') ?? '').trim() : null) ?? '';
+const getStoredBraveApiKey = () => apiKeyFromStorageOrEnv('braveApiKey', 'VITE_BRAVE_API_KEY');
 export const braveApiKey = writable(getStoredBraveApiKey());
 if (typeof localStorage !== 'undefined') {
-  braveApiKey.subscribe((v) => localStorage.setItem('braveApiKey', (typeof v === 'string' ? v : '').trim()));
+  braveApiKey.subscribe((v) => persistApiKey('braveApiKey', v));
+}
+
+/** Cerebras API key (optional). When set, Cerebras models appear in the model list and can be used for chat. Stored trimmed to avoid copy-paste spaces. */
+const getStoredCerebrasApiKey = () => apiKeyFromStorageOrEnv('cerebrasApiKey', 'VITE_CEREBRAS_API_KEY');
+export const cerebrasApiKey = writable(getStoredCerebrasApiKey());
+if (typeof localStorage !== 'undefined') {
+  cerebrasApiKey.subscribe((v) => persistApiKey('cerebrasApiKey', v));
+}
+
+/** Nous Portal API key (optional). When set, Nous models appear in the model list. Hermes OAuth JWTs also work. */
+const getStoredNousApiKey = () => apiKeyFromStorageOrEnv('nousApiKey', 'VITE_NOUS_API_KEY');
+export const nousApiKey = writable(getStoredNousApiKey());
+if (typeof localStorage !== 'undefined') {
+  nousApiKey.subscribe((v) => persistApiKey('nousApiKey', v));
 }
 
 /** Together image endpoint name: required for FLUX.1-schnell-Free (create dedicated endpoint at api.together.ai, then paste the endpoint name here). */
-const getStoredTogetherImageEndpoint = () => (typeof localStorage !== 'undefined' ? (localStorage.getItem('togetherImageEndpoint') ?? '').trim() : null) ?? '';
+const getStoredTogetherImageEndpoint = () => {
+  if (typeof localStorage !== 'undefined') {
+    const e = (localStorage.getItem('togetherImageEndpoint') ?? '').trim();
+    if (e) return e;
+  }
+  return readViteEnv('VITE_TOGETHER_IMAGE_ENDPOINT');
+};
 export const togetherImageEndpoint = writable(getStoredTogetherImageEndpoint());
 if (typeof localStorage !== 'undefined') {
-  togetherImageEndpoint.subscribe((v) => localStorage.setItem('togetherImageEndpoint', (typeof v === 'string' ? v : '').trim()));
+  togetherImageEndpoint.subscribe((v) => persistApiKey('togetherImageEndpoint', v));
 }
 
-/** True when at least one cloud API key (DeepSeek or Grok) is set. Used for status line when LM Studio is down. */
+/** True when at least one cloud chat API key is set. Used when LM Studio is down. */
 export const cloudApisAvailable = derived(
-  [deepSeekApiKey, grokApiKey],
-  ([a, b]) => !!(typeof a === 'string' && a.trim()) || !!(typeof b === 'string' && b.trim())
+  [deepSeekApiKey, grokApiKey, cerebrasApiKey, deepinfraApiKey, nousApiKey],
+  ([a, b, c, d, e]) =>
+    [a, b, c, d, e].some((k) => typeof k === 'string' && k.trim().length > 0)
 );
+
+/** Focus a Settings section when opened: 'connection' | 'api-keys'. Cleared after open. */
+export const settingsFocus = writable(null);
+
+/** Hands-free open-mic loop is running (listen → send → TTS → listen). */
+export const openMicActive = writable(false);
+
+/** Message id currently being read aloud by TTS, or null. */
+export const ttsActiveMessageId = writable(/** @type {string | null} */ (null));
+
+/** User toggled read-aloud on in the chat bar speaker icon. Persisted. */
+export const ttsReadAloudEnabled = writable(
+  typeof localStorage !== 'undefined' && localStorage.getItem('ttsReadAloudEnabled') === '1'
+);
+if (typeof localStorage !== 'undefined') {
+  ttsReadAloudEnabled.subscribe((v) => {
+    localStorage.setItem('ttsReadAloudEnabled', v ? '1' : '0');
+  });
+}
+
+/** `kokoro` = DeepInfra Kokoro-82M (natural). `browser` = OS speechSynthesis (robotic fallback). */
+const loadTtsEngine = () => {
+  if (typeof localStorage === 'undefined') return 'kokoro';
+  const v = (localStorage.getItem('ttsEngine') ?? '').trim();
+  return v === 'browser' || v === 'kokoro' ? v : 'kokoro';
+};
+export const ttsEngine = writable(loadTtsEngine());
+if (typeof localStorage !== 'undefined') {
+  ttsEngine.subscribe((v) => localStorage.setItem('ttsEngine', v === 'browser' ? 'browser' : 'kokoro'));
+}
+
+/** True while waiting for Kokoro to synthesize (before audio plays). */
+export const ttsPreparing = writable(false);
+
+/** Last read-aloud failure, shown in the chat bar. */
+export const ttsError = writable(/** @type {string | null} */ (null));
+
+/** Browser speechSynthesis voice URI (browser engine only). */
+const loadVoiceUri = () => {
+  if (typeof localStorage === 'undefined') return '';
+  return (localStorage.getItem('ttsVoiceUri') ?? '').trim();
+};
+export const ttsVoiceUri = writable(loadVoiceUri());
+if (typeof localStorage !== 'undefined') {
+  ttsVoiceUri.subscribe((v) => localStorage.setItem('ttsVoiceUri', typeof v === 'string' ? v.trim() : ''));
+}
+
+/** Kokoro preset voice id (kokoro engine). */
+const loadKokoroVoice = () => {
+  if (typeof localStorage === 'undefined') return 'af_bella';
+  return (localStorage.getItem('ttsKokoroVoice') ?? 'af_bella').trim() || 'af_bella';
+};
+export const ttsKokoroVoice = writable(loadKokoroVoice());
+if (typeof localStorage !== 'undefined') {
+  ttsKokoroVoice.subscribe((v) => localStorage.setItem('ttsKokoroVoice', typeof v === 'string' ? v.trim() || 'af_bella' : 'af_bella'));
+}
+
+const _initialTtsRate = (() => {
+  if (typeof localStorage === 'undefined') return 1;
+  const n = Number(localStorage.getItem('ttsRate'));
+  return Number.isFinite(n) ? n : 1;
+})();
+export const ttsRate = writable(_initialTtsRate);
+if (typeof localStorage !== 'undefined') {
+  ttsRate.subscribe((v) => {
+    const n = Number(v);
+    localStorage.setItem('ttsRate', String(Number.isFinite(n) ? n : 1));
+  });
+}
+
+/** ATOM-only playback volume (TTS + Eve). Does not change system/master volume. 0–1. */
+const _initialTtsVolume = (() => {
+  if (typeof localStorage === 'undefined') return 0.8;
+  const n = Number(localStorage.getItem('ttsVolume'));
+  return Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 0.8;
+})();
+export const ttsVolume = writable(_initialTtsVolume);
+if (typeof localStorage !== 'undefined') {
+  ttsVolume.subscribe((v) => {
+    const n = Number(v);
+    localStorage.setItem('ttsVolume', String(Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 0.8));
+  });
+}
 
 /** Layout: cockpit | arena only (restore point). Old layouts migrate to cockpit. */
 const OLD_TO_NEW_LAYOUT = {
@@ -260,7 +429,7 @@ const DEFAULT_SETTINGS = {
   audio_enabled: readBool('audio_enabled', true),
   audio_clicks: readBool('audio_clicks', true),
   audio_volume: readNum('audio_volume', 0.25),
-  context_length: 4096,
+  context_length: LOCAL_LLAMA_CTX_SIZE,
   eval_batch_size: 512,
   flash_attention: true,
   offload_kv_cache_to_gpu: true,
@@ -276,14 +445,14 @@ function loadGlobalDefault() {
     const raw = localStorage.getItem('globalDefault');
     if (raw) {
       const p = JSON.parse(raw);
-      return typeof p === 'object' && p !== null ? p : {};
+      return typeof p === 'object' && p !== null ? migrateLocalContextSettings(p) : {};
     }
     const byLayout = localStorage.getItem('settingsByLayout');
     if (byLayout) {
       const parsed = JSON.parse(byLayout);
       const cockpit = parsed?.cockpit ?? parsed?.default ?? parsed?.flow ?? {};
       if (typeof cockpit === 'object' && cockpit !== null && Object.keys(cockpit).length > 0) {
-        return cockpit;
+        return migrateLocalContextSettings(cockpit);
       }
     }
   } catch (_) { }
@@ -303,7 +472,12 @@ function loadPerModelOverrides() {
     const raw = localStorage.getItem('perModelOverrides');
     if (!raw) return {};
     const p = JSON.parse(raw);
-    return typeof p === 'object' && p !== null ? p : {};
+    if (typeof p !== 'object' || p === null) return {};
+    const next = {};
+    for (const [id, settings] of Object.entries(p)) {
+      next[id] = migrateLocalContextSettings(settings);
+    }
+    return next;
   } catch {
     return {};
   }
@@ -390,10 +564,13 @@ export const chatError = writable(null);
 /** One-shot chat command (regen/export/clear). ChatView subscribes and handles. */
 export const chatCommand = writable(null);
 
-/** When true, the next Send will run a web search (DuckDuckGo) with the message text, then send. Toggle via globe button. */
+/** One-shot prompt insert for ChatInput (starter chips, etc.). { text, ts }. */
+export const insertChatPrompt = writable(null);
+
+/** When true, Arena injects Brave results into contestant/judge prompts. Chat models get web_search tools either way. Toggle via globe. */
 export const webSearchForNextMessage = writable(false);
 
-/** True while a web search is in progress (DuckDuckGo fetch). Show "Searching the web..." UI. */
+/** True while a web search tool call or Arena injection is in progress. */
 export const webSearchInProgress = writable(false);
 
 /** True only after a web search or warm-up fetch has succeeded. Drives the green dot on the globe – do not set true without a real successful fetch. */
@@ -410,7 +587,7 @@ export const liveTokPerSec = writable(null);
 const arenaPanelCountStored = () => {
   const v = typeof localStorage !== 'undefined' ? localStorage.getItem('arenaPanelCount') : null;
   const n = Number(v);
-  return n >= 1 && n <= 4 ? n : 1;
+  return n >= 1 && n <= 4 ? n : 2;
 };
 export const arenaPanelCount = writable(arenaPanelCountStored());
 if (typeof localStorage !== 'undefined') {
@@ -457,6 +634,36 @@ export const arenaDeterministicJudge = writable(
 );
 if (typeof localStorage !== 'undefined') {
   arenaDeterministicJudge.subscribe((v) => localStorage.setItem('arenaDeterministicJudge', v ? '1' : '0'));
+}
+
+/** Arena Run All: one contestant answers every question before the next model loads (reduces local VRAM thrash). */
+export const arenaSequentialByContestant = writable(
+  typeof localStorage !== 'undefined' ? (localStorage.getItem('arenaSequentialByContestant') ?? '0') === '1' : false
+);
+if (typeof localStorage !== 'undefined') {
+  arenaSequentialByContestant.subscribe((v) =>
+    localStorage.setItem('arenaSequentialByContestant', v ? '1' : '0')
+  );
+}
+
+/** Clamp Arena stream timeout to 60–900 seconds (local LM Studio: no separate API cap). */
+function normalizeArenaRequestTimeoutSeconds(v) {
+  const n = parseInt(String(v), 10);
+  if (Number.isNaN(n)) return 360;
+  return Math.min(900, Math.max(60, n));
+}
+
+function readArenaRequestTimeoutSeconds() {
+  if (typeof localStorage === 'undefined') return 360;
+  return normalizeArenaRequestTimeoutSeconds(localStorage.getItem('arenaRequestTimeoutSeconds') ?? '360');
+}
+
+/** Arena: max wall-clock time per contestant stream and per automated judge stream (seconds). Persisted. Default 180s for slow “thinking” models. */
+export const arenaRequestTimeoutSeconds = writable(readArenaRequestTimeoutSeconds());
+if (typeof localStorage !== 'undefined') {
+  arenaRequestTimeoutSeconds.subscribe((v) => {
+    localStorage.setItem('arenaRequestTimeoutSeconds', String(normalizeArenaRequestTimeoutSeconds(v)));
+  });
 }
 
 /** Arena Builder (Phase 1): Internet Access for judge during question generation only. Default OFF. Persisted. */

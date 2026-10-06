@@ -1,10 +1,12 @@
 /**
  * Web search via local Brave Search proxy. Key from Settings or BRAVE_API_KEY.
+ * No external CORS proxies needed — uses the local /api/search backend endpoint.
  */
 
 // Fetch from backend search proxy
-async function fetchViaProxy(query) {
-  const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+async function fetchViaProxy(query, { count = 8 } = {}) {
+  const n = Math.min(10, Math.max(1, Number(count) || 8));
+  const res = await fetch(`/api/search?q=${encodeURIComponent(query)}&count=${n}`);
   if (res.status === 503) {
     const data = await res.json().catch(() => ({}));
     throw new Error(data.message || 'Web search not configured. Add Brave API key in Settings.');
@@ -26,12 +28,13 @@ async function searchDuckDuckGoLite(query) {
   const braveResults = await fetchViaProxy(q);
   if (!Array.isArray(braveResults)) return [];
 
-  // Brave API: each result has { title, url, description, thumbnail, ... }
-  const results = braveResults.slice(0, 5).map(r => ({
+  // Brave proxy: { title, url, snippet, thumbnail }
+  const results = braveResults.slice(0, 8).map((r) => ({
     title: r.title || '',
     url: r.url || '',
-    thumbnail: r.thumbnail || ''
-  })).filter(r => r.title && r.url);
+    snippet: r.snippet || r.description || '',
+    thumbnail: r.thumbnail || '',
+  })).filter((r) => r.title && r.url);
   return results;
 }
 
@@ -60,9 +63,11 @@ export async function searchDuckDuckGo(query) {
   }
 
   const related = liteResults.map((r) => ({
+    title: r.title,
     text: r.snippet ? `${r.title} — ${r.snippet}` : r.title,
     url: r.url,
-    thumbnail: r.thumbnail
+    snippet: r.snippet || '',
+    thumbnail: r.thumbnail,
   }));
 
   return {

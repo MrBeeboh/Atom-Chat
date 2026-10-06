@@ -1,10 +1,12 @@
 @import 'tailwindcss';
+@import './styles/tokens.css';
+@import './styles/shell.css';
 
 /* Tailwind v4: use .dark class on html for theme toggle (not just prefers-color-scheme) */
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  --font-sans: 'Inter', system-ui, ui-sans-serif, sans-serif;
+  --font-sans: 'Outfit', system-ui, ui-sans-serif, sans-serif;
 }
 
 /* Base: refined neutral backgrounds, darker dark mode */
@@ -24,11 +26,12 @@ select:focus-visible,
   border-radius: 4px;
 }
 body {
-  @apply min-h-screen text-zinc-800 dark:text-zinc-200;
-  background-color: #fafafa;
+  @apply min-h-screen;
+  background-color: var(--ui-bg-main, #f3eee6);
+  color: var(--ui-text-primary, #1a1612);
 }
 .dark body {
-  background-color: #0d0d0d;
+  background-color: var(--ui-bg-main, #0b0c10);
 }
 /* Greeting welcome line: subtle fade-in so the screen feels alive */
 @keyframes greeting-fade-in {
@@ -37,6 +40,12 @@ body {
 }
 .animate-fade-in {
   animation: greeting-fade-in 0.5s ease-out forwards;
+}
+
+.starter-chip:hover {
+  border-color: color-mix(in srgb, var(--ui-accent) 40%, var(--ui-border));
+  color: var(--ui-text-primary);
+  background: color-mix(in srgb, var(--ui-accent) 6%, var(--ui-bg-sidebar));
 }
 
 /* Metrics graph axes/grid (light gray in light mode, subtle light in dark) */
@@ -57,8 +66,16 @@ html { --metrics-axis: #d4d4d4; --metrics-grid: #e5e5e5; }
 .prose-chat pre { @apply rounded-lg p-3 my-2 overflow-x-auto text-sm; }
 .prose-chat code { @apply rounded px-1.5 py-0.5 text-sm; }
 .prose-chat pre code { @apply p-0 bg-transparent; }
-.prose-chat blockquote { @apply border-l-4 border-zinc-300 dark:border-zinc-600 pl-4 my-2 italic; }
+.prose-chat blockquote { border-left: 4px solid var(--ui-border); padding-left: 1rem; margin: 0.5rem 0; font-style: italic; }
 .prose-chat a { @apply text-blue-600 dark:text-blue-400 underline; }
+.prose-chat {
+  line-height: 1.65;
+  font-size: 0.9375rem;
+}
+.prose-chat pre {
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
 
 /* Assistant: thinking (light italics) vs answer (standard) when model uses think tags */
 .assistant-thinking {
@@ -84,10 +101,10 @@ html { --metrics-axis: #d4d4d4; --metrics-grid: #e5e5e5; }
   --atom-amber: #fbbf24;
 }
 
-/* Thinking indicator: sleek minimal atom – theme accent, GPU-friendly animation */
+/* Thinking indicator: atom with orbiting electrons – theme accent, GPU-friendly animation */
 @keyframes atom-nucleus-pulse {
-  0%, 100% { opacity: 0.6; }
-  50% { opacity: 1; }
+  0%, 100% { opacity: 0.7; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.15); }
 }
 @keyframes atom-orbit-spin {
   from { transform: rotate(0deg); }
@@ -97,48 +114,89 @@ html { --metrics-axis: #d4d4d4; --metrics-grid: #e5e5e5; }
   from { transform: rotate(360deg); }
   to { transform: rotate(0deg); }
 }
+@keyframes atom-electron-orbit {
+  0% { transform: rotate(0deg) translateX(6px) rotate(0deg); opacity: 1; }
+  25% { opacity: 0.6; }
+  50% { opacity: 1; }
+  75% { opacity: 0.6; }
+  100% { transform: rotate(360deg) translateX(6px) rotate(-360deg); opacity: 1; }
+}
+@keyframes atom-electron-orbit-2 {
+  0% { transform: rotate(120deg) translateX(9px) rotate(-120deg); opacity: 0.4; }
+  25% { opacity: 1; }
+  50% { opacity: 0.4; }
+  75% { opacity: 1; }
+  100% { transform: rotate(480deg) translateX(9px) rotate(-480deg); opacity: 0.4; }
+}
+@keyframes atom-electron-orbit-3 {
+  0% { transform: rotate(240deg) translateX(12px) rotate(-240deg); opacity: 0.6; }
+  25% { opacity: 0.8; }
+  50% { opacity: 0.4; }
+  75% { opacity: 1; }
+  100% { transform: rotate(600deg) translateX(12px) rotate(-600deg); opacity: 0.6; }
+}
 .thinking-atom-icon {
   display: block;
-  /* Nucleus glow uses theme accent so it contrasts with any background */
   --atom-nucleus-glow: color-mix(in srgb, var(--ui-accent) 70%, transparent);
-  filter: drop-shadow(0 0 6px var(--atom-nucleus-glow)) drop-shadow(0 0 10px var(--atom-nucleus-glow));
+  filter: drop-shadow(0 0 6px var(--atom-nucleus-glow)) drop-shadow(0 0 12px var(--atom-nucleus-glow));
 }
 .thinking-atom-nucleus {
   fill: var(--ui-accent);
   transform-origin: 16px 16px;
-  animation: atom-nucleus-pulse 2s ease-in-out infinite;
-  filter: drop-shadow(0 0 4px var(--ui-accent));
+  animation: atom-nucleus-pulse 1.6s ease-in-out infinite;
+  filter: drop-shadow(0 0 6px var(--ui-accent));
 }
 .thinking-atom-orbit,
 .thinking-atom-orbit-2,
 .thinking-atom-orbit-3 {
   transform-origin: 16px 16px;
-  stroke-width: 1.5;
+  stroke-width: 1.2;
   stroke-linecap: round;
   fill: none;
-  opacity: 1;
+  opacity: 0.6;
 }
 .thinking-atom-orbit {
-  stroke: #00f0ff;
-  animation: atom-orbit-spin 4s linear infinite;
+  stroke: color-mix(in srgb, var(--ui-accent) 80%, var(--ui-text-primary));
+  animation: atom-orbit-spin 3s linear infinite;
 }
 .thinking-atom-orbit-2 {
-  stroke: #ff00ff;
-  animation: atom-orbit-spin-reverse 3s linear infinite;
+  stroke: color-mix(in srgb, var(--ui-accent) 50%, cyan);
+  animation: atom-orbit-spin-reverse 2.5s linear infinite;
 }
 .thinking-atom-orbit-3 {
-  stroke: #00ff00;
-  animation: atom-orbit-spin 5s linear infinite;
+  stroke: color-mix(in srgb, var(--ui-accent) 40%, magenta);
+  animation: atom-orbit-spin 4s linear infinite;
+}
+/* Electrons traveling along orbits */
+.thinking-atom-icon .electron {
+  fill: var(--ui-accent);
+  filter: drop-shadow(0 0 4px var(--ui-accent));
+}
+.thinking-atom-icon .electron-1 {
+  animation: atom-electron-orbit 3s linear infinite;
+  transform-origin: 16px 16px;
+}
+.thinking-atom-icon .electron-2 {
+  animation: atom-electron-orbit-2 2.5s linear infinite;
+  transform-origin: 16px 16px;
+}
+.thinking-atom-icon .electron-3 {
+  animation: atom-electron-orbit-3 4s linear infinite;
+  transform-origin: 16px 16px;
 }
 @media (prefers-reduced-motion: reduce) {
   .thinking-atom-icon .thinking-atom-nucleus,
   .thinking-atom-icon .thinking-atom-orbit,
   .thinking-atom-icon .thinking-atom-orbit-2,
-  .thinking-atom-icon .thinking-atom-orbit-3 {
+  .thinking-atom-icon .thinking-atom-orbit-3,
+  .thinking-atom-icon .electron {
     animation: none;
   }
   .thinking-atom-icon .thinking-atom-nucleus {
     opacity: 1;
+  }
+  .thinking-atom-icon .electron {
+    opacity: 0;
   }
 }
 
@@ -368,6 +426,62 @@ html { --metrics-axis: #d4d4d4; --metrics-grid: #e5e5e5; }
   border-color: color-mix(in srgb, var(--ui-accent) 35%, transparent);
   -webkit-backdrop-filter: blur(6px);
   backdrop-filter: blur(6px);
+  line-height: 1.55;
+  font-size: 0.9375rem;
+}
+
+/* Chat UX: dock, scroll affordances, touch-friendly actions */
+.chat-input-dock {
+  background-color: color-mix(in srgb, var(--ui-bg-main) 92%, transparent);
+  border-top: 1px solid var(--ui-border);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
+}
+
+.chat-messages-scroll {
+  scroll-behavior: smooth;
+}
+
+.scroll-to-bottom-btn {
+  position: fixed;
+  right: max(1rem, env(safe-area-inset-right, 0px));
+  bottom: calc(5.5rem + env(safe-area-inset-bottom, 0px));
+  z-index: 25;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 9999px;
+  border: 1px solid var(--ui-border);
+  background: var(--ui-bg-main);
+  color: var(--ui-text-primary);
+  box-shadow: 0 4px 14px color-mix(in srgb, #000 18%, transparent);
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+.scroll-to-bottom-btn:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--ui-accent) 40%, var(--ui-border));
+  color: var(--ui-accent);
+}
+
+@media (hover: none), (pointer: coarse) {
+  .message-actions {
+    opacity: 1 !important;
+  }
+}
+
+.cockpit-header-model {
+  max-width: 100%;
+}
+@media (max-width: 639px) {
+  .cockpit-header .ui-model-selector {
+    max-width: 100%;
+  }
+  .cockpit-header-model [role="combobox"] button {
+    max-width: 100%;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -378,206 +492,277 @@ html { --metrics-axis: #d4d4d4; --metrics-grid: #e5e5e5; }
   }
 }
 
-/* ========== UI theme variables (3 themes: Forge, Sage, Obsidian) ========== */
+/* ========== UI theme variables ========== */
 
-/* Forge — Bold amber/copper on slate. Strong, industrial, high contrast. */
-[data-ui-theme="forge"] {
-  --ui-bg-main: #f4f4f5;
-  --ui-bg-sidebar: #e4e4e7;
-  --ui-accent: #b45309;
-  --ui-accent-hot: #c2410c;
-  --ui-accent-cool: #92400e;
-  --ui-text-primary: #18181b;
-  --ui-text-secondary: #52525b;
-  --ui-border: rgba(180, 83, 9, 0.22);
-  --ui-sidebar-active: #d4d4d8;
-  --ui-sidebar-hover: #dcdce0;
-  --ui-input-bg: #ffffff;
-  --ui-input-border: #d4d4d8;
-  --ui-glow: rgba(180, 83, 9, 0.2);
-  --atom-accent: #b45309;
-  --atom-accent-light: #d97706;
-  --atom-teal: #0d9488;
+/* Orbit — cinematic ink + copper nucleus. Default. */
+[data-ui-theme="studio"] {
+  --ui-bg-main: #f3eee6;
+  --ui-bg-sidebar: #e8e0d4;
+  --ui-accent: #c45c26;
+  --ui-selected-bg: var(--ui-accent);
+  --ui-selected-fg: var(--ui-bg-main);
+  --ui-accent-hot: #e85d04;
+  --ui-accent-cool: #0f766e;
+  --ui-text-primary: #1a1612;
+  --ui-text-secondary: #5c534a;
+  --ui-border: rgba(196, 92, 38, 0.22);
+  --ui-sidebar-active: #ddd4c6;
+  --ui-sidebar-hover: #e3d9cb;
+  --ui-input-bg: #faf6ef;
+  --ui-input-border: #d4cbbd;
+  --ui-glow: rgba(196, 92, 38, 0.22);
+  --atom-accent: #c45c26;
+  --atom-accent-light: #e07840;
+  --atom-teal: #0f766e;
   --atom-amber: #d97706;
 }
-.dark[data-ui-theme="forge"] {
-  --ui-bg-main: #18181b;
-  --ui-bg-sidebar: #27272a;
-  --ui-accent: #f59e0b;
-  --ui-accent-hot: #fb923c;
-  --ui-accent-cool: #eab308;
-  --ui-text-primary: #fafafa;
-  --ui-text-secondary: #a1a1aa;
-  --ui-border: rgba(245, 158, 11, 0.2);
-  --ui-sidebar-active: #3f3f46;
-  --ui-sidebar-hover: #52525b;
-  --ui-input-bg: #27272a;
-  --ui-input-border: #3f3f46;
-  --ui-glow: rgba(245, 158, 11, 0.25);
-  --atom-accent: #f59e0b;
-  --atom-accent-light: #fbbf24;
+.dark[data-ui-theme="studio"] {
+  --ui-bg-main: #0b0c10;
+  --ui-bg-sidebar: #12141b;
+  --ui-accent: #e8a060;
+  --ui-selected-bg: var(--ui-accent);
+  --ui-selected-fg: var(--ui-bg-main);
+  --ui-accent-hot: #ff7a3d;
+  --ui-accent-cool: #2dd4bf;
+  --ui-text-primary: #f4ece3;
+  --ui-text-secondary: #9a9186;
+  --ui-border: rgba(232, 160, 96, 0.18);
+  --ui-sidebar-active: #1c1f28;
+  --ui-sidebar-hover: #252833;
+  --ui-input-bg: #161821;
+  --ui-input-border: #2a2e3a;
+  --ui-glow: rgba(232, 160, 96, 0.28);
+  --atom-accent: #e8a060;
+  --atom-accent-light: #f3c08a;
   --atom-teal: #2dd4bf;
   --atom-amber: #fbbf24;
 }
 
-/* Sage — Eco-brutalism / grounded neutrals (2026 credibility). Organic, minimal, honest. */
+/* Paper — editorial cream and oxblood. */
 [data-ui-theme="sage"] {
-  --ui-bg-main: #f6f5f2;
-  --ui-bg-sidebar: #ebe9e4;
-  --ui-accent: #6b7c5a;
-  --ui-accent-hot: #8b7355;
-  --ui-accent-cool: #5c6b4a;
-  --ui-text-primary: #2d2a26;
-  --ui-text-secondary: #5a5650;
-  --ui-border: #c5bfb4;
-  --ui-sidebar-active: #e2dfd8;
-  --ui-sidebar-hover: #d8d4cc;
-  --ui-input-bg: #ffffff;
-  --ui-input-border: #c5bfb4;
-  --ui-glow: rgba(107, 124, 90, 0.18);
-  --atom-accent: #6b7c5a;
-  --atom-accent-light: #8a9b76;
-  --atom-teal: #6b7c5a;
-  --atom-amber: #8b7355;
+  --ui-bg-main: #faf6ef;
+  --ui-bg-sidebar: #f0e8dc;
+  --ui-accent: #9b2c2c;
+  --ui-selected-bg: var(--ui-accent);
+  --ui-selected-fg: var(--ui-bg-main);
+  --ui-accent-hot: #c2410c;
+  --ui-accent-cool: #7f1d1d;
+  --ui-text-primary: #1c1917;
+  --ui-text-secondary: #57534e;
+  --ui-border: #e0d5c6;
+  --ui-sidebar-active: #e7dccf;
+  --ui-sidebar-hover: #ddd2c4;
+  --ui-input-bg: #fffdf8;
+  --ui-input-border: #e0d5c6;
+  --ui-glow: rgba(155, 44, 44, 0.18);
+  --atom-accent: #9b2c2c;
+  --atom-accent-light: #b91c1c;
+  --atom-teal: #44403c;
+  --atom-amber: #b45309;
 }
 .dark[data-ui-theme="sage"] {
-  --ui-bg-main: #1c1b18;
-  --ui-bg-sidebar: #262420;
-  --ui-accent: #8a9b76;
-  --ui-accent-hot: #b8986b;
-  --ui-accent-cool: #7a8c65;
-  --ui-text-primary: #e8e6e1;
-  --ui-text-secondary: #9a968e;
-  --ui-border: #3d3a35;
-  --ui-sidebar-active: #2f2d28;
-  --ui-sidebar-hover: #38352e;
-  --ui-input-bg: #262420;
-  --ui-input-border: #3d3a35;
-  --ui-glow: rgba(138, 155, 118, 0.2);
-  --atom-accent: #8a9b76;
-  --atom-accent-light: #a8b892;
-  --atom-teal: #8a9b76;
-  --atom-amber: #b8986b;
+  --ui-bg-main: #14110e;
+  --ui-bg-sidebar: #1c1814;
+  --ui-accent: #e07a5f;
+  --ui-selected-bg: var(--ui-accent);
+  --ui-selected-fg: var(--ui-bg-main);
+  --ui-accent-hot: #f4a261;
+  --ui-accent-cool: #c44536;
+  --ui-text-primary: #f5efe6;
+  --ui-text-secondary: #a89f93;
+  --ui-border: #3a322b;
+  --ui-sidebar-active: #26201b;
+  --ui-sidebar-hover: #2e2721;
+  --ui-input-bg: #1c1814;
+  --ui-input-border: #3a322b;
+  --ui-glow: rgba(224, 122, 95, 0.22);
+  --atom-accent: #e07a5f;
+  --atom-accent-light: #f4a261;
+  --atom-teal: #d4a373;
+  --atom-amber: #f4a261;
 }
 
-/* Obsidian — Dark Mode 2.0 (2026). Deep charcoal + navy depth, no pure black. OLED-friendly. */
-[data-ui-theme="obsidian"] {
-  --ui-bg-main: #16181d;
-  --ui-bg-sidebar: #1c1f26;
-  --ui-accent: #5eead4;
-  --ui-accent-hot: #f472b6;
-  --ui-accent-cool: #2dd4bf;
-  --ui-text-primary: #e2e8f0;
-  --ui-text-secondary: #94a3b8;
-  --ui-border: #2d333b;
-  --ui-sidebar-active: #252930;
-  --ui-sidebar-hover: #2a2e36;
-  --ui-input-bg: #1c1f26;
-  --ui-input-border: #334155;
-  --ui-glow: rgba(94, 234, 212, 0.22);
-  --atom-accent: #5eead4;
-  --atom-accent-light: #99f6e4;
-  --atom-teal: #2dd4bf;
-  --atom-amber: #fcd34d;
+/* Ember — magma, heat, night kiln. */
+[data-ui-theme="clay"] {
+  --ui-bg-main: #fff7ed;
+  --ui-bg-sidebar: #ffedd5;
+  --ui-accent: #ea580c;
+  --ui-selected-bg: var(--ui-accent);
+  --ui-selected-fg: var(--ui-bg-main);
+  --ui-accent-hot: #c2410c;
+  --ui-accent-cool: #9a3412;
+  --ui-text-primary: #1c1917;
+  --ui-text-secondary: #57534e;
+  --ui-border: #fed7aa;
+  --ui-sidebar-active: #fdba74;
+  --ui-sidebar-hover: #fb923c;
+  --ui-input-bg: #fffbeb;
+  --ui-input-border: #fed7aa;
+  --ui-glow: rgba(234, 88, 12, 0.2);
+  --atom-accent: #ea580c;
+  --atom-accent-light: #fb923c;
+  --atom-teal: #c2410c;
+  --atom-amber: #f59e0b;
 }
-.dark[data-ui-theme="obsidian"] {
-  --ui-bg-main: #0f1114;
-  --ui-bg-sidebar: #15181e;
-  --ui-accent: #67e8f9;
-  --ui-accent-hot: #f9a8d4;
-  --ui-accent-cool: #22d3ee;
-  --ui-text-primary: #f1f5f9;
-  --ui-text-secondary: #94a3b8;
-  --ui-border: #1e293b;
-  --ui-sidebar-active: #1a1f28;
-  --ui-sidebar-hover: #1f242d;
-  --ui-input-bg: #15181e;
-  --ui-input-border: #334155;
-  --ui-glow: rgba(103, 232, 249, 0.25);
-  --atom-accent: #67e8f9;
-  --atom-accent-light: #a5f3fc;
-  --atom-teal: #22d3ee;
-  --atom-amber: #fde047;
-}
-
-/* Nova — OpenWebUI inspired: deep navy/charcoal, electric blue accents, techy/terminal feel. */
-[data-ui-theme="nova"] {
-  --ui-bg-main: #0f1117;
-  --ui-bg-sidebar: #0d1021;
-  --ui-accent: #3b82f6;
-  --ui-accent-hot: #2563eb;
-  --ui-accent-cool: #3b82f6;
-  --ui-text-primary: #e8eaf6;
-  --ui-text-secondary: #9ea8d0;
-  --ui-border: #2e3352;
-  --ui-sidebar-active: #21253a;
-  --ui-sidebar-hover: #2a2f47;
-  --ui-input-bg: #1a1d27;
-  --ui-input-border: #2e3352;
-  --ui-glow: rgba(59, 130, 246, 0.22);
-  --atom-accent: #3b82f6;
-  --atom-accent-light: #60a5fa;
-  --atom-teal: #3b82f6;
-  --atom-amber: #60a5fa;
-}
-.dark[data-ui-theme="nova"] {
-  --ui-bg-main: #0f1117;
-  --ui-bg-sidebar: #0d1021;
-  --ui-accent: #3b82f6;
-  --ui-accent-hot: #2563eb;
-  --ui-accent-cool: #3b82f6;
-  --ui-text-primary: #e8eaf6;
-  --ui-text-secondary: #9ea8d0;
-  --ui-border: #2e3352;
-  --ui-sidebar-active: #21253a;
-  --ui-sidebar-hover: #2a2f47;
-  --ui-input-bg: #1a1d27;
-  --ui-input-border: #2e3352;
-  --ui-glow: rgba(59, 130, 246, 0.22);
-  --atom-accent: #3b82f6;
-  --atom-accent-light: #60a5fa;
-  --atom-teal: #3b82f6;
-  --atom-amber: #60a5fa;
+.dark[data-ui-theme="clay"] {
+  --ui-bg-main: #120a06;
+  --ui-bg-sidebar: #1c100a;
+  --ui-accent: #fb923c;
+  --ui-selected-bg: var(--ui-accent);
+  --ui-selected-fg: var(--ui-bg-main);
+  --ui-accent-hot: #fdba74;
+  --ui-accent-cool: #f97316;
+  --ui-text-primary: #fff7ed;
+  --ui-text-secondary: #c4b5a5;
+  --ui-border: rgba(251, 146, 60, 0.22);
+  --ui-sidebar-active: #2a160c;
+  --ui-sidebar-hover: #3a1e10;
+  --ui-input-bg: #1c100a;
+  --ui-input-border: #3a1e10;
+  --ui-glow: rgba(251, 146, 60, 0.28);
+  --atom-accent: #fb923c;
+  --atom-accent-light: #fdba74;
+  --atom-teal: #f97316;
+  --atom-amber: #fbbf24;
 }
 
-/* Studio — ChatGPT inspired: pure white / near-white light, soft gray sidebar, dark send, professional. */
-[data-ui-theme="studio"] {
-  --ui-bg-main: #ffffff;
-  --ui-bg-sidebar: #f7f7f8;
-  --ui-accent: #10a37f;
-  --ui-accent-hot: #0d8f6e;
-  --ui-accent-cool: #10a37f;
-  --ui-text-primary: #0d0d0d;
-  --ui-text-secondary: #444654;
-  --ui-border: #e5e5e5;
-  --ui-sidebar-active: #ececec;
-  --ui-sidebar-hover: #e5e5e5;
+/*
+  Ion (fern) — an instrument panel, not a tint.
+  Named roles (do not reuse a role for a second job):
+    --ion-ground     cool neutral page
+    --ion-card       panel surface, a clear step off the page
+    --ion-ink        reading text (not green)
+    --ion-muted      secondary text
+    --ion-line       border, darker than a wash
+    --ion-selected   selected-row fill, cool, never green or brass
+    --ion-focus      focus ring and the selected-row edge
+    --ion-green      the one deep green: the header bar only
+    --ion-brass      primary actions only
+    --ion-brass-ink  label sitting on those actions
+  --ui-accent stays steel (links, marks, meters). --ui-action is brass.
+*/
+[data-ui-theme="fern"] {
+  --ion-ground: #d5dbe3;
+  --ion-card: #f4f7fb;
+  --ion-ink: #1a1f27;
+  --ion-muted: #4e5968;
+  --ion-line: #8fa0b5;
+  --ion-selected: #d5deea;
+  --ion-hover: #e6ebf2;
+  --ion-focus: #3d5a80;
+  --ion-focus-ring: rgba(61, 90, 128, 0.35);
+  --ion-green: #1b4332;
+  --ion-brass: #7a4e1c;
+  --ion-brass-ink: #f6f1e6;
+
+  --ui-bg-main: var(--ion-ground);
+  --ui-bg-sidebar: var(--ion-card);
+  --ui-accent: var(--ion-focus);
+  --ui-accent-hot: #9f2d2d;
+  --ui-accent-cool: var(--ion-focus);
+  --ui-text-primary: var(--ion-ink);
+  --ui-text-secondary: var(--ion-muted);
+  --ui-border: var(--ion-line);
+  --ui-sidebar-active: var(--ion-selected);
+  --ui-sidebar-hover: var(--ion-hover);
   --ui-input-bg: #ffffff;
-  --ui-input-border: #e5e5e5;
-  --ui-glow: rgba(16, 163, 127, 0.18);
-  --atom-accent: #10a37f;
-  --atom-accent-light: #14b8a6;
-  --atom-teal: #10a37f;
-  --atom-amber: #0d8f6e;
+  --ui-input-border: #8fa0b5;
+  --ui-glow: rgba(61, 90, 128, 0.16);
+  --ui-action: var(--ion-brass);
+  --ui-action-ink: var(--ion-brass-ink);
+  --ui-selected-bg: var(--ion-selected);
+  --ui-selected-fg: var(--ion-ink);
+  --atom-accent: var(--ion-focus);
+  --atom-accent-light: #6e88ab;
+  --atom-teal: #3d5a80;
+  --atom-amber: #5c6b7a;
 }
-.dark[data-ui-theme="studio"] {
-  --ui-bg-main: #2a2a2a;
-  --ui-bg-sidebar: #1f1f1f;
-  --ui-accent: #10a37f;
-  --ui-accent-hot: #0d8f6e;
-  --ui-accent-cool: #10a37f;
-  --ui-text-primary: #ececec;
-  --ui-text-secondary: #8e8ea0;
-  --ui-border: #404040;
-  --ui-sidebar-active: #383838;
-  --ui-sidebar-hover: #404040;
-  --ui-input-bg: #2a2a2a;
-  --ui-input-border: #404040;
-  --ui-glow: rgba(16, 163, 127, 0.2);
-  --atom-accent: #10a37f;
-  --atom-accent-light: #14b8a6;
-  --atom-teal: #10a37f;
-  --atom-amber: #0d8f6e;
+.dark[data-ui-theme="fern"] {
+  --ion-ground: #12161d;
+  --ion-card: #202833;
+  --ion-ink: #e7edf5;
+  --ion-muted: #a3b0c2;
+  --ion-line: #46556b;
+  --ion-selected: #2c3a4d;
+  --ion-hover: #283242;
+  --ion-focus: #9eb6d0;
+  --ion-focus-ring: rgba(158, 182, 208, 0.45);
+  --ion-green: #2d6a4f;
+  --ion-brass: #d4a15a;
+  --ion-brass-ink: #1c140a;
+
+  --ui-bg-main: var(--ion-ground);
+  --ui-bg-sidebar: var(--ion-card);
+  --ui-accent: var(--ion-focus);
+  --ui-accent-hot: #e07070;
+  --ui-accent-cool: var(--ion-focus);
+  --ui-text-primary: var(--ion-ink);
+  --ui-text-secondary: var(--ion-muted);
+  --ui-border: var(--ion-line);
+  --ui-sidebar-active: var(--ion-selected);
+  --ui-sidebar-hover: var(--ion-hover);
+  --ui-input-bg: #2a3340;
+  --ui-input-border: #46556b;
+  --ui-glow: rgba(158, 182, 208, 0.14);
+  --ui-action: var(--ion-brass);
+  --ui-action-ink: var(--ion-brass-ink);
+  --ui-selected-bg: var(--ion-selected);
+  --ui-selected-fg: var(--ion-ink);
+  --atom-accent: var(--ion-focus);
+  --atom-accent-light: #c5d4e6;
+  --atom-teal: #9eb6d0;
+  --atom-amber: #8b97a8;
+}
+
+/* Ion structure. Other themes do not match these selectors. */
+[data-ui-theme="fern"] .atom-shell::before {
+  background: none;
+}
+[data-ui-theme="fern"] .atom-header {
+  background: var(--ion-card);
+  border-bottom: 3px solid var(--ion-green);
+  box-shadow: none;
+}
+[data-ui-theme="fern"] .atom-brand-mark {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--ion-line);
+}
+[data-ui-theme="fern"] .atom-panel-wrap {
+  background: var(--ion-card) !important;
+  border: 1px solid var(--ion-line);
+  box-shadow: 0 12px 28px rgba(18, 22, 29, 0.08);
+}
+[data-ui-theme="fern"] .arena-footer {
+  background: var(--ion-ground) !important;
+  border-top: 1px solid var(--ion-line) !important;
+}
+[data-ui-theme="fern"] .arena-command-toolbar {
+  background: var(--ion-card) !important;
+  border-color: var(--ion-line) !important;
+}
+[data-ui-theme="fern"] .ui-sidebar-active {
+  background: var(--ion-selected) !important;
+  border-left: 3px solid var(--ion-focus);
+  box-shadow: none;
+}
+[data-ui-theme="fern"] .ui-user-bubble {
+  background: var(--ion-card) !important;
+  background-color: var(--ion-card) !important;
+  border: 1px solid var(--ion-line) !important;
+  box-shadow: none !important;
+}
+[data-ui-theme="fern"] .message-bubble-inner.atom-assistant {
+  box-shadow: inset 3px 0 0 var(--ion-line) !important;
+}
+[data-ui-theme="fern"] .chat-input-bar:focus-within,
+[data-ui-theme="fern"] .ui-input-glow:focus-within {
+  border-color: var(--ion-focus) !important;
+  box-shadow: 0 0 0 3px var(--ion-focus-ring) !important;
+}
+[data-ui-theme="fern"] button[aria-pressed="true"] {
+  background: var(--ion-selected) !important;
+  color: var(--ion-ink) !important;
+  box-shadow: inset 0 -2px 0 var(--ion-focus);
 }
 
 
@@ -618,8 +803,8 @@ html { --metrics-axis: #d4d4d4; --metrics-grid: #e5e5e5; }
   opacity: 0.9;
 }
 .ui-btn-accent {
-  background: var(--ui-accent);
-  color: var(--ui-bg-main);
+  background: var(--ui-action, var(--ui-accent));
+  color: var(--ui-action-ink, var(--ui-bg-main));
   box-shadow: 0 4px 15px var(--ui-glow);
   transition: all 0.15s ease;
 }
@@ -723,6 +908,11 @@ body {
 }
 
 /* Arena question panel: resize handles (edge/corner) */
+.arena-resize-handle {
+  cursor: col-resize;
+  background-color: color-mix(in srgb, var(--ui-border) 40%, transparent);
+  transition: background-color 0.15s;
+}
 .arena-resize-handle:hover { background-color: color-mix(in srgb, var(--ui-accent) 30%, transparent) !important; }
 
 /* Streaming: pulsing border glow */
@@ -798,4 +988,374 @@ body {
   .atom-complete-flash { animation: none; }
   .atom-error-shake { animation: none; }
   .atom-gradient-bg::before { animation: none; }
+}
+
+/* Arena toolbar: wrap on narrow screens */
+@media (max-width: 767px) {
+  .arena-command-toolbar {
+    flex-wrap: wrap;
+    row-gap: 0.5rem;
+    justify-content: flex-start;
+  }
+  .arena-command-toolbar > .flex-1 {
+    flex: 1 1 100%;
+    justify-content: flex-start;
+  }
+}
+
+/* Arena Run All progress bar */
+.arena-runall-progress {
+  height: 3px;
+  background: color-mix(in srgb, var(--ui-border) 50%, transparent);
+  position: relative;
+  overflow: hidden;
+}
+.arena-runall-progress-fill {
+  height: 100%;
+  background: var(--ui-accent);
+  transition: width 0.3s ease;
+  border-radius: 0 2px 2px 0;
+}
+
+/* Arena contrast. Ion tokens stay put. These only make contestant numbers and rows readable. */
+:root {
+  --arena-read: #12161c;
+  --arena-cell: #e7eef6;
+  --arena-line: #4d5e74;
+  --arena-row-a: #d5deea;
+  --arena-row-b: #f7f9fc;
+}
+.dark {
+  --arena-read: #f4f7fb;
+  --arena-cell: #2a3544;
+  --arena-line: #8ea0b8;
+  --arena-row-a: #2c3a4e;
+  --arena-row-b: #1a212c;
+}
+.arena-ink,
+.arena-tally-num {
+  color: var(--arena-read);
+  font-weight: 800;
+}
+.arena-slot-badge {
+  font-weight: 800;
+  background: var(--arena-badge, #9fb6dc);
+  color: var(--arena-read);
+}
+.arena-col-A {
+  --arena-read: #0f2744;
+  --arena-badge: #8eaddb;
+  --arena-head: #c5d4ef;
+  --arena-note: #d5e2f6;
+}
+.arena-col-B {
+  --arena-read: #06352a;
+  --arena-badge: #7ec9ad;
+  --arena-head: #c5e6d8;
+  --arena-note: #d7f0e6;
+}
+.arena-col-C {
+  --arena-read: #5c2e04;
+  --arena-badge: #e3b56a;
+  --arena-head: #f3d7a8;
+  --arena-note: #f8e6c4;
+}
+.arena-col-D {
+  --arena-read: #3b1764;
+  --arena-badge: #c4b0e8;
+  --arena-head: #ddd0f5;
+  --arena-note: #e8def8;
+}
+.dark .arena-col-A {
+  --arena-read: #e8eef8;
+  --arena-badge: #3d5f8f;
+  --arena-head: #243656;
+  --arena-note: #1c2a42;
+}
+.dark .arena-col-B {
+  --arena-read: #e5f6ee;
+  --arena-badge: #1f6b56;
+  --arena-head: #1c3d34;
+  --arena-note: #16332c;
+}
+.dark .arena-col-C {
+  --arena-read: #fff1d6;
+  --arena-badge: #8a6230;
+  --arena-head: #3f3218;
+  --arena-note: #332816;
+}
+.dark .arena-col-D {
+  --arena-read: #f3e9ff;
+  --arena-badge: #5c4588;
+  --arena-head: #342848;
+  --arena-note: #2a203c;
+}
+.arena-col-head,
+.arena-judge-cell {
+  background: var(--arena-head);
+  border: 1px solid var(--arena-line);
+}
+.arena-judge-note {
+  background: var(--arena-note);
+  border-left: 4px solid var(--arena-badge);
+}
+.arena-score-matrix {
+  color: var(--arena-read);
+}
+.arena-matrix-label,
+.arena-matrix-num,
+.arena-matrix-slot {
+  color: var(--arena-read);
+  border-color: var(--arena-line);
+  font-weight: 700;
+}
+.arena-matrix-num,
+.arena-matrix-slot,
+.arena-matrix-total .arena-matrix-num {
+  font-weight: 800;
+}
+.arena-matrix-row-a {
+  background: var(--arena-row-a);
+}
+.arena-matrix-row-b {
+  background: var(--arena-row-b);
+}
+.arena-matrix-total {
+  background: var(--arena-head, var(--arena-row-a));
+}
+.arena-matrix-slot.arena-col-A,
+.arena-matrix-slot.arena-col-B,
+.arena-matrix-slot.arena-col-C,
+.arena-matrix-slot.arena-col-D {
+  background: var(--arena-head);
+}
+
+/*
+  Matrix — hacker-green terminal on near-black.
+*/
+[data-ui-theme="matrix"] {
+  --ui-bg-main: #f0fbf0;
+  --ui-bg-sidebar: #e0f5e0;
+  --ui-accent: #008f11;
+  --ui-accent-hot: #dc2626;
+  --ui-accent-cool: #0891b2;
+  --ui-text-primary: #0a1a0a;
+  --ui-text-secondary: #3f5a3f;
+  --ui-border: #b8e0b8;
+  --ui-sidebar-active: #c8e8c8;
+  --ui-sidebar-hover: #d4eed4;
+  --ui-input-bg: #f7fcf7;
+  --ui-input-border: #b8e0b8;
+  --ui-glow: rgba(0, 143, 17, 0.25);
+  --ui-selected-bg: var(--ui-accent);
+  --ui-selected-fg: var(--ui-bg-main);
+  --atom-accent: #008f11;
+  --atom-accent-light: #22c55e;
+  --atom-teal: #0d9488;
+  --atom-amber: #d97706;
+}
+.dark[data-ui-theme="matrix"] {
+  --ui-bg-main: #0d0d0d;
+  --ui-bg-sidebar: #0a0a0a;
+  --ui-accent: #00ff41;
+  --ui-accent-hot: #ff3b30;
+  --ui-accent-cool: #00e5ff;
+  --ui-text-primary: #ccffcc;
+  --ui-text-secondary: #7a997a;
+  --ui-border: #1a3a1a;
+  --ui-sidebar-active: #122012;
+  --ui-sidebar-hover: #1a2e1a;
+  --ui-input-bg: #0a0a0a;
+  --ui-input-border: #1a3a1a;
+  --ui-glow: rgba(0, 255, 65, 0.35);
+  --ui-selected-bg: var(--ui-accent);
+  --ui-selected-fg: var(--ui-bg-main);
+  --atom-accent: #00ff41;
+  --atom-accent-light: #66ff99;
+  --atom-teal: #00e5ff;
+  --atom-amber: #ffb300;
+}
+
+/*
+  Crimson — deep red and gold, warm and bold.
+*/
+[data-ui-theme="crimson"] {
+  --ui-bg-main: #fdf6f4;
+  --ui-bg-sidebar: #f7e8e4;
+  --ui-accent: #a4161a;
+  --ui-accent-hot: #dc2626;
+  --ui-accent-cool: #0f766e;
+  --ui-text-primary: #1c0f0e;
+  --ui-text-secondary: #6b5550;
+  --ui-border: #e8c9c4;
+  --ui-sidebar-active: #ecd6d1;
+  --ui-sidebar-hover: #f0deda;
+  --ui-input-bg: #fefbfa;
+  --ui-input-border: #e8c9c4;
+  --ui-glow: rgba(164, 22, 26, 0.22);
+  --ui-selected-bg: var(--ui-accent);
+  --ui-selected-fg: var(--ui-bg-main);
+  --atom-accent: #a4161a;
+  --atom-accent-light: #dc2626;
+  --atom-teal: #0f766e;
+  --atom-amber: #b45309;
+}
+.dark[data-ui-theme="crimson"] {
+  --ui-bg-main: #160a0b;
+  --ui-bg-sidebar: #1e0e0f;
+  --ui-accent: #ef4444;
+  --ui-accent-hot: #f87171;
+  --ui-accent-cool: #2dd4bf;
+  --ui-text-primary: #fbe9e7;
+  --ui-text-secondary: #b89b96;
+  --ui-border: #3a1a1c;
+  --ui-sidebar-active: #2a1214;
+  --ui-sidebar-hover: #33181a;
+  --ui-input-bg: #1e0e0f;
+  --ui-input-border: #3a1a1c;
+  --ui-glow: rgba(239, 68, 68, 0.3);
+  --ui-selected-bg: var(--ui-accent);
+  --ui-selected-fg: var(--ui-bg-main);
+  --atom-accent: #ef4444;
+  --atom-accent-light: #fca5a5;
+  --atom-teal: #2dd4bf;
+  --atom-amber: #d4af37;
+}
+
+/*
+  Noir — luxury gold on near-black.
+*/
+[data-ui-theme="noir"] {
+  --ui-bg-main: #faf9f6;
+  --ui-bg-sidebar: #efece6;
+  --ui-accent: #a16207;
+  --ui-accent-hot: #dc2626;
+  --ui-accent-cool: #0f766e;
+  --ui-text-primary: #1c1917;
+  --ui-text-secondary: #57534e;
+  --ui-border: rgba(161, 98, 7, 0.22);
+  --ui-sidebar-active: #e3ddcf;
+  --ui-sidebar-hover: #eae4d8;
+  --ui-input-bg: #fefdfb;
+  --ui-input-border: #d8d0c2;
+  --ui-glow: rgba(161, 98, 7, 0.2);
+  --ui-selected-bg: var(--ui-accent);
+  --ui-selected-fg: var(--ui-bg-main);
+  --atom-accent: #a16207;
+  --atom-accent-light: #ca8a04;
+  --atom-teal: #0f766e;
+  --atom-amber: #d4af37;
+}
+.dark[data-ui-theme="noir"] {
+  --ui-bg-main: #0c0a08;
+  --ui-bg-sidebar: #14110d;
+  --ui-accent: #d4af37;
+  --ui-accent-hot: #f87171;
+  --ui-accent-cool: #2dd4bf;
+  --ui-text-primary: #f5efe4;
+  --ui-text-secondary: #a89f92;
+  --ui-border: rgba(212, 175, 55, 0.22);
+  --ui-sidebar-active: #1d1812;
+  --ui-sidebar-hover: #2a221a;
+  --ui-input-bg: #16120d;
+  --ui-input-border: #2a231b;
+  --ui-glow: rgba(212, 175, 55, 0.26);
+  --ui-selected-bg: var(--ui-accent);
+  --ui-selected-fg: var(--ui-bg-main);
+  --atom-accent: #d4af37;
+  --atom-accent-light: #e6c85c;
+  --atom-teal: #2dd4bf;
+  --atom-amber: #fbbf24;
+}
+
+/*
+  Graphite — neutral slate with a single warm amber accent.
+*/
+[data-ui-theme="graphite"] {
+  --ui-bg-main: #f5f5f4;
+  --ui-bg-sidebar: #e7e5e4;
+  --ui-accent: #b45309;
+  --ui-accent-hot: #dc2626;
+  --ui-accent-cool: #0f766e;
+  --ui-text-primary: #1c1917;
+  --ui-text-secondary: #57534e;
+  --ui-border: #d6d3d1;
+  --ui-sidebar-active: #d6d3d1;
+  --ui-sidebar-hover: #e0ddda;
+  --ui-input-bg: #fafaf9;
+  --ui-input-border: #d6d3d1;
+  --ui-glow: rgba(180, 83, 9, 0.2);
+  --ui-selected-bg: var(--ui-accent);
+  --ui-selected-fg: var(--ui-bg-main);
+  --atom-accent: #b45309;
+  --atom-accent-light: #d97706;
+  --atom-teal: #0f766e;
+  --atom-amber: #b45309;
+}
+.dark[data-ui-theme="graphite"] {
+  --ui-bg-main: #111111;
+  --ui-bg-sidebar: #171717;
+  --ui-accent: #f59e0b;
+  --ui-accent-hot: #f87171;
+  --ui-accent-cool: #2dd4bf;
+  --ui-text-primary: #e7e5e4;
+  --ui-text-secondary: #a8a29e;
+  --ui-border: #292524;
+  --ui-sidebar-active: #1f1d1c;
+  --ui-sidebar-hover: #292524;
+  --ui-input-bg: #171717;
+  --ui-input-border: #292524;
+  --ui-glow: rgba(245, 158, 11, 0.26);
+  --ui-selected-bg: var(--ui-accent);
+  --ui-selected-fg: var(--ui-bg-main);
+  --atom-accent: #f59e0b;
+  --atom-accent-light: #fbbf24;
+  --atom-teal: #2dd4bf;
+  --atom-amber: #fbbf24;
+}
+
+/*
+  Gruvbox — retro warm "analog" tones, a Vim classic.
+*/
+[data-ui-theme="gruvbox"] {
+  --ui-bg-main: #fbf1c7;
+  --ui-bg-sidebar: #f2e5bc;
+  --ui-accent: #af3a03;
+  --ui-accent-hot: #cc241d;
+  --ui-accent-cool: #076678;
+  --ui-text-primary: #3c3836;
+  --ui-text-secondary: #7c6f64;
+  --ui-border: #d5c4a1;
+  --ui-sidebar-active: #ebdbb2;
+  --ui-sidebar-hover: #e5d5b0;
+  --ui-input-bg: #fdf6e3;
+  --ui-input-border: #d5c4a1;
+  --ui-glow: rgba(175, 58, 3, 0.2);
+  --ui-selected-bg: var(--ui-accent);
+  --ui-selected-fg: var(--ui-bg-main);
+  --atom-accent: #af3a03;
+  --atom-accent-light: #b57614;
+  --atom-teal: #427b58;
+  --atom-amber: #b57614;
+}
+.dark[data-ui-theme="gruvbox"] {
+  --ui-bg-main: #282828;
+  --ui-bg-sidebar: #1d2021;
+  --ui-accent: #fe8019;
+  --ui-accent-hot: #fb4934;
+  --ui-accent-cool: #83a598;
+  --ui-text-primary: #ebdbb2;
+  --ui-text-secondary: #a89984;
+  --ui-border: #3c3836;
+  --ui-sidebar-active: #3c3836;
+  --ui-sidebar-hover: #504945;
+  --ui-input-bg: #1d2021;
+  --ui-input-border: #3c3836;
+  --ui-glow: rgba(254, 128, 25, 0.3);
+  --ui-selected-bg: var(--ui-accent);
+  --ui-selected-fg: var(--ui-bg-main);
+  --atom-accent: #fe8019;
+  --atom-accent-light: #d65d0e;
+  --atom-teal: #8ec07c;
+  --atom-amber: #fabd2f;
 }

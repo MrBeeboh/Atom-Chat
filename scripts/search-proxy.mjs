@@ -43,14 +43,95 @@ app.post('/api/set-key', (req, res) => {
     res.status(400).json({ error: 'Unknown type' });
 });
 
+function isPrivateHostname(hostname) {
+    const h = String(hostname || '').replace(/^\[|\]$/g, '').toLowerCase();
+    if (!h) return true;
+    if (h === 'localhost' || h === '::1' || h === '0.0.0.0' || h === '::') return true;
+    if (h.endsWith('.localhost') || h.endsWith('.internal') || h.endsWith('.local')) return true;
+    if (h.includes(':')) return true;
+    if (/^(127\.|10\.|0\.|169\.254\.|192\.168\.)/.test(h)) return true;
+    if (/^172\.(1[6-9]|2\d|3[0-1])\./.test(h)) return true;
+    return false;
+}
+
+function assertPublicHttpUrl(raw, base) {
+    let u;
+    try {
+        u = base ? new URL(String(raw || ''), base) : new URL(String(raw || ''));
+    } catch {
+        const err = new Error('Invalid URL');
+        err.status = 400;
+        throw err;
+    }
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+        const err = new Error('Only http(s) URLs are allowed');
+        err.status = 400;
+        throw err;
+    }
+    if (isPrivateHostname(u.hostname)) {
+        const err = new Error('That host is not allowed');
+        err.status = 400;
+        throw err;
+    }
+    return u;
+}
+
+function htmlToText(html) {
+    const titleMatch = String(html || '').match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+    const title = titleMatch ? titleMatch[1].replace(/\s+/g, ' ').trim() : '';
+    const text = String(html || '')
+        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+        .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/&amp;/gi, '&')
+        .replace(/&lt;/gi, '<')
+        .replace(/&gt;/gi, '>')
+        .replace(/&quot;/gi, '"')
+        .replace(/&#39;/gi, "'")
+        .replace(/\s+/g, ' ')
+        .trim();
+    return { title, text };
+}
+
+async function fetchPublicPage(urlString) {
+    let current = assertPublicHttpUrl(urlString).toString();
+    for (let hop = 0; hop < 4; hop += 1) {
+        const response = await fetch(current, {
+            redirect: 'manual',
+            headers: {
+                'User-Agent': 'ATOM-Chat/1.0 (+local)',
+                Accept: 'text/html,text/plain,application/xhtml+xml;q=0.9,*/*;q=0.1',
+            },
+            signal: AbortSignal.timeout(12000),
+        });
+        if (response.status >= 300 && response.status < 400) {
+            const loc = response.headers.get('location');
+            if (!loc) {
+                const err = new Error('Redirect with no Location');
+                err.status = 400;
+                throw err;
+            }
+            current = assertPublicHttpUrl(loc, current).toString();
+            continue;
+        }
+        return { response, finalUrl: current };
+    }
+    const err = new Error('Too many redirects');
+    err.status = 400;
+    throw err;
+}
+
 app.get('/api/search', async (req, res) => {
     const q = req.query.q;
     if (!q || !q.trim()) return res.status(400).json({ error: 'Missing query' });
     if (!BRAVE_API_KEY) return res.status(503).json({ error: 'Search unavailable', message: 'Set Brave API key in Settings or BRAVE_API_KEY env.' });
     try {
+        const count = Math.min(10, Math.max(1, parseInt(String(req.query.count || '8'), 10) || 8));
         const url = new URL('https://api.search.brave.com/res/v1/web/search');
         url.searchParams.set('q', q);
-        url.searchParams.set('count', '5');
+        url.searchParams.set('count', String(count));
         const response = await fetch(url, {
             headers: { 'Accept': 'application/json', 'X-Subscription-Token': BRAVE_API_KEY },
             signal: AbortSignal.timeout(10000)
@@ -62,6 +143,32 @@ app.get('/api/search', async (req, res) => {
     } catch (err) {
         console.error('[search-proxy]', err.message);
         res.status(500).json({ error: 'Search failed', details: err.message });
+    }
+});
+
+app.get('/api/search/page', async (req, res) => {
+    const raw = req.query.url;
+    if (!raw || !String(raw).trim()) return res.status(400).json({ error: 'Missing url' });
+    try {
+        const { response, finalUrl } = await fetchPublicPage(raw);
+        if (!response.ok) {
+            return res.status(502).json({ error: `Upstream ${response.status}`, url: finalUrl });
+        }
+        const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+        if (contentType.includes('image/') || contentType.includes('audio/') || contentType.includes('video/') || contentType.includes('octet-stream')) {
+            return res.status(400).json({ error: 'That URL is not a text page', url: finalUrl });
+        }
+        const rawBody = (await response.text()).slice(0, 200000);
+        const { title, text } = htmlToText(rawBody);
+        res.json({
+            url: finalUrl,
+            title,
+            text: text.slice(0, 12000),
+        });
+    } catch (err) {
+        const status = err?.status || 500;
+        console.error('[search-proxy] fetch', err.message);
+        res.status(status).json({ error: 'Fetch failed', message: err.message });
     }
 });
 

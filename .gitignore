@@ -45,3 +45,20 @@ handoff*.json
 *-manifest.json
 ATOM-*-FIX.md
 config/brave_key.txt
+
+# Backup files (suffixes like .bak-8081, not just "backup")
+*.bak
+*.bak-*
+
+# Runtime / generated data dirs
+arena-reports/
+restore-points/
+experiments/
+test-results/
+
+# Root-level scratch screenshots
+/arena-*.png
+/arena-*.jpg
+
+# Python venv under services/ (mirror of voice-server/.venv)
+services/.venv/

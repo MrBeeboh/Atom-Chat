@@ -4,6 +4,7 @@
  * Used for sidebar conversation list, chat history, and bulk erase.
  */
 import Dexie from 'dexie';
+import { messageContentToText, makeSearchSnippet } from './utils.js';
 
 const db = new Dexie('LMStudioChat');
 db.version(1).stores({
@@ -13,6 +14,14 @@ db.version(1).stores({
 
 export const conversationsTable = db.conversations;
 export const messagesTable = db.messages;
+
+/** Keep message order stable when several rows are written in the same millisecond. */
+let lastMessageCreatedAt = 0;
+function nextMessageCreatedAt() {
+  const now = Date.now();
+  lastMessageCreatedAt = now <= lastMessageCreatedAt ? lastMessageCreatedAt + 1 : now;
+  return lastMessageCreatedAt;
+}
 
 /**
  * @param {string} [model]
@@ -87,7 +96,7 @@ export async function listPinnedConversations() {
 
 /**
  * @param {string} conversationId
- * @param {{ role: string, content: string|Array, stats?: Object, modelId?: string, imageRefs?: Array<{ image_id: string }>, imageUrls?: string[], videoUrls?: string[] }} message
+ * @param {{ role: string, content: string|Array, stats?: Object, modelId?: string, imageRefs?: Array<{ image_id: string }>, imageUrls?: string[], videoUrls?: string[], tool_calls?: Array, tool_call_id?: string, desktopActions?: Array }} message
  */
 export async function addMessage(conversationId, message) {
   const id = `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -103,7 +112,10 @@ export async function addMessage(conversationId, message) {
     imageRefs: message.imageRefs ?? null,
     imageUrls: Array.isArray(imageUrls) ? [...imageUrls] : null,
     videoUrls: Array.isArray(videoUrls) ? [...videoUrls] : null,
-    createdAt: Date.now(),
+    tool_calls: message.tool_calls ?? null,
+    tool_call_id: message.tool_call_id ?? null,
+    desktopActions: Array.isArray(message.desktopActions) ? [...message.desktopActions] : null,
+    createdAt: message.createdAt ?? nextMessageCreatedAt(),
   });
   return id;
 }
@@ -145,4 +157,26 @@ export async function getMessageCount(conversationId) {
  */
 export async function clearMessages(conversationId) {
   await messagesTable.where('conversationId').equals(conversationId).delete();
+}
+
+/**
+ * Search message text across all conversations (case-insensitive substring), newest first.
+ * @param {string} query
+ * @param {{ maxConversations?: number }} [opts]
+ * @returns {Promise<Map<string, { snippet: string }>>} conversationId → snippet of the newest matching message
+ */
+export async function searchMessagesByText(query, { maxConversations = 30 } = {}) {
+  const q = (query || '').trim();
+  const out = new Map();
+  if (!q) return out;
+  await messagesTable
+    .orderBy('createdAt')
+    .reverse()
+    .until(() => out.size >= maxConversations)
+    .each((m) => {
+      if (out.has(m.conversationId)) return;
+      const snippet = makeSearchSnippet(messageContentToText(m.content), q);
+      if (snippet) out.set(m.conversationId, { snippet });
+    });
+  return out;
 }

@@ -14,7 +14,10 @@
 
 <button
   type="button"
-  class="p-2 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-700/80 text-zinc-600 dark:text-zinc-400 text-sm font-medium transition-colors"
+  class="px-2.5 py-1.5 rounded-full text-[10px] font-semibold uppercase tracking-wider transition-colors border"
+  style="color: var(--ui-text-secondary); border-color: var(--ui-border); background: color-mix(in srgb, var(--ui-input-bg) 70%, transparent);"
+  onmouseenter={(e) => (e.currentTarget.style.background = 'color-mix(in srgb, var(--ui-accent) 14%, transparent)')}
+  onmouseleave={(e) => (e.currentTarget.style.background = 'color-mix(in srgb, var(--ui-input-bg) 70%, transparent)')}
   onclick={cycle}
   title="Theme: {label}">
   {label}

@@ -19,14 +19,16 @@
     confirm,
   } from '$lib/stores.js';
   import { BATCH_SIZE_MIN, BATCH_SIZE_MAX } from '$lib/modelDefaults.js';
+  import { LOCAL_CONTEXT_UI_MAX, LOCAL_LLAMA_CTX_SIZE, LOCAL_MAX_TOKENS_UI_MAX, resolveLocalContextLength, resolveLocalMaxTokens } from '$lib/localHardwareConfig.js';
   import { getModelIcon, getQuantization, modelIconOverrides } from '$lib/modelIcons.js';
   import { loadModel } from '$lib/api.js';
   import { fetchOptimalSettingsWithDelay, askModelForOptimalSettings, resolveHfModelId, getHfModelUrl, getHfSearchUrl } from '$lib/hfOptimize.js';
   import InfoTooltip from '$lib/components/InfoTooltip.svelte';
   import ThinkingAtom from '$lib/components/ThinkingAtom.svelte';
+  import ThinkingControls from '$lib/components/ThinkingControls.svelte';
 
   let settingsVal = $state({});
-  let contextLength = $state(4096);
+  let contextLength = $state(LOCAL_LLAMA_CTX_SIZE);
   let temperature = $state(0.7);
   let maxTokens = $state(4096);
   let topP = $state(0.95);
@@ -34,6 +36,8 @@
   let repeatPenalty = $state(1.15);
   let presencePenalty = $state(0);
   let frequencyPenalty = $state(0);
+  let thinkingLevel = $state('');
+  let thinkingSpeed = $state('');
   let sysPrompt = $state('You are a helpful assistant.');
   let currentModelId = $state('');
   let messagesList = $state([]);
@@ -44,7 +48,7 @@
   });
 
   const DEFAULTS = {
-    context_length: 4096,
+    context_length: LOCAL_LLAMA_CTX_SIZE,
     eval_batch_size: 512,
     flash_attention: true,
     offload_kv_cache_to_gpu: true,
@@ -89,7 +93,7 @@
   $effect(() => {
     const unsub = settings.subscribe((s) => {
       settingsVal = s ?? {};
-      contextLength = s?.context_length ?? 4096;
+      contextLength = resolveLocalContextLength(s?.context_length);
       evalBatchSize = s?.eval_batch_size ?? DEFAULTS.eval_batch_size;
       flashAttention = s?.flash_attention ?? DEFAULTS.flash_attention;
       offloadKvToGpu = s?.offload_kv_cache_to_gpu ?? DEFAULTS.offload_kv_cache_to_gpu;
@@ -104,6 +108,8 @@
       repeatPenalty = s?.repeat_penalty ?? 1.15;
       presencePenalty = s?.presence_penalty ?? 0;
       frequencyPenalty = s?.frequency_penalty ?? 0;
+      thinkingLevel = s?.thinking ?? '';
+      thinkingSpeed = s?.thinking_speed ?? '';
       sysPrompt = (s?.system_prompt ?? 'You are a helpful assistant.').toString();
     });
     return () => unsub();
@@ -120,7 +126,7 @@
       return acc + Math.ceil((text?.length ?? 0) / 4);
     }, 0)
   );
-  const CONTEXT_CAPACITY_MAX = 131072;
+  const CONTEXT_CAPACITY_MAX = LOCAL_CONTEXT_UI_MAX;
   const contextPercent = $derived(
     contextLength > 0 ? Math.min(100, Math.round((estimatedContextUsed / contextLength) * 100)) : 0
   );
@@ -136,7 +142,7 @@
   }
   function onMaxTokensInput(e) {
     const v = parseInt(e.target.value, 10);
-    if (Number.isFinite(v)) maxTokens = Math.max(64, Math.min(131072, v));
+    if (Number.isFinite(v)) maxTokens = resolveLocalMaxTokens(v);
   }
   function onTopPInput(e) {
     const v = parseFloat(e.target.value);
@@ -148,7 +154,7 @@
   }
   function onContextInput(e) {
     const v = parseInt(e.target.value, 10);
-    if (Number.isFinite(v)) contextLength = Math.max(512, Math.min(131072, v));
+    if (Number.isFinite(v)) contextLength = Math.max(0, Math.min(LOCAL_CONTEXT_UI_MAX, v));
   }
   function onRepeatPenaltyInput(e) {
     const v = parseFloat(e.target.value);
@@ -161,6 +167,11 @@
   function onFrequencyPenaltyInput(e) {
     const v = parseFloat(e.target.value);
     if (Number.isFinite(v)) frequencyPenalty = Math.max(-2, Math.min(2, v));
+  }
+  function onThinkingChange(patch) {
+    if (patch.thinking != null) thinkingLevel = patch.thinking;
+    if (patch.thinking_speed != null) thinkingSpeed = patch.thinking_speed;
+    if (currentModelId) setPerModelOverride(currentModelId, patch);
   }
 
   async function save() {
@@ -179,6 +190,8 @@
         repeat_penalty: repeatPenalty,
         presence_penalty: presencePenalty,
         frequency_penalty: frequencyPenalty,
+        thinking: thinkingLevel || undefined,
+        thinking_speed: thinkingSpeed || undefined,
         system_prompt: sysPrompt.trim() || undefined,
         context_length: contextLength,
         eval_batch_size: evalBatchSize,
@@ -279,6 +292,8 @@
       repeat_penalty: repeatPenalty,
       presence_penalty: presencePenalty,
       frequency_penalty: frequencyPenalty,
+      thinking: thinkingLevel || undefined,
+      thinking_speed: thinkingSpeed || undefined,
       system_prompt: sysPrompt.trim() || undefined,
       context_length: contextLength,
       eval_batch_size: evalBatchSize,
@@ -310,6 +325,8 @@
       if (p.repeat_penalty != null) repeatPenalty = p.repeat_penalty;
       if (p.presence_penalty != null) presencePenalty = p.presence_penalty;
       if (p.frequency_penalty != null) frequencyPenalty = p.frequency_penalty;
+      if (p.thinking != null) thinkingLevel = p.thinking;
+      if (p.thinking_speed != null) thinkingSpeed = p.thinking_speed;
       if (p.system_prompt != null) sysPrompt = String(p.system_prompt);
       if (p.context_length != null) contextLength = p.context_length;
       if (p.eval_batch_size != null) evalBatchSize = p.eval_batch_size;
@@ -583,24 +600,32 @@
               style="background: var(--ui-input-bg); accent-color: var(--ui-accent);" />
           </div>
           <div class="param-row">
-            <div class="flex justify-between text-xs mb-0.5"><span>Max tokens<InfoTooltip text="Maximum number of tokens the model can generate in one response. Higher = longer answers (50 JSON Q&A pairs ≈ 5000 tokens). Most models support up to 8192–32768. Uses more VRAM at higher values."><span class="ml-0.5 w-3 h-3 rounded-full border inline-flex items-center justify-center text-[8px] cursor-help opacity-60 hover:opacity-100" style="border-color: var(--ui-border);">i</span></InfoTooltip></span><span class="font-mono">{maxTokens}</span></div>
+            <div class="flex justify-between text-xs mb-0.5"><span>Max tokens<InfoTooltip text="Maximum number of tokens the model can generate in one response. Higher = longer answers. This is not the context window."><span class="ml-0.5 w-3 h-3 rounded-full border inline-flex items-center justify-center text-[8px] cursor-help opacity-60 hover:opacity-100" style="border-color: var(--ui-border);">i</span></InfoTooltip></span><span class="font-mono">{maxTokens}</span></div>
             <input
               type="range"
               min="64"
-              max="32768"
+              max={LOCAL_MAX_TOKENS_UI_MAX}
               step="64"
               value={maxTokens}
               oninput={onMaxTokensInput}
               class="w-full h-1.5 rounded-full"
               style="background: var(--ui-input-bg); accent-color: var(--ui-accent);" />
-            <div class="flex justify-between text-[10px] mt-0.5" style="color: var(--ui-text-secondary);"><span>64</span><span>32768</span></div>
+            <div class="flex justify-between text-[10px] mt-0.5" style="color: var(--ui-text-secondary);"><span>64</span><span>{LOCAL_MAX_TOKENS_UI_MAX}</span></div>
           </div>
           <div class="param-row">
-            <div class="flex justify-between text-xs mb-0.5"><span>Context<InfoTooltip text="Max context length in tokens. Higher = more history but more VRAM."><span class="ml-0.5 w-3 h-3 rounded-full border inline-flex items-center justify-center text-[8px] cursor-help opacity-60 hover:opacity-100" style="border-color: var(--ui-border);">i</span></InfoTooltip></span><span class="font-mono">{contextLength}</span></div>
+            <ThinkingControls
+              modelId={currentModelId}
+              thinking={thinkingLevel}
+              speed={thinkingSpeed}
+              onChange={onThinkingChange}
+            />
+          </div>
+          <div class="param-row">
+            <div class="flex justify-between text-xs mb-0.5"><span>Context<InfoTooltip text="Context window in tokens. 0 / model max = the GGUF training length for this model. ATOM does not cap this at 32768."><span class="ml-0.5 w-3 h-3 rounded-full border inline-flex items-center justify-center text-[8px] cursor-help opacity-60 hover:opacity-100" style="border-color: var(--ui-border);">i</span></InfoTooltip></span><span class="font-mono">{contextLength > 0 ? contextLength : 'model max'}</span></div>
             <input
               type="range"
-              min="512"
-              max="131072"
+              min="0"
+              max={LOCAL_CONTEXT_UI_MAX}
               step="1024"
               value={contextLength}
               oninput={onContextInput}
@@ -737,9 +762,9 @@
       <div class="flex items-center gap-2">
         <label for="intel-batch" class="text-xs shrink-0 w-20 flex items-center gap-0.5">Batch<InfoTooltip text="Eval batch size. Larger = faster inference but more VRAM."><span class="w-3 h-3 rounded-full border inline-flex items-center justify-center text-[8px] cursor-help opacity-60 hover:opacity-100" style="border-color: var(--ui-border);">i</span></InfoTooltip></label>
         <div class="flex flex-1 gap-0.5">
-          <button type="button" class="px-1.5 py-0.5 rounded-l border text-xs hover:opacity-90" style="border-color: var(--ui-border);" onclick={stepBatchDown} title="Half">▼</button>
+          <button type="button" class="px-1.5 py-0.5 rounded-l border text-xs hover:opacity-90" style="border-color: var(--ui-border);" onclick={stepBatchDown} aria-label="Decrease batch size" title="Half">▼</button>
           <input id="intel-batch" type="number" min={BATCH_SIZE_MIN} max={BATCH_SIZE_MAX} bind:value={evalBatchSize} class="flex-1 px-1.5 py-1 border text-xs min-w-0" style="border-color: var(--ui-border); background: var(--ui-input-bg); color: var(--ui-text-primary);" />
-          <button type="button" class="px-1.5 py-0.5 rounded-r border text-xs hover:opacity-90" style="border-color: var(--ui-border);" onclick={stepBatchUp} title="Double">▲</button>
+          <button type="button" class="px-1.5 py-0.5 rounded-r border text-xs hover:opacity-90" style="border-color: var(--ui-border);" onclick={stepBatchUp} aria-label="Increase batch size" title="Double">▲</button>
         </div>
       </div>
       <div class="flex items-center gap-2">
@@ -843,7 +868,7 @@
     <button
       type="button"
       class="w-full py-2 px-4 rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity flex items-center justify-center gap-2"
-      style="background-color: var(--ui-accent); color: white;"
+      style="background-color: var(--ui-action, var(--ui-accent)); color: var(--ui-action-ink, white);"
       onclick={save}
       disabled={loadApplying || !currentModelId}
       title="Save all settings for this model and load it with LM Studio">

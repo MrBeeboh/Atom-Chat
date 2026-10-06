@@ -8,6 +8,7 @@
 
 import { requestChatCompletion } from '$lib/api.js';
 import { findLargestModel } from '$lib/utils/modelSelection.js';
+import { resolveLocalContextLength } from '$lib/localHardwareConfig.js';
 
 const HF_BASE = typeof import.meta !== 'undefined' && import.meta.env?.DEV ? '/api/hf' : 'https://huggingface.co';
 const HF_API = `${HF_BASE}/api`;
@@ -236,7 +237,6 @@ async function tryOllamaLibrary(modelId) {
     const match = models[0];
     if (!match) return null;
     result.source = `Ollama: ${match.name}`;
-    result.settings.context_length = 4096;
     return result;
   } catch (_) {
     return null;
@@ -285,7 +285,10 @@ export async function fetchOptimalSettings(modelId) {
   }
 
   const fromReadme = parseReadmeSettings(readme);
+  const modelMax = result.settings.context_length;
   Object.assign(result.settings, fromReadme);
+  // README llama.cpp examples often use -c 32768. Prefer GGUF / config max when we have it.
+  result.settings.context_length = resolveLocalContextLength(result.settings.context_length, modelMax);
 
   const readmePrompt = parseReadmePrompt(readme);
   if (readmePrompt && !result.prompt) result.prompt = readmePrompt;
@@ -363,6 +366,7 @@ function parseLlmResponseForSettings(text) {
     }
   } catch (_) {}
 
+  if (out.context_length != null) out.context_length = resolveLocalContextLength(out.context_length);
   return out;
 }
 

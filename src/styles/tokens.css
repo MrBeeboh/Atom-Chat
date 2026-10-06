@@ -62,6 +62,7 @@
   --text-4xl-line: 2.5rem;
 
   /* Font families (theme may override semantic --ui-font) */
-  --font-sans: 'Inter', system-ui, ui-sans-serif, sans-serif;
-  --font-mono: ui-monospace, 'Cascadia Code', 'Consolas', monospace;
+  --font-sans: 'Outfit', system-ui, ui-sans-serif, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Code', 'Consolas', monospace;
+  --font-display: 'Syne', 'Outfit', system-ui, sans-serif;
 }

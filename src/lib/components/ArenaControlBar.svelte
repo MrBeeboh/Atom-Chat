@@ -1,242 +1,334 @@
 <script>
-  import { playClick } from "$lib/audio.js";
-  import {
-    arenaWebSearchMode,
-    webSearchForNextMessage,
-    webSearchConnected,
-    isStreaming,
-    settings,
-    models,
-    arenaScoringModelId,
-  } from "$lib/stores.js";
+  import { isStreaming } from "$lib/stores.js";
 
-  // Props
-  export let currentQuestionNum = 0;
-  export let currentQuestionTotal = 0;
-  export let parsedQuestions = [];
-  export let builtQuestionCount = 0;
-  export let buildArenaInProgress = false;
-  export let runAllActive = false;
-  export let runAllProgress = { current: 0, total: 0 };
-  export let arenaWebWarmingUp = false;
-  export let arenaWebWarmUpAttempted = false;
+  let {
+    currentQuestionNum = 0,
+    currentQuestionTotal = 0,
+    currentQuestionText = "",
+    parsedQuestions = [],
+    builtQuestionCount = 0,
+    buildArenaInProgress = false,
+    buildArenaError = "",
+    runAllActive = false,
+    runAllProgress = { current: 0, total: 0 },
+    sequentialByContestant = false,
+    sequentialToggleDisabled = false,
+    controlsBusy = false,
+    onToggleSequential = () => {},
+    onOpenLoadModal = () => {},
+    onBuildArena = () => {},
+    prevQuestion = () => {},
+    jumpToQuestion = (_num) => {},
+    advanceQuestionIndex = () => {},
+    askCurrentQuestion = () => {},
+    askNextQuestion = () => {},
+    runAllQuestions = () => {},
+    runAllButtonTitle = "Run every question in order; judge scores after each",
+    stopRunAll = () => {},
+    startOver = () => {},
+    onToggleQuestionPanel = () => {},
+    arenaWebWarmingUp = false,
+    resetWebWarmUpAttempted = () => {},
+    runArenaWarmUp = () => {},
+  } = $props();
 
-  // Callbacks (parent handles)
-  export let onBuildArena = () => {};
-  export let prevQuestion = () => {};
-  export let jumpToQuestion = (_num) => {};
-  export let advanceQuestionIndex = () => {};
-  export let askCurrentQuestion = () => {};
-  export let askNextQuestion = () => {};
-  export let runAllQuestions = () => {};
-  export let stopRunAll = () => {};
-  export let runArenaWarmUp = () => {};
-  export let startOver = () => {};
+  let questionSelectTitle = $derived(
+    currentQuestionText?.trim() ||
+    (currentQuestionTotal > 0 ? `Question ${currentQuestionNum} of ${currentQuestionTotal}` : "")
+  );
+  let hasQuestions = $derived(currentQuestionTotal > 0);
 </script>
 
-<!-- === Arena control bar: Setup | Execution | Scoring | Web | Tools === -->
-<div
-  class="arena-question-bar shrink-0 flex items-center px-4 py-2.5 gap-4 flex-wrap"
-  style="background: color-mix(in srgb, var(--ui-accent) 4%, var(--ui-bg-sidebar));"
-  role="toolbar"
->
-  <div
-    class="flex items-center gap-2 shrink-0"
-    aria-label="Arena Setup"
-  >
-    <span class="text-[11px] font-medium uppercase tracking-wide shrink-0" style="color: var(--ui-text-secondary);">Setup</span>
+<div class="arena-command-toolbar" role="toolbar" aria-label="Arena run controls">
+  <div class="arena-tool-start">
+    {#if hasQuestions}
+      <button type="button" class="arena-btn arena-btn-quiet" onclick={onOpenLoadModal} title="Replace or add question set">Replace…</button>
+    {:else}
+      <button type="button" class="arena-btn arena-btn-primary" onclick={onOpenLoadModal} title="Import JSON or Q&A text, or generate with AI">Load questions</button>
+    {/if}
     <button
       type="button"
-      class="h-8 px-3 rounded-lg text-xs font-semibold shrink-0 transition-opacity hover:opacity-90 disabled:opacity-50"
-      style="background: var(--ui-input-bg); color: var(--ui-text-primary);"
+      class="arena-btn"
       disabled={buildArenaInProgress}
       onclick={onBuildArena}
-      aria-label="Build Arena (generate question set with judge)"
-      title="Load judge, generate question set, then unload judge. Judge Internet Access is set in Arena Settings."
-    >{buildArenaInProgress ? "Building…" : "Build Arena"}</button>
-    {#if builtQuestionCount > 0}
-      <span
-        class="h-8 px-2.5 rounded-lg text-xs font-medium flex items-center"
-        style="color: var(--ui-text-secondary);"
-        aria-label="{builtQuestionCount} questions in set"
-      >{builtQuestionCount} Q</span>
+      title="Generate questions using the judge model"
+    >{buildArenaInProgress ? "Building…" : "Build"}</button>
+    {#if buildArenaError}
+      <span class="arena-build-error" title={buildArenaError}>{buildArenaError}</span>
+    {/if}
+    {#if builtQuestionCount > 0 && builtQuestionCount !== currentQuestionTotal}
+      <span class="arena-built-count" title="Built questions not in the current set">{builtQuestionCount} built</span>
     {/if}
   </div>
 
-  <div class="flex items-center gap-2 shrink-0" aria-label="Question and run">
-    <div class="flex items-center gap-0.5 shrink-0" aria-label="Question navigation">
+  <div class="arena-tool-run" aria-label="Run questions">
+    <div class="arena-stepper">
       <button
         type="button"
-        class="flex items-center justify-center w-8 h-8 rounded-lg text-sm font-medium disabled:opacity-30 transition-opacity hover:opacity-80"
-        style="background: var(--ui-input-bg); color: var(--ui-text-primary);"
-        disabled={currentQuestionTotal === 0 || currentQuestionNum <= 1}
+        disabled={!hasQuestions || currentQuestionNum <= 1}
         onclick={prevQuestion}
-        aria-label="Previous question"
         title="Previous question"
-      >◀</button>
-      {#if currentQuestionTotal > 0}
+        aria-label="Previous question"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 18l-6-6 6-6" /></svg>
+      </button>
+      {#if hasQuestions}
         <select
-          class="h-8 min-w-20 max-w-48 pl-2.5 pr-6 text-sm font-medium tabular-nums rounded-lg cursor-pointer"
-          style="background: var(--ui-input-bg); color: var(--ui-text-primary);"
-          aria-label="Current question"
+          title={questionSelectTitle}
           value={currentQuestionNum}
           onchange={(e) => jumpToQuestion(e.currentTarget.value)}
         >
-          {#each Array(currentQuestionTotal) as _, i}
-            {@const q = parsedQuestions[i]}
-            {@const qStr = q != null ? (typeof q === 'string' ? q : (q.text ?? '')) : ''}
-            {@const qPreview = qStr ? qStr.slice(0, 40) + (qStr.length > 40 ? "…" : "") : ""}
-            <option value={i + 1}>Q{i + 1}{qPreview ? ": " + qPreview : ""}</option>
+          {#each Array(currentQuestionTotal) as _, i (i)}
+            <option value={i + 1}>Q{i + 1} / {currentQuestionTotal}</option>
           {/each}
         </select>
       {:else}
-        <span class="px-2 text-sm" style="color: var(--ui-text-secondary);">No questions</span>
+        <span class="arena-stepper-empty">No questions</span>
       {/if}
       <button
         type="button"
-        class="flex items-center justify-center w-8 h-8 rounded-lg text-sm font-medium disabled:opacity-30 transition-opacity hover:opacity-80"
-        style="background: var(--ui-input-bg); color: var(--ui-text-primary);"
-        disabled={currentQuestionTotal === 0 || currentQuestionNum >= currentQuestionTotal}
+        disabled={!hasQuestions || currentQuestionNum >= currentQuestionTotal}
         onclick={advanceQuestionIndex}
-        aria-label="Next question"
         title="Next question"
-      >▶</button>
+        aria-label="Next question"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 18l6-6-6-6" /></svg>
+      </button>
     </div>
-    <div class="flex items-center gap-1.5 shrink-0">
+    {#if hasQuestions}
       <button
         type="button"
-        class="h-8 px-4 rounded-lg text-xs font-bold shrink-0 disabled:opacity-40 transition-opacity"
-        style="background: var(--ui-accent); color: var(--ui-bg-main);"
-        disabled={$isStreaming || currentQuestionTotal === 0}
-        onclick={askCurrentQuestion}
-        aria-label="Ask this question"
-        title="Send the current question to all models"
-      >Ask</button>
-      <button
-        type="button"
-        class="h-8 px-3 rounded-lg text-xs font-medium shrink-0 disabled:opacity-40 transition-opacity hover:opacity-90"
-        style="background: var(--ui-input-bg); color: var(--ui-text-primary);"
-        disabled={$isStreaming || currentQuestionTotal === 0 || currentQuestionNum >= currentQuestionTotal}
-        onclick={askNextQuestion}
-        aria-label="Next question and ask"
-        title="Advance to next question and send it"
-      >Next</button>
-      {#if runAllActive}
-        <button
-          type="button"
-          class="h-8 px-3 rounded-lg text-xs font-semibold shrink-0 transition-opacity"
-          style="background: var(--ui-accent-hot, #dc2626); color: white;"
-          onclick={stopRunAll}
-          title="Stop Run All"
-        >Stop ({runAllProgress.current}/{runAllProgress.total})</button>
-      {:else}
-        <button
-          type="button"
-          class="h-8 px-3 rounded-lg text-xs font-medium shrink-0 disabled:opacity-40 transition-opacity hover:opacity-90"
-          style="background: var(--ui-input-bg); color: var(--ui-text-primary);"
-          disabled={$isStreaming || currentQuestionTotal < 2}
-          onclick={runAllQuestions}
-          aria-label="Run all questions"
-          title="Run all questions sequentially with automated scoring"
-        >Run All</button>
-      {/if}
-    </div>
-  </div>
-
-  <div class="flex items-center gap-2 shrink-0" aria-label="Scoring model">
-    <span class="text-[11px] font-medium uppercase tracking-wide shrink-0" style="color: var(--ui-text-secondary);">Scoring</span>
-    <select
-      id="arena-judge-select"
-      class="h-8 min-w-32 max-w-44 pl-2.5 pr-7 text-sm font-medium rounded-lg cursor-pointer truncate"
-      style="background: var(--ui-input-bg); color: var(--ui-text-primary);"
-      aria-label="Override judge (scoring) model"
-      title="Choose which model scores answers. Auto = largest non-contestant."
-      value={$arenaScoringModelId || "__auto__"}
-      onchange={(e) => {
-        const v = e.currentTarget?.value;
-        arenaScoringModelId.set(v === "__auto__" || !v ? "" : v);
-        if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume);
-      }}
-    >
-      <option value="__auto__">Auto</option>
-      {#each $models as m (m.id)}
-        <option value={m.id}>{m.id}</option>
-      {/each}
-    </select>
-  </div>
-
-  <div class="flex items-center gap-2 shrink-0" aria-label="Web search">
-    <span class="text-[11px] font-medium uppercase tracking-wide shrink-0" style="color: var(--ui-text-secondary);">Web</span>
+        class="arena-btn arena-btn-quiet arena-icon"
+        onclick={onToggleQuestionPanel}
+        title="Show question in floating panel"
+        aria-label="Show question in floating panel"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>
+      </button>
+    {/if}
     <button
       type="button"
-      class="arena-globe-btn relative flex items-center justify-center shrink-0 w-8 h-8 rounded-lg transition-opacity hover:opacity-90"
-      class:arena-globe-active={$webSearchForNextMessage}
-      style="background: {$webSearchForNextMessage ? 'color-mix(in srgb, var(--ui-accent) 18%, var(--ui-input-bg))' : 'var(--ui-input-bg)'};"
-      disabled={$isStreaming}
-      title={arenaWebWarmingUp ? "Connecting…" : $webSearchForNextMessage ? ($webSearchConnected ? "Connected – click to disconnect" : "Not connected – click to retry") : "Connect to internet"}
-      onclick={() => {
-        const on = $webSearchForNextMessage;
-        const connected = $webSearchConnected;
-        if (on && !connected && !arenaWebWarmingUp) {
-          arenaWebWarmUpAttempted = false;
-          runArenaWarmUp();
-          return;
-        }
-        if (on) {
-          webSearchForNextMessage.set(false);
-          webSearchConnected.set(false);
-          return;
-        }
-        webSearchForNextMessage.set(true);
-        runArenaWarmUp();
-      }}
-      aria-label={arenaWebWarmingUp ? "Connecting" : $webSearchForNextMessage ? "Web connected" : "Connect to web"}
-      aria-pressed={$webSearchForNextMessage}
+      class="arena-btn"
+      class:arena-btn-primary={hasQuestions}
+      disabled={controlsBusy || $isStreaming || !hasQuestions}
+      onclick={askCurrentQuestion}
+      title="Send the current question to every active panel"
+    >Ask</button>
+    <button
+      type="button"
+      class="arena-btn"
+      disabled={controlsBusy || $isStreaming || !hasQuestions || currentQuestionNum >= currentQuestionTotal}
+      onclick={askNextQuestion}
+      title="Advance to the next question and send it"
+    >Next</button>
+    <div
+      class="arena-seq-pills"
+      role="group"
+      aria-label="Run order"
+      title="One model at a time: each contestant answers every question before the next model loads"
     >
-      <span class="text-base leading-none" class:arena-globe-spin={arenaWebWarmingUp} aria-hidden="true">🌐</span>
-      {#if $webSearchForNextMessage}
-        {#if $webSearchConnected}
-          <span class="arena-globe-dot arena-globe-dot-green" aria-hidden="true"></span>
-        {:else}
-          <span class="arena-globe-dot arena-globe-dot-red" class:arena-globe-dot-pulse={arenaWebWarmingUp} aria-hidden="true"></span>
-        {/if}
-      {/if}
-    </button>
-    <div class="flex h-8 rounded-lg overflow-hidden" style="background: var(--ui-input-bg); opacity: {$webSearchForNextMessage && $webSearchConnected ? '1' : '0.6'};">
       <button
         type="button"
-        class="arena-web-tab h-full px-2.5 text-xs font-medium min-w-0"
-        class:active={$arenaWebSearchMode === "none"}
-        style="color: var(--ui-text-primary);"
-        onclick={() => {
-          arenaWebSearchMode.set("none");
-          if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume);
-        }}
-        title="No web search"
-      >None</button>
+        class="arena-seq-pill"
+        aria-pressed={!sequentialByContestant}
+        disabled={sequentialToggleDisabled}
+        onclick={() => onToggleSequential(false)}
+      >Round</button>
       <button
         type="button"
-        class="arena-web-tab h-full px-2.5 text-xs font-medium min-w-0"
-        class:active={$arenaWebSearchMode === "all"}
-        style="color: var(--ui-text-primary);"
-        onclick={() => {
-          arenaWebSearchMode.set("all");
-          if ($settings.audio_enabled && $settings.audio_clicks) playClick($settings.audio_volume);
-        }}
-        title="Judge gets web context"
-      >All</button>
+        class="arena-seq-pill"
+        aria-pressed={sequentialByContestant}
+        disabled={sequentialToggleDisabled}
+        onclick={() => onToggleSequential(true)}
+      >Sequential</button>
     </div>
+    {#if runAllActive}
+      <button type="button" class="arena-btn arena-btn-stop" onclick={stopRunAll} title="Stop Run All">
+        Stop {runAllProgress.current}/{runAllProgress.total}
+      </button>
+    {:else}
+      <button
+        type="button"
+        class="arena-btn"
+        class:arena-btn-muted={!runAllActive && ($isStreaming || currentQuestionTotal < 2)}
+        onclick={runAllQuestions}
+        title={runAllButtonTitle}
+        aria-label={runAllButtonTitle}
+      >Run all</button>
+    {/if}
   </div>
 
-  <button
-    type="button"
-    class="flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-medium shrink-0 transition-opacity hover:opacity-90"
-    style="color: var(--ui-accent-hot, #dc2626);"
-    onclick={startOver}
-    aria-label="Start over"
-    title="Clear all responses, reset scores, go back to Q1"
-  >
-    <span aria-hidden="true">⟲</span>
-    Start Over
-  </button>
+  <div class="arena-tool-end">
+    <button
+      type="button"
+      class="arena-btn arena-btn-quiet"
+      onclick={startOver}
+      title="Clear all responses, reset scores, go back to question 1"
+    >
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+      Reset
+    </button>
+  </div>
 </div>
+
+<style>
+  .arena-command-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: auto;
+    min-height: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+  .arena-tool-start,
+  .arena-tool-run,
+  .arena-tool-end {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .arena-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 30px;
+    padding: 0 12px;
+    border-radius: 8px;
+    border: 1px solid var(--ui-border);
+    background: var(--ui-input-bg);
+    color: var(--ui-text-primary);
+    font-size: 12px;
+    font-weight: 650;
+    line-height: 1;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .arena-btn svg {
+    width: 14px;
+    height: 14px;
+    flex: 0 0 auto;
+  }
+  .arena-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+  .arena-btn-primary {
+    border-color: transparent;
+    background: var(--ui-action, var(--ui-accent));
+    color: var(--ui-action-ink, var(--ui-bg-main));
+  }
+  .arena-btn-quiet {
+    background: transparent;
+    color: var(--ui-text-secondary);
+  }
+  .arena-btn-stop {
+    border-color: var(--ui-accent-hot, #9f2d2d);
+    color: var(--ui-accent-hot, #9f2d2d);
+    background: color-mix(in srgb, var(--ui-accent-hot, #9f2d2d) 8%, var(--ui-input-bg));
+    font-weight: 700;
+  }
+  .arena-btn-muted:not(:disabled) {
+    opacity: 0.72;
+  }
+  .arena-icon {
+    width: 30px;
+    padding: 0;
+  }
+  .arena-stepper {
+    display: inline-flex;
+    align-items: stretch;
+    height: 30px;
+    border: 1px solid var(--ui-border);
+    border-radius: 8px;
+    background: var(--ui-input-bg);
+    overflow: hidden;
+  }
+  .arena-stepper button {
+    width: 28px;
+    border: 0;
+    background: transparent;
+    color: var(--ui-text-primary);
+    cursor: pointer;
+  }
+  .arena-stepper button:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+  .arena-stepper svg {
+    width: 14px;
+    height: 14px;
+    display: block;
+    margin: 0 auto;
+  }
+  .arena-stepper select {
+    width: 5.6rem;
+    border: 0;
+    border-left: 1px solid var(--ui-border);
+    border-right: 1px solid var(--ui-border);
+    background: transparent;
+    color: var(--ui-text-primary);
+    font-size: 12px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+    cursor: pointer;
+  }
+  .arena-stepper-empty {
+    display: flex;
+    align-items: center;
+    padding: 0 10px;
+    border-left: 1px solid var(--ui-border);
+    border-right: 1px solid var(--ui-border);
+    color: var(--ui-text-secondary);
+    font-size: 12px;
+    font-weight: 650;
+    white-space: nowrap;
+  }
+  .arena-seq-pills {
+    display: inline-flex;
+    align-items: stretch;
+    height: 30px;
+    border: 1px solid var(--ui-border);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--ui-input-bg);
+  }
+  .arena-seq-pill {
+    height: 30px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--ui-text-secondary);
+    font-size: 12px;
+    font-weight: 650;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .arena-seq-pill + .arena-seq-pill {
+    border-left: 1px solid var(--ui-border);
+  }
+  .arena-seq-pill[aria-pressed="true"] {
+    background: var(--ui-action, var(--ui-accent));
+    color: var(--ui-action-ink, var(--ui-bg-main));
+  }
+  .arena-seq-pill:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+  .arena-build-error,
+  .arena-built-count {
+    max-width: 14rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 11px;
+    font-weight: 650;
+  }
+  .arena-build-error { color: var(--ui-accent-hot, #9f2d2d); }
+  .arena-built-count { color: var(--ui-text-secondary); }
+</style>

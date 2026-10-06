@@ -3,7 +3,15 @@ import svelte from 'eslint-plugin-svelte'
 import globals from 'globals'
 
 export default [
-  { ignores: ['dist/', 'node_modules/'] },
+  {
+    ignores: [
+      'dist/',
+      'node_modules/',
+      '**/.venv/**',
+      '**/__pycache__/**',
+      '**/*.log',
+    ],
+  },
   js.configs.recommended,
   ...svelte.configs['flat/recommended'],
   {
