@@ -61,6 +61,7 @@
     flashNextHasVision,
   } from "$lib/api.js";
   import { assistantStatsFromUsage, modelPricingCatalog } from "$lib/modelPricing.js";
+  import { arenaContextGuard } from "$lib/arenaContextGuard.js";
   import { prepareArenaModelList } from "$lib/arenaModelList.js";
   import { isArenaModelEligible } from "$lib/providerFunding.js";
   import {
@@ -1046,6 +1047,8 @@
   let arenaPickQuantity = $state(Math.min(4, Math.max(1, Number(storedPick("arenaPickQuantity", "2")) || 2)));
   let identityRevealed = $state(arenaPickMode === "named");
   let arenaLineupStatus = $state("");
+  // Context guard: show "KV cache reset: <model> at NN% (reason)" in the existing lineup status line.
+  arenaContextGuard.setNoteHandler((note) => { arenaLineupStatus = note; });
   $effect(() => {
     if (typeof localStorage === "undefined") return;
     localStorage.setItem("arenaPickMode", arenaPickMode);
@@ -1248,6 +1251,8 @@
       { role: "system", content: ARENA_CONTESTANT_SYSTEM_PROMPT },
       { role: "user", content: question },
     ];
+    // Local models only; best-effort, short timeout, never throws.
+    await arenaContextGuard.beforeQuestion(modelId, { messages, maxTokens: slotOpts.max_tokens });
 
     const startMs = performance.now();
     let fullContent = "";
@@ -1264,6 +1269,7 @@
     for (let attempt = 1; attempt <= 2; attempt++) {
       const controller = new AbortController();
       aborters[slot] = controller;
+      arenaContextGuard.beginRequest(modelId);
       const timeoutId = setTimeout(() => controller.abort(), softTimeoutMs);
       try {
         streamResult = await streamChatCompletion({
@@ -1344,6 +1350,7 @@
         return undefined;
       } finally {
         clearTimeout(timeoutId);
+        arenaContextGuard.endRequest(modelId);
         liveTpsBySlot = { ...liveTpsBySlot, [slot]: null };
         if (aborters[slot] === controller) {
           setRunning(slot, false);
@@ -1384,6 +1391,8 @@
         latency: elapsedMs,
       });
     }
+    // Wipe this model's KV slot in place at >= 75% of n_ctx before the next question.
+    await arenaContextGuard.afterAnswer(modelId, { usage, timings: streamResult?.timings });
     return { latency_ms: elapsedMs, token_count: tokenCount, timestamp: Date.now() };
   }
 
