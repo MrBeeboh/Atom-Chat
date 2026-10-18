@@ -132,7 +132,7 @@
   } from "$lib/arenaLogic.js";
   import { buildArenaReport, roundEntryFromMessages } from "$lib/arenaReport.js";
   import { rowsForJudgedRound } from "$lib/arenaRecordRows.js";
-  import { bytesToBase64, lastTps } from "$lib/arenaView.js";
+  import { lastTps } from "$lib/arenaView.js";
   import {
     arenaContestantCounts,
     arenaRoundRunAllSendOpts,
@@ -577,8 +577,8 @@
   let reportStanding = $state(null);
   let reportFilenameSaved = $state("");
   let reportBusy = $state(false);
-  /** @type {Uint8Array | null} */
-  let lastReportPdf = null;
+  /** @type {string | null} */
+  let lastReportHtml = null;
   const scoreTotals = $derived(computeTotals(scoreHistory));
   const categoryRoll = $derived(contestCategoryTotals(scoreHistory));
   const contestComplete = $derived(
@@ -792,7 +792,7 @@
     reportHeadline = "";
     reportStanding = null;
     reportFilenameSaved = "";
-    lastReportPdf = null;
+    lastReportHtml = null;
     lastJudgedRunId = null;
     clearScoreHistory();
   }
@@ -807,24 +807,17 @@
   }
 
   function openReportFile() {
-    if (reportFilenameSaved) {
-      window.open(`/api/atom-arena-report?file=${encodeURIComponent(reportFilenameSaved)}`, "_blank", "noopener");
+    if (lastReportHtml) {
+      const blob = new Blob([lastReportHtml], { type: "text/html" });
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 5 * 60 * 1000);
       return;
     }
-    if (!lastReportPdf) return;
-    const blob = new Blob([lastReportPdf], { type: "application/pdf" });
-    const url = URL.createObjectURL(blob);
-    window.open(url, "_blank", "noopener");
-  }
-
-  let reportLayout = $state(
-    typeof localStorage !== "undefined" && localStorage.getItem("arenaReportLayout") === "long" ? "long" : "compact",
-  );
-  $effect(() => {
-    if (typeof localStorage !== "undefined") {
-      localStorage.setItem("arenaReportLayout", reportLayout === "long" ? "long" : "compact");
+    if (reportFilenameSaved) {
+      window.open(`/api/atom-arena-report?file=${encodeURIComponent(reportFilenameSaved)}`, "_blank", "noopener");
     }
-  });
+  }
 
   async function writeSessionReport(roundRecord = null) {
     if (!sessionRounds.length) return null;
@@ -832,7 +825,6 @@
       rounds: sessionRounds,
       modelBySlot: currentModelBySlot(),
       generatedAt: new Date(),
-      layout: reportLayout,
     });
     reportHeadline = report.winner.headline;
     reportStanding = {
@@ -840,7 +832,7 @@
       slots: report.winner.slots || [],
       points: report.winner.points,
     };
-    lastReportPdf = report.pdf;
+    lastReportHtml = report.html;
     reportFilenameSaved = "";
     try {
       const res = await fetch("/api/atom-arena-report", {
@@ -848,14 +840,14 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           filename: report.filename,
-          pdfBase64: bytesToBase64(report.pdf),
+          html: report.html,
           ...(roundRecord ? { record: roundRecord } : {}),
         }),
       });
       const json = await res.json().catch(() => ({}));
       if (res.ok && json?.ok && json.filename) reportFilenameSaved = json.filename;
     } catch (_) {
-      /* The button still opens the in-memory PDF. */
+      /* The button still opens the in-memory report. */
     }
     return report;
   }
@@ -871,7 +863,7 @@
     }
   }
 
-  function rememberJudgedRound(qIdx, qText, roundScores, slotsWithResponses, category) {
+  function rememberJudgedRound(qIdx, qText, roundScores, slotsWithResponses, category, comments = {}) {
     const entry = roundEntryFromMessages({
       questionIndex: qIdx,
       questionText: qText,
@@ -880,6 +872,7 @@
       modelBySlot: currentModelBySlot(),
       catalog: get(modelPricingCatalog),
       category,
+      comments,
     });
     const next = sessionRounds.filter((r) => r.questionIndex !== qIdx);
     next.push(entry);
@@ -887,7 +880,7 @@
     sessionRounds = next;
     const record = rowsForJudgedRound({
       entry,
-      layout: reportLayout,
+      layout: "long",
       arena: arenaPickMode === "anonymous" ? arenaBattle : "",
       startedAt: new Date().toISOString(),
       nameForId: modelDisplayName,
@@ -924,7 +917,7 @@
     reportHeadline = "";
     reportStanding = null;
     reportFilenameSaved = "";
-    lastReportPdf = null;
+    lastReportHtml = null;
     lastJudgedRunId = null;
     clearScoreHistory();
     // Reset to Q1
@@ -2234,18 +2227,21 @@
       let roundScores;
       let displayExplanation = fullContent;
       let popupExplanations = /** @type {Record<string, string> | undefined} */ (undefined);
+      let roundComments = /** @type {Record<string, string>} */ ({});
       if (useBlindReview && responseOrder) {
         const blindMerged = parseBlindJudgeScoresMerged(fullContent, responseOrder);
         const blind = parseBlindJudgeScores(fullContent, responseOrder);
         const blindLenient = parseBlindJudgeScoresLenient(fullContent, responseOrder);
         roundScores = blindMerged.scores;
         popupExplanations = { ...blindLenient.explanations, ...blind.explanations };
+        roundComments = popupExplanations;
         const lines = ["A", "B", "C", "D"]
           .filter((slot) => roundScores[slot] !== undefined)
           .map((slot) => `Model ${slot}: ${roundScores[slot]}/10 - ${(blind.explanations[slot] || "").trim() || "—"}`);
         displayExplanation = lines.join("\n");
       } else {
         roundScores = parseJudgeScoresMerged(fullContent).scores;
+        roundComments = parseJudgeScoresAndExplanations(fullContent).explanations;
       }
       const qIdx = questionIndex % Math.max(1, parsedQuestions.length);
       const parsedOk = Object.keys(roundScores).length > 0;
@@ -2268,7 +2264,7 @@
           const category = typeof qCat === "string" ? qCat.trim() : "";
           scoreHistory = addScoreRound(scoreHistory, qIdx, qText, roundScores, category);
           arenaScores = computeTotals(scoreHistory);
-          rememberJudgedRound(qIdx, qText, roundScores, slotsWithResponses, category);
+          rememberJudgedRound(qIdx, qText, roundScores, slotsWithResponses, category, roundComments);
           if (arenaCurrentRunMeta?.run_id) lastJudgedRunId = arenaCurrentRunMeta.run_id;
         }
         judgmentPopup = {
@@ -2679,10 +2675,6 @@
     {:else if reportHeadline}
       <span class="arena-standing" title={reportHeadline}>{reportHeadline}</span>
     {/if}
-    <div class="arena-seg" role="group" aria-label="Report length">
-      <button type="button" aria-pressed={reportLayout === 'compact'} onclick={() => (reportLayout = 'compact')} title="Compact report">Compact</button>
-      <button type="button" aria-pressed={reportLayout === 'long'} onclick={() => (reportLayout = 'long')} title="Long report">Long</button>
-    </div>
     <button
       type="button"
       class="arena-report-btn"

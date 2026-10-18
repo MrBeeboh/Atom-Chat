@@ -3,7 +3,7 @@ import path from 'node:path';
 import { appendArenaRecord } from '../src/lib/arenaRecordStore.js';
 
 /**
- * Writes arena session PDFs under arena-reports/. Does not touch model files.
+ * Writes arena session reports (HTML pages that print to PDF) under arena-reports/. Does not touch model files.
  * @param {string} root app root
  */
 export function vitePluginArenaReport(root) {
@@ -16,7 +16,7 @@ export function vitePluginArenaReport(root) {
         if (!url.startsWith('/api/atom-arena-report')) return next();
         if (req.method === 'GET') {
           const file = path.basename(new URL(url, 'http://localhost').searchParams.get('file') || '');
-          if (!file.endsWith('.pdf')) {
+          if (!/\.(html|pdf)$/.test(file)) {
             res.statusCode = 400;
             res.end('bad file');
             return;
@@ -27,7 +27,12 @@ export function vitePluginArenaReport(root) {
             res.end('missing');
             return;
           }
-          res.setHeader('Content-Type', 'application/pdf');
+          if (file.endsWith('.html')) {
+            res.setHeader('Content-Type', 'text/html; charset=utf-8');
+            res.setHeader('Content-Security-Policy', "default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'");
+          } else {
+            res.setHeader('Content-Type', 'application/pdf');
+          }
           fs.createReadStream(full).pipe(res);
           return;
         }
@@ -42,9 +47,10 @@ export function vitePluginArenaReport(root) {
           try {
             const json = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
             const file = path.basename(String(json.filename || ''));
-            if (!/^arena-session-[\w.-]+\.pdf$/.test(file)) throw new Error('bad name');
-            const buf = Buffer.from(String(json.pdfBase64 || ''), 'base64');
-            if (buf.length < 5 || buf.subarray(0, 5).toString() !== '%PDF-') throw new Error('not a pdf');
+            if (!/^arena-session-[\w.-]+\.html$/.test(file)) throw new Error('bad name');
+            const html = String(json.html || '');
+            if (!/^<!doctype html>/i.test(html)) throw new Error('not an html report');
+            const buf = Buffer.from(html, 'utf8');
             fs.mkdirSync(dir, { recursive: true });
             const full = path.join(dir, file);
             fs.writeFileSync(full, buf);
