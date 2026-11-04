@@ -1,7 +1,7 @@
 <script>
   import { get } from 'svelte/store';
   import { onDestroy, tick } from 'svelte';
-  import { isStreaming, voiceServerUrl, pendingDroppedFiles, insertChatPrompt, webSearchForNextMessage, webSearchInProgress, webSearchConnected, layout, braveApiKey, grokApiKey } from '$lib/stores.js';
+  import { isStreaming, pendingDroppedFiles, insertChatPrompt, webSearchForNextMessage, webSearchInProgress, webSearchConnected, layout, braveApiKey, grokApiKey } from '$lib/stores.js';
   import { GrokVoiceSession, currentVoiceAgentPrompt, DEFAULT_VOICE_ID } from '$lib/grokVoice.js';
   import ThinkingAtom from '$lib/components/ThinkingAtom.svelte';
   import { COCKPIT_SENDING, COCKPIT_SEARCHING, pickWitty } from '$lib/cockpitCopy.js';
@@ -21,16 +21,8 @@
   let text = $state('');
   let textareaEl = $state(null);
   let fileInputEl = $state(/** @type {HTMLInputElement | null} */ (null));
-  let recording = $state(false);
-  let voiceProcessing = $state(false);
   let voiceError = $state(null);
-  let mediaRecorder = $state(null);
-  let voiceStream = $state(null); // so we can release mic immediately on stop
-  let recordingChunks = $state([]);
-  let recordingStartMs = $state(0);
-  const MAX_RECORDING_MS = 90_000; // 90 s cap
-  let recordingTimerId = $state(null);
-  /** Live Grok voice session for Talk. Null when hung up. */
+  /** Live Grok voice session. Null when hung up. */
   let talkSession = $state(/** @type {GrokVoiceSession | null} */ (null));
   let talkState = $state(/** @type {'idle'|'connecting'|'connected'|'listening'|'speaking'|'disconnected'|'error'} */ ('idle'));
 
@@ -412,110 +404,6 @@
     }
   });
 
-  function stopRecording() {
-    if (recordingTimerId != null) {
-      clearTimeout(recordingTimerId);
-      recordingTimerId = null;
-    }
-    // Release microphone immediately so the tab mic indicator goes away
-    if (voiceStream) {
-      voiceStream.getTracks().forEach((t) => t.stop());
-      voiceStream = null;
-    }
-    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-      mediaRecorder.stop();
-    }
-    recording = false;
-  }
-
-  async function startVoiceInput() {
-    const baseUrl = get(voiceServerUrl) ?? (typeof localStorage !== 'undefined' ? localStorage.getItem('voiceServerUrl') : null) ?? 'http://localhost:8765';
-    const url = (baseUrl || '').trim().replace(/\/$/, '');
-    if (!url) {
-      voiceError = 'Set Voice server URL in Settings (e.g. http://localhost:8765)';
-      return;
-    }
-    voiceError = null;
-    try {
-      // Check server is up before grabbing the mic (retry once after 2s if server is still starting)
-      async function checkHealth() {
-        const ac = new AbortController();
-        const to = setTimeout(() => ac.abort(), 3000);
-        const res = await fetch(`${url}/health`, { method: 'GET', signal: ac.signal });
-        clearTimeout(to);
-        return res;
-      }
-      let healthRes;
-      try {
-        healthRes = await checkHealth();
-      } catch (_) {
-        await new Promise((r) => setTimeout(r, 2000));
-        try {
-          healthRes = await checkHealth();
-        } catch (__) {
-          voiceError = `Voice server not running. Start the app with the startup script (scripts/start-atom.sh or the ATOM desktop icon) to run it automatically, or see VOICE-SETUP.md.`;
-          return;
-        }
-      }
-      if (!healthRes.ok) {
-        voiceError = `Voice server at ${url} returned ${healthRes.status}. Restart the app with the startup script or see VOICE-SETUP.md.`;
-        return;
-      }
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      voiceStream = stream;
-      recordingChunks = [];
-      const rec = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
-      mediaRecorder = rec;
-      rec.ondataavailable = (e) => { if (e.data.size > 0) recordingChunks.push(e.data); };
-      rec.onstop = async () => {
-        if (voiceStream) {
-          voiceStream.getTracks().forEach((t) => t.stop());
-          voiceStream = null;
-        }
-        if (recordingChunks.length === 0) {
-          voiceError = 'No audio recorded';
-          voiceProcessing = false;
-          return;
-        }
-        const blob = new Blob(recordingChunks, { type: 'audio/webm' });
-        try {
-          const form = new FormData();
-          form.append('audio', blob, 'audio.webm');
-          const res = await fetch(`${url}/transcribe`, { method: 'POST', body: form });
-          if (!res.ok) {
-            const err = await res.text();
-            throw new Error(err || `Server ${res.status}`);
-          }
-          const data = await res.json();
-          const transcribed = (data && data.text) ? String(data.text).trim() : '';
-          if (transcribed) text = text ? text + ' ' + transcribed : transcribed;
-        } catch (e) {
-          voiceError = e?.message || 'Voice server error. Is it running on ' + url + '?';
-        } finally {
-          voiceProcessing = false;
-        }
-      };
-      rec.start(1000);
-      recording = true;
-      recordingStartMs = Date.now();
-      voiceProcessing = true;
-      recordingTimerId = setTimeout(() => stopRecording(), MAX_RECORDING_MS);
-    } catch (e) {
-      voiceError = e?.message || 'Microphone access denied or unavailable';
-    }
-  }
-
-  function toggleVoice() {
-    if (talkSession) return;
-    // Always allow clicking to stop recording (don't block on voiceProcessing)
-    if (recording) {
-      stopRecording();
-      return;
-    }
-    if (voiceProcessing) return; // still uploading/transcribing
-    startVoiceInput();
-  }
-
   function stopTalk() {
     talkSession?.disconnect();
     talkSession = null;
@@ -523,10 +411,10 @@
   }
 
   async function startTalk() {
-    if (talkSession || recording || voiceProcessing) return;
+    if (talkSession) return;
     const apiKey = (get(grokApiKey) || '').trim();
     if (!apiKey) {
-      voiceError = 'Add your Grok (xAI) API key in Settings to use Talk.';
+      voiceError = 'Add your Grok (xAI) API key in Settings to use Voice.';
       return;
     }
     voiceError = null;
@@ -574,10 +462,10 @@
   });
 
   const talkStatus = $derived(
-    talkState === 'connecting' ? 'Talk — connecting…'
-    : talkState === 'speaking' ? 'Talk — Grok is speaking'
-    : talkState === 'listening' || talkState === 'connected' ? 'Talk — listening'
-    : talkState === 'error' ? 'Talk — error'
+    talkState === 'connecting' ? 'Voice — connecting…'
+    : talkState === 'speaking' ? 'Voice — Grok is speaking'
+    : talkState === 'listening' || talkState === 'connected' ? 'Voice — listening'
+    : talkState === 'error' ? 'Voice — error'
     : ''
   );
 </script>
@@ -703,10 +591,8 @@
   {/if}
   <button
     type="button"
-    class="talk-button"
-    class:talk-live={!!talkSession}
+    class={['talk-button', { 'talk-live': !!talkSession }]}
     title={talkSession ? 'Hang up Grok voice' : 'Talk — live Grok voice'}
-    disabled={!talkSession && (recording || voiceProcessing)}
     onclick={toggleTalk}
     aria-pressed={!!talkSession}
     aria-label={talkSession ? 'Hang up Talk' : 'Start Talk'}
@@ -715,19 +601,13 @@
   </button>
   <button
     type="button"
-    class="mic-button"
-    title={recording ? 'Stop recording (click again)' : 'Voice input – start Python server first'}
-    disabled={!!talkSession || $isStreaming || (voiceProcessing && !recording)}
-    onclick={toggleVoice}
-    aria-label={recording ? 'Stop recording' : 'Start voice input'}
+    class={['mic-button', { 'talk-live': !!talkSession }]}
+    title={talkSession ? 'Hang up Grok voice' : 'Voice — live Grok voice'}
+    onclick={toggleTalk}
+    aria-pressed={!!talkSession}
+    aria-label={talkSession ? 'Hang up Voice' : 'Voice'}
   >
-    {#if voiceProcessing && !recording}
-      <span class="mic-spinner" aria-hidden="true">⟳</span>
-    {:else if recording}
-      <span class="mic-dot" aria-hidden="true"></span>
-    {:else}
-      <span class="mic-icon" aria-hidden="true">🎤</span>
-    {/if}
+    {talkSession ? 'End' : 'Voice'}
   </button>
   <button
     type="button"
@@ -794,11 +674,6 @@
   </div>
   {#if talkStatus}
     <span class="voice-recording-hint" aria-live="polite">{talkStatus}</span>
-  {:else if recording}
-    <span class="voice-recording-hint" aria-live="polite">
-      <span class="recording-dot" aria-hidden="true"></span>
-      Recording – click mic to stop
-    </span>
   {/if}
   {#if voiceError}
     <p class="voice-error" role="alert">{voiceError}</p>
@@ -1167,8 +1042,8 @@
   }
   .mic-button {
     flex-shrink: 0;
-    width: 44px;
     min-height: 44px;
+    padding: 0 12px;
     border-radius: 10px;
     border: none;
     background: color-mix(in srgb, var(--ui-border, #e5e7eb) 25%, var(--ui-input-bg, #fff));
@@ -1177,8 +1052,13 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1.25rem;
+    font-size: 0.85rem;
+    font-weight: 600;
     transition: all 150ms;
+  }
+  .mic-button.talk-live {
+    background: color-mix(in srgb, var(--ui-accent-hot, #dc2626) 18%, var(--ui-input-bg, #fff));
+    color: var(--ui-accent-hot, #dc2626);
   }
   .mic-button:hover:not(:disabled) {
     background: color-mix(in srgb, var(--ui-accent, #3b82f6) 14%, var(--ui-input-bg, #fff));
@@ -1188,19 +1068,8 @@
     opacity: 0.5;
     cursor: not-allowed;
   }
-  .mic-dot {
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    background: var(--ui-accent-hot, #dc2626);
-    animation: pulse 1s ease-in-out infinite;
-  }
   .mic-spinner {
     animation: spin 0.8s linear infinite;
-  }
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.4; }
   }
   @keyframes spin {
     to { transform: rotate(360deg); }
@@ -1217,17 +1086,6 @@
     font-weight: 600;
     color: var(--ui-accent, #3b82f6);
     pointer-events: none;
-  }
-  .recording-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--ui-accent-hot, #ef4444);
-    animation: recording-pulse 1.2s ease-in-out infinite;
-  }
-  @keyframes recording-pulse {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.5; transform: scale(1.2); }
   }
   .voice-error,
   .attach-error {
