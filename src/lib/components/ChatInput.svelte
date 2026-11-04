@@ -1,14 +1,15 @@
 <script>
   import { get } from 'svelte/store';
-  import { tick } from 'svelte';
-  import { isStreaming, voiceServerUrl, pendingDroppedFiles, insertChatPrompt, webSearchForNextMessage, webSearchInProgress, webSearchConnected, layout, braveApiKey } from '$lib/stores.js';
+  import { onDestroy, tick } from 'svelte';
+  import { isStreaming, voiceServerUrl, pendingDroppedFiles, insertChatPrompt, webSearchForNextMessage, webSearchInProgress, webSearchConnected, layout, braveApiKey, grokApiKey } from '$lib/stores.js';
+  import { GrokVoiceSession, currentVoiceAgentPrompt, DEFAULT_VOICE_ID } from '$lib/grokVoice.js';
   import ThinkingAtom from '$lib/components/ThinkingAtom.svelte';
   import { COCKPIT_SENDING, COCKPIT_SEARCHING, pickWitty } from '$lib/cockpitCopy.js';
   import { warmUpSearchConnection, syncBraveKeyToProxy } from '$lib/duckduckgo.js';
   import { pdfToImageDataUrls } from '$lib/pdfToImages.js';
   import { videoToFrames } from '$lib/videoToFrames.js';
 
-  let { onSend, onStop, onGenerateImageGrok, onGenerateImageDeepSeek, onGenerateVideoDeepSeek, imageGenerating = false, videoGenerating = false, videoGenElapsed = '', placeholder: placeholderOverride = undefined } = $props();
+  let { onSend, onStop, onTalkLine, onGenerateImageGrok, onGenerateImageDeepSeek, onGenerateVideoDeepSeek, imageGenerating = false, videoGenerating = false, videoGenElapsed = '', placeholder: placeholderOverride = undefined } = $props();
   const placeholderText = $derived(
     placeholderOverride ?? 'Message ATOM… drop files or paste images',
   );
@@ -29,6 +30,9 @@
   let recordingStartMs = $state(0);
   const MAX_RECORDING_MS = 90_000; // 90 s cap
   let recordingTimerId = $state(null);
+  /** Live Grok voice session for Talk. Null when hung up. */
+  let talkSession = $state(/** @type {GrokVoiceSession | null} */ (null));
+  let talkState = $state(/** @type {'idle'|'connecting'|'connected'|'listening'|'speaking'|'disconnected'|'error'} */ ('idle'));
 
   /** True while warming up web search connection (right after user turns on globe or when enabled via Command Palette). */
   let webSearchWarmingUp = $state(false);
@@ -502,6 +506,7 @@
   }
 
   function toggleVoice() {
+    if (talkSession) return;
     // Always allow clicking to stop recording (don't block on voiceProcessing)
     if (recording) {
       stopRecording();
@@ -510,6 +515,71 @@
     if (voiceProcessing) return; // still uploading/transcribing
     startVoiceInput();
   }
+
+  function stopTalk() {
+    talkSession?.disconnect();
+    talkSession = null;
+    talkState = 'idle';
+  }
+
+  async function startTalk() {
+    if (talkSession || recording || voiceProcessing) return;
+    const apiKey = (get(grokApiKey) || '').trim();
+    if (!apiKey) {
+      voiceError = 'Add your Grok (xAI) API key in Settings to use Talk.';
+      return;
+    }
+    voiceError = null;
+    const session = new GrokVoiceSession({
+      onState: (st) => {
+        talkState = st;
+        if (st === 'disconnected' || st === 'error') talkSession = null;
+      },
+      onUserTranscript: (line) => {
+        onTalkLine?.('user', line);
+      },
+      onAssistantTranscriptDone: (line) => {
+        onTalkLine?.('assistant', line);
+      },
+      onError: (err) => {
+        voiceError = err instanceof Error ? err.message : String(err);
+      },
+    });
+    talkSession = session;
+    talkState = 'connecting';
+    try {
+      await session.connect({
+        apiKey,
+        instructions: currentVoiceAgentPrompt(),
+        voice: DEFAULT_VOICE_ID,
+      });
+    } catch (err) {
+      voiceError = err instanceof Error ? err.message : String(err);
+      session.disconnect();
+      if (talkSession === session) talkSession = null;
+      talkState = 'error';
+    }
+  }
+
+  function toggleTalk() {
+    if (talkSession) {
+      stopTalk();
+      return;
+    }
+    startTalk();
+  }
+
+  onDestroy(() => {
+    stopTalk();
+  });
+
+  const talkStatus = $derived(
+    talkState === 'connecting' ? 'Talk — connecting…'
+    : talkState === 'speaking' ? 'Talk — Grok is speaking'
+    : talkState === 'listening' || talkState === 'connected' ? 'Talk — listening'
+    : talkState === 'error' ? 'Talk — error'
+    : ''
+  );
 </script>
 
 <div
@@ -633,9 +703,21 @@
   {/if}
   <button
     type="button"
+    class="talk-button"
+    class:talk-live={!!talkSession}
+    title={talkSession ? 'Hang up Grok voice' : 'Talk — live Grok voice'}
+    disabled={!talkSession && (recording || voiceProcessing)}
+    onclick={toggleTalk}
+    aria-pressed={!!talkSession}
+    aria-label={talkSession ? 'Hang up Talk' : 'Start Talk'}
+  >
+    {talkSession ? 'End' : 'Talk'}
+  </button>
+  <button
+    type="button"
     class="mic-button"
     title={recording ? 'Stop recording (click again)' : 'Voice input – start Python server first'}
-    disabled={$isStreaming || (voiceProcessing && !recording)}
+    disabled={!!talkSession || $isStreaming || (voiceProcessing && !recording)}
     onclick={toggleVoice}
     aria-label={recording ? 'Stop recording' : 'Start voice input'}
   >
@@ -710,7 +792,9 @@
     </button>
   {/if}
   </div>
-  {#if recording}
+  {#if talkStatus}
+    <span class="voice-recording-hint" aria-live="polite">{talkStatus}</span>
+  {:else if recording}
     <span class="voice-recording-hint" aria-live="polite">
       <span class="recording-dot" aria-hidden="true"></span>
       Recording – click mic to stop
@@ -1061,6 +1145,26 @@
     50% { opacity: 0.3; transform: scale(0.7); }
   }
 
+  .talk-button {
+    flex-shrink: 0;
+    min-height: 44px;
+    padding: 0 12px;
+    border-radius: 10px;
+    border: none;
+    background: color-mix(in srgb, var(--ui-border, #e5e7eb) 25%, var(--ui-input-bg, #fff));
+    color: var(--ui-text-primary, #111);
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 600;
+  }
+  .talk-button.talk-live {
+    background: color-mix(in srgb, var(--ui-accent-hot, #dc2626) 18%, var(--ui-input-bg, #fff));
+    color: var(--ui-accent-hot, #dc2626);
+  }
+  .talk-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
   .mic-button {
     flex-shrink: 0;
     width: 44px;

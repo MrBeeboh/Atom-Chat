@@ -173,6 +173,18 @@
     activeMessages.set(msgs);
   }
 
+  /** Save a Grok Talk turn without sending it through the text model. */
+  async function persistTalkLine(role, content) {
+    if (!convId || !content?.trim()) return;
+    if (role !== 'user' && role !== 'assistant') return;
+    await addMessage(convId, {
+      role,
+      content: content.trim(),
+      modelId: 'grok-voice:eve',
+    });
+    await loadMessages(convId);
+  }
+
   $effect(() => {
     loadMessages(convId);
   });
@@ -869,6 +881,7 @@
             <ChatInput
               onSend={sendUserMessage}
               onStop={() => chatAbortController?.abort?.()}
+              onTalkLine={persistTalkLine}
               onGenerateImageGrok={undefined}
               onGenerateImageDeepSeek={(hasDeepinfraKey || $grokApiKey?.trim()) ? openImageOptionsModal : undefined}
               onGenerateVideoDeepSeek={hasDeepinfraKey ? openVideoModal : undefined}
@@ -896,6 +909,7 @@
           <ChatInput
             onSend={sendUserMessage}
             onStop={() => chatAbortController?.abort?.()}
+            onTalkLine={persistTalkLine}
             onGenerateImageGrok={$effectiveModelId && isGrokModel($effectiveModelId) && $grokApiKey?.trim() ? handleGrokImage : undefined}
             onGenerateImageDeepSeek={hasDeepinfraKey ? openImageOptionsModal : undefined}
             onGenerateVideoDeepSeek={hasDeepinfraKey ? openVideoModal : undefined}

@@ -1,7 +1,9 @@
 <script>
+  import { get } from 'svelte/store';
   import { fly } from 'svelte/transition';
   import { backOut, quintOut } from 'svelte/easing';
   import { globalDefault, updateGlobalDefault, selectedModelId, models, presetDefaultModels, lmStudioBaseUrl, voiceServerUrl, lmStudioUnloadHelperUrl, deepSeekApiKey, grokApiKey, cerebrasApiKey, togetherApiKey, deepinfraApiKey, braveApiKey, settingsFocus } from '$lib/stores.js';
+  import { DEFAULT_VOICE_AGENT_PROMPT } from '$lib/grokVoice.js';
   import { refreshConnectionAndModels } from '$lib/connectionSetup.js';
   import { syncBraveKeyToProxy } from '$lib/duckduckgo.js';
   import { modelSelectorPrimaryLine } from '$lib/api.js';
@@ -18,6 +20,13 @@
   let audioEnabled = $state(DEFAULTS.audio_enabled);
   let audioClicks = $state(DEFAULTS.audio_clicks);
   let audioVolume = $state(DEFAULTS.audio_volume);
+
+  function storedVoiceAgentPrompt() {
+    const stored = get(globalDefault)?.voice_agent_prompt;
+    return typeof stored === 'string' && stored.trim() ? stored : DEFAULT_VOICE_AGENT_PROMPT;
+  }
+
+  let voiceAgentPrompt = $state(storedVoiceAgentPrompt());
 
   $effect(() => {
     const g = $globalDefault;
@@ -43,11 +52,22 @@
     if (modelId) selectedModelId.set(modelId);
   }
 
+  function persistVoiceAgentPrompt(value) {
+    voiceAgentPrompt = value;
+    updateGlobalDefault({
+      voice_agent_prompt: value,
+      audio_enabled: !!audioEnabled,
+      audio_clicks: !!audioClicks,
+      audio_volume: Math.max(0, Math.min(1, Number(audioVolume) || 0)),
+    });
+  }
+
   function save() {
     updateGlobalDefault({
       audio_enabled: !!audioEnabled,
       audio_clicks: !!audioClicks,
       audio_volume: Math.max(0, Math.min(1, Number(audioVolume) || 0)),
+      voice_agent_prompt: voiceAgentPrompt,
     });
     onclose?.();
   }
@@ -56,6 +76,7 @@
     audioEnabled = DEFAULTS.audio_enabled;
     audioClicks = DEFAULTS.audio_clicks;
     audioVolume = DEFAULTS.audio_volume;
+    persistVoiceAgentPrompt(DEFAULT_VOICE_AGENT_PROMPT);
   }
 
   let connectionDetailsEl = $state(/** @type {HTMLDetailsElement | null} */ (null));
@@ -120,7 +141,12 @@
           <div>
             <label for="settings-voice-url" class="block text-xs font-medium mb-1" style="color: var(--ui-text-secondary);">Voice server URL</label>
             <input id="settings-voice-url" type="url" bind:value={$voiceServerUrl} placeholder="http://localhost:8765" class="w-full rounded-lg px-3 py-2 text-sm font-mono" style="border: 1px solid var(--ui-border); background-color: var(--ui-input-bg); color: var(--ui-text-primary);" />
-            <p class="text-xs mt-1" style="color: var(--ui-text-secondary);">Mic/voice. Default port 8765; see voice-server/README.</p>
+            <p class="text-xs mt-1" style="color: var(--ui-text-secondary);">Dictate mic. Default port 8765; see voice-server/README.</p>
+          </div>
+          <div>
+            <label for="settings-voice-prompt" class="block text-xs font-medium mb-1" style="color: var(--ui-text-secondary);">Talk voice prompt</label>
+            <textarea id="settings-voice-prompt" rows="4" class="w-full rounded-lg px-3 py-2 text-sm" style="border: 1px solid var(--ui-border); background-color: var(--ui-input-bg); color: var(--ui-text-primary);" value={voiceAgentPrompt} oninput={(e) => persistVoiceAgentPrompt(e.currentTarget.value)}></textarea>
+            <p class="text-xs mt-1" style="color: var(--ui-text-secondary);">System prompt Talk sends with the Grok voice session. Uses the Grok (xAI) API key. Saved with the other settings.</p>
           </div>
         </div>
       </details>
