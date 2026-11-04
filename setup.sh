@@ -10,6 +10,43 @@ RESET="\033[0m"
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
 
+# Write a launcher that runs this checkout, not a hardcoded older folder.
+write_atom_launcher() {
+  local dest="$1"
+  local root_q
+  root_q="$(printf '%q' "$ROOT")"
+  mkdir -p "$(dirname "$dest")"
+  cat > "$dest" <<EOF
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=ATOM Chat
+Comment=Start this ATOM Chat checkout (Talk voice prompt included)
+Exec=bash -c "cd ${root_q} && exec ./scripts/start-atom.sh"
+Path=${ROOT}
+Terminal=true
+Icon=utilities-terminal
+Categories=Development;
+StartupNotify=true
+EOF
+  chmod +x "$dest"
+  echo "  ✓ Launcher $dest"
+  echo "    opens http://localhost:5175/ from ${ROOT}"
+}
+
+install_atom_launchers() {
+  write_atom_launcher "$HOME/.local/share/applications/ATOM.desktop"
+  if [ -d "$HOME/Desktop" ]; then
+    write_atom_launcher "$HOME/Desktop/ATOM.desktop"
+  fi
+}
+
+if [ "${1:-}" = "--launcher" ]; then
+  echo "Installing ATOM Chat launcher for ${ROOT}"
+  install_atom_launchers
+  exit 0
+fi
+
 echo ""
 echo -e "${BOLD}${CYAN}  ⚛  ATOM Chat — Setup${RESET}"
 echo "  Local AI. No cloud. No compromise."
@@ -84,20 +121,7 @@ fi
 # ── 6. Desktop icon ──────────────────────────────────────────────
 echo ""
 echo -e "${BOLD}6. Desktop launcher…${RESET}"
-DESKTOP_FILE="$ROOT/ATOM.desktop"
-if [ -f "$DESKTOP_FILE" ]; then
-  if [ -d "$HOME/Desktop" ] || [ -d "$HOME/.local/share/applications" ]; then
-    DEST="$HOME/.local/share/applications/ATOM.desktop"
-    mkdir -p "$HOME/.local/share/applications"
-    sed "s|/home/mike/atom-chat|$ROOT|g" "$DESKTOP_FILE" > "$DEST"
-    chmod +x "$DEST"
-    echo "  ✓ Desktop launcher created ($DEST)"
-  else
-    echo "  - No Desktop directory — skipping. To create manually:"
-    echo "    cp ATOM.desktop ~/.local/share/applications/"
-    echo "    (edit the path inside to match: $ROOT)"
-  fi
-fi
+install_atom_launchers
 
 # ── 7. Done ───────────────────────────────────────────────────────
 echo ""
@@ -108,4 +132,5 @@ echo "    npm run dev                      # dev server (no voice)"
 echo "    npm run start                    # full stack (voice + search + UI)"
 echo "    npx serve dist                   # production build (static)"
 echo ""
-echo "  Then open http://localhost:5173 and select a model."
+echo "  The desktop launcher opens http://localhost:5175/ from this folder."
+echo "  npm run dev uses http://localhost:5173 (a different saved-settings origin)."

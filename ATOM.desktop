@@ -1,10 +1,10 @@
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=ATOM V2
-Comment=Start ATOM Chat with voice server and UI
-Exec=bash -c "cd /home/mike/atom-v2 && ./scripts/start-atom.sh"
-Path=/home/mike/atom-v2
+Name=ATOM Chat
+Comment=Start this ATOM Chat checkout (Talk voice prompt included)
+Exec=bash -c 'f="$1"; f="${f#file://}"; cd "$(dirname "$f")" && exec ./scripts/start-atom.sh' atom-desktop %k
 Terminal=true
 Icon=utilities-terminal
 Categories=Development;
+StartupNotify=true
