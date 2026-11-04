@@ -52,6 +52,12 @@ GitHub on every start: they fast-forward to the latest `origin/main` and re-run
 `npm install` only when dependencies changed. Sync is skipped safely when you
 are offline, have local edits, or are on a different branch.
 
+`./setup.sh` (or `./setup.sh --launcher`) writes the desktop entry to
+`~/.local/share/applications/ATOM.desktop` and, when present, `~/Desktop/ATOM.desktop`.
+That entry runs this checkout's `./scripts/start-atom.sh`, which opens
+`http://localhost:5175/`. A shortcut that still `cd`s to `/home/mike/atom-v2`
+is an older copy and will not show **Settings → Connection → Talk voice prompt**.
+
 - `ATOM_SKIP_SYNC=1` — disable auto-sync for one launch (or export it permanently)
 - `ATOM_SYNC_BRANCH=mybranch` — track a branch other than `main`
 

@@ -197,6 +197,7 @@ UI_PID=$!
 # Open browser once dev server responds (use localhost, not 127.0.0.1, so origin matches bookmarks)
 for i in $(seq 1 40); do
     if curl -s --max-time 1 "http://localhost:${ATOM_UI_PORT}/" >/dev/null 2>&1; then
+        echo "[ATOM] Opening http://localhost:${ATOM_UI_PORT}/ from ${ROOT}"
         (sleep 1; xdg-open "http://localhost:${ATOM_UI_PORT}/" 2>/dev/null) &
         break
     fi

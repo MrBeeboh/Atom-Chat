@@ -313,6 +313,7 @@ const DEFAULT_SETTINGS = {
   temperature: 0.7,
   max_tokens: 4096,
   system_prompt: 'You are a helpful assistant.',
+  voice_agent_prompt: '',
   top_p: 0.95,
   top_k: 64,
   repeat_penalty: 1.15,
