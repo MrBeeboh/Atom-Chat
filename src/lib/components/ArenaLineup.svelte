@@ -72,9 +72,9 @@
     display: flex;
     flex-wrap: nowrap;
     align-items: stretch;
-    height: 28px;
+    height: 34px;
     border: 1px solid var(--ui-border);
-    border-radius: 8px;
+    border-radius: 10px;
     overflow: hidden;
     background: var(--ui-input-bg);
   }
@@ -89,14 +89,14 @@
     color: var(--ui-text-secondary);
   }
   .arena-pill {
-    height: 28px;
-    padding: 0 10px;
+    height: 34px;
+    padding: 0 12px;
     border: 0;
     border-radius: 0;
     background: transparent;
     color: var(--ui-text-secondary);
-    font-size: 12px;
-    font-weight: 650;
+    font-size: 13px;
+    font-weight: 700;
     white-space: nowrap;
     cursor: pointer;
   }
@@ -108,7 +108,7 @@
     color: var(--ui-action-ink, var(--ui-bg-main));
   }
   .arena-pill-qty {
-    min-width: 28px;
-    padding: 0 8px;
+    min-width: 34px;
+    padding: 0 10px;
   }
 </style>
