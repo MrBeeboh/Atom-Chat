@@ -149,7 +149,7 @@
     {:else}
       <button
         type="button"
-        class="arena-btn"
+        class="arena-btn arena-btn-runall"
         class:arena-btn-muted={!runAllActive && ($isStreaming || currentQuestionTotal < 2)}
         onclick={runAllQuestions}
         title={runAllButtonTitle}
@@ -195,14 +195,14 @@
     align-items: center;
     justify-content: center;
     gap: 6px;
-    height: 30px;
-    padding: 0 12px;
-    border-radius: 8px;
+    height: 36px;
+    padding: 0 14px;
+    border-radius: 10px;
     border: 1px solid var(--ui-border);
     background: var(--ui-input-bg);
     color: var(--ui-text-primary);
-    font-size: 12px;
-    font-weight: 650;
+    font-size: 13px;
+    font-weight: 700;
     line-height: 1;
     white-space: nowrap;
     cursor: pointer;
@@ -234,21 +234,25 @@
   .arena-btn-muted:not(:disabled) {
     opacity: 0.72;
   }
+  .arena-btn-runall:not(.arena-btn-muted):not(:disabled) {
+    border-color: color-mix(in srgb, var(--ui-accent) 45%, var(--ui-border));
+    background: color-mix(in srgb, var(--ui-accent) 12%, var(--ui-input-bg));
+  }
   .arena-icon {
-    width: 30px;
+    width: 36px;
     padding: 0;
   }
   .arena-stepper {
     display: inline-flex;
     align-items: stretch;
-    height: 30px;
+    height: 36px;
     border: 1px solid var(--ui-border);
-    border-radius: 8px;
+    border-radius: 10px;
     background: var(--ui-input-bg);
     overflow: hidden;
   }
   .arena-stepper button {
-    width: 28px;
+    width: 32px;
     border: 0;
     background: transparent;
     color: var(--ui-text-primary);
@@ -265,14 +269,14 @@
     margin: 0 auto;
   }
   .arena-stepper select {
-    width: 5.6rem;
+    width: 6.2rem;
     border: 0;
     border-left: 1px solid var(--ui-border);
     border-right: 1px solid var(--ui-border);
     background: transparent;
     color: var(--ui-text-primary);
-    font-size: 12px;
-    font-weight: 700;
+    font-size: 13px;
+    font-weight: 750;
     font-variant-numeric: tabular-nums;
     text-align: center;
     cursor: pointer;
@@ -291,21 +295,21 @@
   .arena-seq-pills {
     display: inline-flex;
     align-items: stretch;
-    height: 30px;
+    height: 36px;
     border: 1px solid var(--ui-border);
-    border-radius: 8px;
+    border-radius: 10px;
     overflow: hidden;
     background: var(--ui-input-bg);
   }
   .arena-seq-pill {
-    height: 30px;
-    padding: 0 10px;
+    height: 36px;
+    padding: 0 12px;
     border: 0;
     border-radius: 0;
     background: transparent;
     color: var(--ui-text-secondary);
-    font-size: 12px;
-    font-weight: 650;
+    font-size: 13px;
+    font-weight: 700;
     white-space: nowrap;
     cursor: pointer;
   }

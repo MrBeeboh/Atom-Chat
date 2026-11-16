@@ -144,15 +144,17 @@
 
 <div
   class="arena-col arena-column flex flex-col min-h-0 min-w-0 w-full h-full overflow-hidden rounded-xl atom-panel-wrap arena-col-{slot}"
+  class:running
   style="background: var(--ui-bg-sidebar);"
   role="region"
   aria-label={contentVisible ? `Model ${slot} panel` : `Column ${slot} hidden`}
   in:fly={{ x: 200, duration: 800, easing: quintOut }}
 >
+  <div class="arena-lane-accent" aria-hidden="true"></div>
   <!-- Header: slot badge + model selector + score + t/s -->
-  <div class="arena-col-head shrink-0 flex items-center gap-2 px-3 py-2" style="border-bottom: 1px solid var(--arena-line, #5c6d82);">
+  <div class="arena-col-head shrink-0 flex items-center gap-2 px-3 py-2.5" style="border-bottom: 1px solid var(--arena-line, #5c6d82);">
     <!-- Slot badge -->
-    <span class="arena-slot-badge arena-ink text-[11px] w-5 h-5 rounded flex items-center justify-center shrink-0">{slot}</span>
+    <span class="arena-slot-badge arena-ink text-[12px] w-7 h-7 rounded-md flex items-center justify-center shrink-0">{slot}</span>
     <button
       type="button"
       class="arena-visibility-btn shrink-0"
@@ -175,9 +177,9 @@
     {:else if loadStatus === 'error'}
       <span class="w-1.5 h-1.5 rounded-full shrink-0" style="background-color: #ef4444;" title="Load error"></span>
     {/if}
-    <!-- Model selector fills remaining space. Hidden while an anonymous round is concealed. -->
-    {#if concealIdentity}
-      <span class="flex-1 min-w-0 text-xs font-bold" style="color: var(--arena-read, #12161c);">Hidden</span>
+    <!-- Model selector fills remaining space. Conceal the name only when a contestant is seated. -->
+    {#if concealIdentity && modelId}
+      <span class="flex-1 min-w-0 text-xs font-bold tracking-wide uppercase" style="color: var(--arena-read, #12161c);">Contestant {slot}</span>
     {:else}
       <div class="flex-1 min-w-0">
         <ModelSelectorSlot slot={slot} />
@@ -236,9 +238,15 @@
   <!-- Messages -->
   <div class="arena-column-body flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden p-3 overscroll-contain" bind:this={scrollRef}>
     {#if !modelId}
-      <div class="text-sm" style="color: var(--ui-text-secondary);">Select a model to start.</div>
+      <div class="arena-lane-empty">
+        <p class="arena-lane-empty-title">Seat {slot}</p>
+        <p class="arena-lane-empty-copy">Choose a contestant for this lane.</p>
+      </div>
     {:else if displayMessages.length === 0}
-      <div class="text-sm" style="color: var(--ui-text-secondary);">{running ? 'Working…' : 'No responses yet.'}</div>
+      <div class="arena-lane-empty" class:arena-lane-live={running}>
+        <p class="arena-lane-empty-title">{running ? 'Answering…' : 'Ready'}</p>
+        <p class="arena-lane-empty-copy">{running ? 'Streaming into this lane.' : 'Waiting for the next Ask or Run all.'}</p>
+      </div>
     {:else}
       <div class="space-y-5 py-1 min-w-0">
         {#each displayMessages as msg (msg.id)}
@@ -291,7 +299,7 @@
     {/if}
     <div class="flex items-center gap-1.5 shrink-0">
       {#if running}
-        <span class="arena-ink text-xs font-bold animate-pulse">Running…</span>
+        <span class="arena-live-pill">Live</span>
         {#if liveTps != null && Number(liveTps) > 0}
           <span class="arena-ink font-mono text-sm font-extrabold" title="Live tokens per second">{Number(liveTps).toFixed(1)} <span class="text-xs font-bold">t/s</span></span>
         {/if}
@@ -375,6 +383,57 @@
     font-weight: 700;
     color: var(--arena-read, #12161c);
   }
+  .arena-lane-accent {
+    height: 4px;
+    flex: 0 0 auto;
+    background: linear-gradient(90deg, var(--arena-badge, var(--ui-accent)), transparent 85%);
+  }
+  .arena-lane-empty {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-height: 8rem;
+    padding: 1.25rem 0.25rem;
+    color: var(--ui-text-secondary);
+  }
+  .arena-lane-empty-title {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: 1.35rem;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    color: var(--arena-read, var(--ui-text-primary));
+  }
+  .arena-lane-empty-copy {
+    margin: 0.35rem 0 0;
+    font-size: 0.92rem;
+    font-weight: 600;
+    line-height: 1.35;
+  }
+  .arena-lane-live .arena-lane-empty-title {
+    color: var(--ui-accent);
+  }
+  .arena-live-pill {
+    display: inline-flex;
+    align-items: center;
+    height: 22px;
+    padding: 0 9px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--ui-accent) 18%, transparent);
+    color: var(--ui-accent);
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    animation: arena-live-pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes arena-live-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.55; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .arena-live-pill { animation: none; }
+  }
   .arena-visibility-btn {
     width: 28px;
     height: 28px;
@@ -392,17 +451,19 @@
     align-items: center;
     gap: 8px;
     flex: 0 0 auto;
-    padding: 4px 12px 4px 10px;
-    border-radius: 12px;
+    padding: 5px 12px 5px 10px;
+    border-radius: 14px;
     background: var(--ui-text-primary);
     color: var(--ui-bg-main);
+    box-shadow: 0 8px 18px color-mix(in srgb, var(--ui-text-primary) 18%, transparent);
   }
   .arena-place-n {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 32px;
+    font-family: var(--font-display), ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 34px;
     font-weight: 800;
     font-variant-numeric: tabular-nums;
     line-height: 0.9;
+    letter-spacing: -0.03em;
   }
   .arena-place-meta {
     display: flex;

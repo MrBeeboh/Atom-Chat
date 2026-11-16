@@ -416,10 +416,11 @@
   const currentQuestionText = $derived(currentQuestionItem?.text != null ? String(currentQuestionItem.text).trim() : "");
   const currentQuestionId = $derived(currentQuestionItem?.id ?? null);
   /** Arena settings panel: docked right sidebar (collapsed = hidden, like left sidebar). */
+  // Default collapsed so the match stage owns the desktop canvas; builders open it when needed.
   let arenaSettingsCollapsed = $state(
     typeof localStorage !== "undefined"
-      ? (localStorage.getItem("arenaSettingsCollapsed") ?? "0") === "1"
-      : false,
+      ? (localStorage.getItem("arenaSettingsCollapsed") ?? "1") === "1"
+      : true,
   );
   $effect(() => {
     if (typeof localStorage !== "undefined")
@@ -2607,7 +2608,7 @@
 </script>
 
 <div
-  class="h-full min-h-0 flex flex-col"
+  class="arena-stage h-full min-h-0 flex flex-col"
   role="region"
   aria-label="Arena drop zone"
   ondragover={(e) => {
@@ -2621,7 +2622,37 @@
     if (files?.length) pendingDroppedFiles.set(files);
   }}
 >
-  <!-- One toolbar: run the round, then how the match is set up. -->
+  <header class="arena-match-banner">
+    <div class="arena-match-brand">
+      <span class="arena-match-mark" aria-hidden="true"></span>
+      <div class="arena-match-titles">
+        <p class="arena-match-kicker">Match stage</p>
+        <p class="arena-match-sub">1–4 local or cloud contestants · judged rounds</p>
+      </div>
+    </div>
+    <div class="arena-match-status">
+      {#if currentQuestionTotal > 0}
+        <span class="arena-match-round">Round {currentQuestionNum}<span class="arena-match-of"> / {currentQuestionTotal}</span></span>
+      {:else}
+        <span class="arena-match-round arena-match-round-idle">No round loaded</span>
+      {/if}
+      {#if standingShort}
+        <span class="arena-standing" title={[reportHeadline, categoryFinalLine].filter(Boolean).join("\n")}>{standingShort}</span>
+      {:else if reportHeadline}
+        <span class="arena-standing" title={reportHeadline}>{reportHeadline}</span>
+      {/if}
+      {#if sessionRounds.length > 0}
+        <button
+          type="button"
+          class="arena-report-btn"
+          disabled={reportBusy}
+          onclick={reprintReport}
+        >{reportBusy ? "Writing…" : "Report"}</button>
+      {/if}
+    </div>
+  </header>
+
+  <!-- Match controls: run the round, then how the match is set up. -->
   <div class="arena-chrome">
   <ArenaControlBar
     currentQuestionNum={currentQuestionNum}
@@ -2668,21 +2699,6 @@
   />
   <div class="arena-session-end">
   <ProviderCheckList />
-  {#if reportHeadline || sessionRounds.length > 0}
-  <div class="arena-report-inline" role="status" aria-live="polite">
-    {#if standingShort}
-      <span class="arena-standing" title={[reportHeadline, categoryFinalLine].filter(Boolean).join("\n")}>{standingShort}</span>
-    {:else if reportHeadline}
-      <span class="arena-standing" title={reportHeadline}>{reportHeadline}</span>
-    {/if}
-    <button
-      type="button"
-      class="arena-report-btn"
-      disabled={reportBusy || sessionRounds.length === 0}
-      onclick={reprintReport}
-    >{reportBusy ? "Writing…" : "Report"}</button>
-  </div>
-  {/if}
   </div>
   <ArenaLoadQuestionsModal
     bind:open={loadQuestionsOpen}
@@ -2708,18 +2724,28 @@
   <!-- === Sticky question text bar (always visible above panels) === -->
   {#if currentQuestionTotal > 0 && currentQuestionText}
     <div class="arena-question-bar shrink-0" aria-live="polite">
-      <p class="arena-question-read" title={currentQuestionText}>
-        <span class="arena-question-num">Q{currentQuestionNum}</span>
-        <span class="arena-question-text" class:arena-question-clamp={currentQuestionText.length > 220}>{currentQuestionText}</span>
-      </p>
+      <div class="arena-question-read" title={currentQuestionText}>
+        <div class="arena-question-meta">
+          <span class="arena-question-num">Question {currentQuestionNum}</span>
+          {#if parsedQuestions[questionIndex]?.category}
+            <span class="arena-question-cat">{parsedQuestions[questionIndex].category}</span>
+          {/if}
+        </div>
+        <p class="arena-question-text" class:arena-question-clamp={currentQuestionText.length > 280}>{currentQuestionText}</p>
+      </div>
+    </div>
+  {:else if currentQuestionTotal === 0}
+    <div class="arena-question-bar arena-question-empty shrink-0">
+      <div class="arena-question-meta"><span class="arena-question-num">Ready</span></div>
+      <p class="arena-question-text">Seat the contestants, load a question set, then hit Ask — or Run all for the full match.</p>
     </div>
   {/if}
 
   <!-- === Response panels A–D (resizable) === -->
   <div
     bind:this={gridEl}
-    class="flex-1 min-h-0 grid gap-3 atom-layout-transition relative grid-rows-[minmax(0,1fr)]"
-    style="grid-template-columns: {responsiveGridCols}; padding: 1rem; padding-right: {arenaSettingsCollapsed ? '2.5rem' : '1rem'};"
+    class="arena-lanes flex-1 min-h-0 grid gap-4 atom-layout-transition relative grid-rows-[minmax(0,1fr)]"
+    style="grid-template-columns: {responsiveGridCols}; padding: 0.85rem 1.1rem 1.1rem; padding-right: {arenaSettingsCollapsed ? '2.5rem' : '1.1rem'};"
   >
     {#each slotData as data, i (data.slot)}
       <ArenaPanel
@@ -3245,28 +3271,109 @@
 </div>
 
 <style>
+  .arena-stage {
+    --arena-stage-ink: var(--ui-text-primary);
+    --arena-stage-muted: var(--ui-text-secondary);
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--ui-accent) 7%, transparent) 0%, transparent 18%),
+      var(--ui-bg-main);
+  }
+  .arena-match-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    min-height: 52px;
+    padding: 10px 18px 8px;
+    border-bottom: 1px solid color-mix(in srgb, var(--ui-border) 80%, transparent);
+    background:
+      linear-gradient(90deg, color-mix(in srgb, var(--ui-accent) 10%, transparent), transparent 42%),
+      color-mix(in srgb, var(--ui-bg-sidebar) 92%, transparent);
+  }
+  .arena-match-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+  }
+  .arena-match-mark {
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    background: var(--ui-accent);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--ui-accent) 18%, transparent);
+    flex: 0 0 auto;
+  }
+  .arena-match-titles {
+    min-width: 0;
+  }
+  .arena-match-kicker {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: 1.05rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    line-height: 1.1;
+    color: var(--arena-stage-ink);
+  }
+  .arena-match-sub {
+    margin: 2px 0 0;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--arena-stage-muted);
+  }
+  .arena-match-status {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+  .arena-match-round {
+    font-family: var(--font-display);
+    font-size: 1.15rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+    color: var(--arena-stage-ink);
+    white-space: nowrap;
+  }
+  .arena-match-of {
+    font-size: 0.85em;
+    font-weight: 700;
+    color: var(--arena-stage-muted);
+  }
+  .arena-match-round-idle {
+    font-family: var(--font-ui, var(--font-sans));
+    font-size: 13px;
+    font-weight: 650;
+    letter-spacing: 0;
+    color: var(--arena-stage-muted);
+  }
   .arena-chrome {
     display: flex;
     flex-direction: row;
     flex-wrap: nowrap;
     align-items: center;
-    gap: 8px;
-    min-height: 40px;
-    padding: 5px 12px;
+    gap: 12px;
+    min-height: 48px;
+    padding: 8px 16px;
     overflow-x: auto;
     border-bottom: 1px solid var(--ui-border);
-    background: var(--ui-bg-sidebar, var(--ui-input-bg));
+    background: color-mix(in srgb, var(--ui-bg-sidebar) 88%, transparent);
   }
   .arena-chrome-rule {
     width: 1px;
-    height: 18px;
+    height: 22px;
     flex: 0 0 auto;
     background: var(--ui-border);
   }
   .arena-chrome :global(.arena-command-toolbar) {
     border: 0;
     background: transparent;
-    flex: 0 0 auto;
+    flex: 1 1 auto;
     width: auto;
     min-width: 0;
     overflow: visible;
@@ -3276,6 +3383,7 @@
     align-items: center;
     gap: 8px;
     flex: 0 0 auto;
+    margin-left: auto;
   }
   .arena-chrome :global(.arena-lineup) {
     border: 0;
@@ -3286,59 +3394,30 @@
     flex: 0 1 auto;
     min-width: 0;
   }
-  .arena-report-inline {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    min-width: 0;
-  }
   .arena-standing {
-    max-width: 14rem;
+    max-width: 16rem;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    padding: 3px 9px;
+    padding: 6px 12px;
     border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--ui-accent) 35%, var(--ui-border));
     background: color-mix(in srgb, var(--ui-accent) 14%, var(--ui-bg-main));
     color: var(--ui-text-primary);
-    font-size: 12px;
-    font-weight: 700;
+    font-size: 13px;
+    font-weight: 750;
     font-variant-numeric: tabular-nums;
     letter-spacing: 0.01em;
   }
-  .arena-seg {
-    display: inline-flex;
-    overflow: hidden;
-    border: 1px solid var(--ui-border);
-    border-radius: 8px;
-    background: var(--ui-input-bg);
-  }
-  .arena-seg button {
-    height: 24px;
-    padding: 0 8px;
-    border: 0;
-    background: transparent;
-    color: var(--ui-text-secondary);
-    font-size: 11px;
-    font-weight: 700;
-    cursor: pointer;
-  }
-  .arena-seg button + button {
-    border-left: 1px solid var(--ui-border);
-  }
-  .arena-seg button[aria-pressed="true"] {
-    background: var(--ui-action, var(--ui-accent));
-    color: var(--ui-action-ink, var(--ui-bg-main));
-  }
   .arena-report-btn {
-    height: 24px;
-    padding: 0 10px;
-    border-radius: 8px;
+    height: 34px;
+    padding: 0 14px;
+    border-radius: 10px;
     border: 1px solid var(--ui-border);
     background: var(--ui-input-bg);
     color: var(--ui-text-primary);
-    font-size: 11px;
-    font-weight: 700;
+    font-size: 13px;
+    font-weight: 750;
     cursor: pointer;
   }
   .arena-report-btn:disabled {
@@ -3347,39 +3426,72 @@
   }
   .arena-question-bar {
     width: 100%;
-    padding: 12px 16px 14px;
-    background: var(--ui-bg-main);
+    padding: 14px 20px 16px;
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--ui-accent) 8%, var(--ui-bg-main)), var(--ui-bg-main) 70%);
     border-bottom: 1px solid var(--ui-border);
+  }
+  .arena-question-empty {
+    padding-top: 18px;
+    padding-bottom: 18px;
   }
   .arena-question-read {
     display: flex;
-    align-items: flex-start;
-    gap: 10px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
     margin: 0;
     width: 100%;
+    max-width: 72rem;
     color: var(--arena-read, var(--ui-text-primary));
+  }
+  .arena-question-meta {
+    display: flex;
+    align-items: center;
+    gap: 10px;
   }
   .arena-question-num {
     flex: 0 0 auto;
-    margin-top: 4px;
-    font-size: 11px;
+    font-family: var(--font-display);
+    font-size: 12px;
     font-weight: 800;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
     font-variant-numeric: tabular-nums;
     color: var(--ui-accent);
   }
+  .arena-question-cat {
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--ui-border);
+    background: color-mix(in srgb, var(--ui-bg-sidebar) 80%, transparent);
+    color: var(--ui-text-secondary);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
   .arena-question-text {
+    margin: 0;
     min-width: 0;
-    font-size: 18px;
-    font-weight: 600;
-    line-height: 1.4;
+    font-family: var(--font-display);
+    font-size: clamp(1.15rem, 1.05rem + 0.45vw, 1.55rem);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.35;
     overflow-wrap: anywhere;
+    color: var(--arena-stage-ink);
   }
   .arena-question-clamp {
     display: -webkit-box;
     -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
     overflow: hidden;
+  }
+  .arena-lanes :global(.arena-col.running) {
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--arena-badge, var(--ui-accent)) 55%, transparent),
+      0 10px 28px color-mix(in srgb, var(--arena-badge, var(--ui-accent)) 18%, transparent);
   }
 </style>
 
