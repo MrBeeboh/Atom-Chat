@@ -13,7 +13,7 @@ import {
   modelIdsLooselyMatch,
 } from '$lib/llamaRouter.js';
 import { getLocalModelsFromServer, probeLmsRestModelsList } from '$lib/modelListing.js';
-import { isQwen38FlashNextSelection } from '$lib/modelIdUtils.js';
+import { isQwen38FlashNextSelection, QWEN38_FLASH_NEXT_MODEL_ID } from '$lib/modelIdUtils.js';
 import { FLASH_NEXT_CHAT_BASE, assertFlashNextCanChat } from '$lib/flashNext.js';
 
 /** @param {AbortSignal} [signal] */
@@ -196,7 +196,7 @@ export async function ensureLocalModelReadyForChat(modelId, signal) {
  * @returns {Promise<boolean>}
  */
 export async function waitUntilLoaded(modelId, opts = {}) {
-  const { pollIntervalMs = 400, timeoutMs = 600000, signal } = opts;
+  const { pollIntervalMs = 400, timeoutMs = 600000, signal, neverStartedMs = 45000 } = opts;
   if (!modelId || typeof modelId !== 'string' || !modelId.trim()) return false;
   const base = getLmStudioBase();
   const start = Date.now();
@@ -227,7 +227,17 @@ export async function waitUntilLoaded(modelId, opts = {}) {
             if (st === 'loading') sawLoading = true;
             if (isRouterModelLoadFailed(data, modelId) || (sawLoading && st === 'unloaded')) {
               throw new Error(
-                `Model failed to load: "${modelId}" (llama child exited). This GGUF may be incompatible. Check llama-server.log.`,
+                `Model failed to load: "${modelId}" (llama child exited). This GGUF may be incompatible or VRAM is full. Check llama-server.log.`,
+              );
+            }
+            if (
+              !isQwen38FlashNextSelection(modelId) &&
+              !sawLoading &&
+              st === 'unloaded' &&
+              Date.now() - start > neverStartedMs
+            ) {
+              throw new Error(
+                `Model failed to load: "${modelId}" never started loading on the router. Check llama-server.log.`,
               );
             }
           }
@@ -420,6 +430,74 @@ export async function unloadModel(modelId) {
   }
   const instanceIds = await getLoadedInstanceIdsForModel(modelId);
   await Promise.allSettled(instanceIds.map((id) => unloadByInstanceId(id).catch(() => { })));
+}
+
+/** True when the Flash-Next sidecar on :8081 answers /health. */
+export async function isFlashNextUp() {
+  const ctrl = new AbortController();
+  const to = setTimeout(() => ctrl.abort(), 2500);
+  try {
+    const res = await fetch(`${FLASH_NEXT_CHAT_BASE}/health`, { signal: ctrl.signal });
+    return res.ok;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(to);
+  }
+}
+
+/**
+ * Ask the :8080 proxy to stop Flash-Next and wait until :8081 stops answering.
+ * @param {{ timeoutMs?: number, signal?: AbortSignal }} [opts]
+ * @returns {Promise<boolean>} true once Flash-Next is down
+ */
+export async function stopFlashNext({ timeoutMs = 90000, signal } = {}) {
+  if (!(await isFlashNextUp())) return true;
+  await unloadModel(QWEN38_FLASH_NEXT_MODEL_ID);
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    throwIfAborted(signal);
+    if (!(await isFlashNextUp())) return true;
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  return false;
+}
+
+/**
+ * Clear VRAM before loading a local model. Flash-Next holds both B70s, so a
+ * router load next to it can never finish; likewise Flash-Next cannot start
+ * while router children hold the cards.
+ * @param {string} modelId - Model about to load
+ * @param {{ keep?: string[], signal?: AbortSignal, flashStopTimeoutMs?: number }} [opts]
+ */
+export async function freeVramForLoad(modelId, { keep = [], signal, flashStopTimeoutMs = 90000 } = {}) {
+  if (!modelId || modelId.includes(':')) return;
+  const target = String(modelId).trim();
+  const targetIsFlash = isQwen38FlashNextSelection(target);
+  const keepIds = (keep || []).filter(Boolean);
+  const keeps = (id) => keepIds.some((k) => modelIdsLooselyMatch(k, id));
+
+  if (!targetIsFlash && !keepIds.some((k) => isQwen38FlashNextSelection(k))) {
+    if (!(await stopFlashNext({ signal, timeoutMs: flashStopTimeoutMs }))) {
+      throw new Error(
+        'Qwen3.8-Flash-Next is still holding both GPUs, so other local models cannot load. Run: llama-flash-next stop',
+      );
+    }
+  }
+
+  const loaded = await getLoadedModelKeys();
+  const drop = loaded.filter(
+    (id) =>
+      !modelIdsLooselyMatch(id, target) &&
+      !keeps(id) &&
+      !(isQwen38FlashNextSelection(id) && (targetIsFlash || keepIds.some((k) => isQwen38FlashNextSelection(k)))),
+  );
+  if (!drop.length) return;
+  for (const id of drop) {
+    throwIfAborted(signal);
+    await unloadModel(id);
+  }
+  await waitUntilUnloaded(drop, { pollIntervalMs: 400, timeoutMs: 20000, signal });
 }
 
 const DEFAULT_UNLOAD_HELPER_URL = 'http://localhost:8766';

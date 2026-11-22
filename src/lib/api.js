@@ -53,6 +53,9 @@ export {
   unloadModel,
   unloadAllLoadedModels,
   unloadAllModelsNative,
+  freeVramForLoad,
+  isFlashNextUp,
+  stopFlashNext,
 } from '$lib/modelLoadUnload.js';
 
 // OpenAI-compatible chat.

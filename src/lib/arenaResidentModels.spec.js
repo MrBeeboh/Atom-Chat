@@ -6,12 +6,22 @@ import {
   sameLocalModel,
   isResidentModel,
   localModelKey,
+  orderSwapRows,
   DEFAULT_VRAM_GB,
 } from './arenaResidentModels.js';
 
 describe('estimateVramGb', () => {
   it('returns 0 for cloud models', () => {
     expect(estimateVramGb('deepseek:deepseek-chat')).toBe(0);
+  });
+
+  it('knows Flash-Next and Coder-Next aliases are huge', () => {
+    expect(estimateVramGb('Qwen3.8-Flash-Next')).toBeGreaterThan(64);
+    expect(estimateVramGb('QWEN3-CODER-NEXT-Q4_K_M')).toBeGreaterThan(40);
+  });
+
+  it('returns null for ids with no size', () => {
+    expect(estimateVramGb('my-mystery-model')).toBeNull();
   });
 
   it('scales with parameter count', () => {
@@ -66,7 +76,7 @@ describe('planArenaResidents', () => {
         'Qwen3.5-9B-Q4_K_M.gguf',
         'phi-3-mini-3.8b-Q4_K_M.gguf',
       ],
-      vramTotalGb: 24,
+      vramTotalGb: 32,
       gpuCount: 1,
       headroomFraction: 0.2,
     });
@@ -94,15 +104,47 @@ describe('planArenaResidents', () => {
     expect(plan.residents).toEqual(['Qwen3.5-9B-Q4_K_M.gguf']);
   });
 
-  it('pins the largest model that fits when a bigger one cannot', () => {
+  it('runs one at a time when a model is bigger than one card', () => {
     const plan = planArenaResidents({
       modelIds: ['Qwen3-70B-Instruct-Q4_K_M.gguf', 'Qwen3.5-9B-Q4_K_M.gguf'],
       vramTotalGb: 16,
       gpuCount: 1,
       headroomFraction: 0.2,
     });
-    expect(isResidentModel(plan, 'Qwen3.5-9B-Q4_K_M.gguf')).toBe(true);
-    expect(isResidentModel(plan, 'Qwen3-70B-Instruct-Q4_K_M.gguf')).toBe(false);
+    expect(plan.residents).toEqual([]);
+    expect(plan.swap).toHaveLength(2);
+    expect(plan.exclusive).toEqual(['Qwen3-70B-Instruct-Q4_K_M.gguf']);
+  });
+
+  it('never co-loads Flash-Next with the 80B router model on dual B70', () => {
+    const plan = planArenaResidents({
+      modelIds: ['Qwen3.8-Flash-Next', 'QWEN3-CODER-NEXT-Q4_K_M'],
+      vramTotalGb: 64,
+      gpuCount: 2,
+    });
+    expect(plan.residents).toEqual([]);
+    expect(plan.parallelLocals).toBe(false);
+    expect(plan.exclusive).toEqual(expect.arrayContaining(['Qwen3.8-Flash-Next', 'QWEN3-CODER-NEXT-Q4_K_M']));
+  });
+
+  it('treats a sizeless alias as needing the whole box instead of guessing small', () => {
+    const plan = planArenaResidents({
+      modelIds: ['my-mystery-model', 'Qwen3.5-9B-Q4_K_M.gguf'],
+      vramTotalGb: 64,
+      gpuCount: 2,
+    });
+    expect(plan.residents).toEqual([]);
+    expect(plan.exclusive).toEqual(['my-mystery-model']);
+  });
+
+  it('pins single-card models against one card, not the sum of both', () => {
+    const plan = planArenaResidents({
+      modelIds: ['Qwen3-14B-Q4_K_M.gguf', 'gemma-3-27b-it-Q4_K_M.gguf'],
+      vramTotalGb: 64,
+      gpuCount: 2,
+    });
+    expect(plan.budgetGb).toBeCloseTo(25.6, 1);
+    expect(plan.residents.length).toBeLessThan(2);
   });
 
   it('never pins cloud ids as residents', () => {
@@ -113,6 +155,17 @@ describe('planArenaResidents', () => {
     });
     expect(plan.residents).toEqual([]);
     expect(plan.cloud).toHaveLength(2);
+  });
+});
+
+describe('orderSwapRows', () => {
+  it('runs the model already in VRAM first', () => {
+    const rows = [
+      { slot: 'A', modelId: 'Qwen3.8-Flash-Next' },
+      { slot: 'B', modelId: 'QWEN3-CODER-NEXT-Q4_K_M' },
+    ];
+    expect(orderSwapRows(rows, ['QWEN3-CODER-NEXT-Q4_K_M']).map((r) => r.slot)).toEqual(['B', 'A']);
+    expect(orderSwapRows(rows, []).map((r) => r.slot)).toEqual(['A', 'B']);
   });
 });
 

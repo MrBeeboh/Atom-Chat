@@ -9,6 +9,7 @@
  */
 import { isCloudModel } from './arenaLogic.js';
 import { parseSizeFromName } from './utils/modelSelection.js';
+import { isQwen38FlashNextSelection } from './modelIdUtils.js';
 
 /** Fraction of reported VRAM left free for KV cache, activations, and a swap. */
 export const DEFAULT_HEADROOM = 0.2;
@@ -16,8 +17,16 @@ export const DEFAULT_HEADROOM = 0.2;
 /** Fallback when hardware metrics are missing (one Arc Pro B70-class card ≈ 32 GB). */
 export const DEFAULT_VRAM_GB = 32;
 
-/** Unknown-size GGUF: treat as a medium 8B-class Q4 so we still pin something. */
-const UNKNOWN_MODEL_GB = 6.5;
+/** Flash-Next runs in its own Docker server on :8081 and takes both cards plus host RAM. */
+const FLASH_NEXT_GB = 85;
+
+/**
+ * Router aliases from models-preset.ini often drop the parameter count.
+ * Qwen3-Next / Qwen3-Coder-Next are 80B-A3B MoE (~45-48 GB at Q4).
+ */
+const KNOWN_FAMILY_PARAMS_B = [
+  { test: /coder-next|qwen3-next|qwen3\.\d+-next/i, paramsB: 80 },
+];
 
 const QUANT_BYTES_PER_PARAM = [
   { test: /f32|fp32/i, bytes: 4.0 },
@@ -61,15 +70,34 @@ function bytesPerParam(modelId) {
 
 /**
  * Rough VRAM footprint in GB from the model id (param count × quant).
+ * Returns null when the id carries no size, so callers never pin a guess.
  * @param {string} modelId
- * @returns {number}
+ * @returns {number | null}
  */
 export function estimateVramGb(modelId) {
   if (!modelId || isCloudModel(modelId)) return 0;
-  const paramsB = parseSizeFromName(modelId);
-  if (!Number.isFinite(paramsB) || paramsB === Infinity) return UNKNOWN_MODEL_GB;
+  if (isQwen38FlashNextSelection(modelId)) return FLASH_NEXT_GB;
+  let paramsB = parseSizeFromName(modelId);
+  if (!Number.isFinite(paramsB)) {
+    paramsB = KNOWN_FAMILY_PARAMS_B.find(({ test }) => test.test(String(modelId)))?.paramsB ?? NaN;
+  }
+  if (!Number.isFinite(paramsB)) return null;
   const gb = paramsB * bytesPerParam(modelId) + RUNTIME_OVERHEAD_GB;
   return Math.max(1.5, Math.round(gb * 10) / 10);
+}
+
+/**
+ * Models that need the whole box: Flash-Next (both cards on :8081), anything
+ * larger than one card (layer-split across both), and ids with no known size.
+ * Nothing else can stay loaded beside them.
+ * @param {string} modelId
+ * @param {number} perCardBudgetGb
+ */
+export function needsExclusiveVram(modelId, perCardBudgetGb) {
+  if (!modelId || isCloudModel(modelId)) return false;
+  if (isQwen38FlashNextSelection(modelId)) return true;
+  const gb = estimateVramGb(modelId);
+  return gb == null || gb > perCardBudgetGb;
 }
 
 /**
@@ -112,6 +140,7 @@ function uniqueLocalIds(modelIds) {
  *   residents: string[],
  *   swap: string[],
  *   cloud: string[],
+ *   exclusive: string[],
  *   budgetGb: number,
  *   usedGb: number,
  *   vramTotalGb: number,
@@ -132,11 +161,13 @@ export function planArenaResidents({
     vram = DEFAULT_VRAM_GB * (gpus > 1 ? gpus : 1);
   }
   const headroom = Math.min(0.45, Math.max(0.1, Number(headroomFraction) || DEFAULT_HEADROOM));
-  const budgetGb = Math.round(vram * (1 - headroom) * 10) / 10;
+  // Router preset pins single-card models to one GPU, so co-residents share one card.
+  const budgetGb = Math.round((vram / gpus) * (1 - headroom) * 10) / 10;
 
   const cloud = [...new Set((modelIds || []).filter((id) => id && isCloudModel(id)))];
   const local = uniqueLocalIds(modelIds);
-  const sized = local.map((id) => ({ id, gb: estimateVramGb(id) }));
+  const exclusive = local.filter((id) => needsExclusiveVram(id, budgetGb));
+  const sized = local.map((id) => ({ id, gb: estimateVramGb(id) ?? Infinity }));
   sized.sort((a, b) => b.gb - a.gb || a.id.localeCompare(b.id));
 
   const totalLocal = sized.reduce((s, m) => s + m.gb, 0);
@@ -145,6 +176,7 @@ export function planArenaResidents({
       residents: [],
       swap: [],
       cloud,
+      exclusive,
       budgetGb,
       usedGb: 0,
       vramTotalGb: vram,
@@ -156,12 +188,29 @@ export function planArenaResidents({
     };
   }
 
+  if (exclusive.length > 0) {
+    const names = exclusive.map((id) => localModelKey(id) || id).join(', ');
+    return {
+      residents: [],
+      swap: sized.map((m) => m.id),
+      cloud,
+      exclusive,
+      budgetGb,
+      usedGb: 0,
+      vramTotalGb: vram,
+      gpuCount: gpus,
+      parallelLocals: false,
+      summary: `${names} need${exclusive.length === 1 ? 's' : ''} the whole GPU box. Running local models one at a time.`,
+    };
+  }
+
   if (totalLocal <= budgetGb) {
     const usedGb = Math.round(totalLocal * 10) / 10;
     return {
       residents: sized.map((m) => m.id),
       swap: [],
       cloud,
+      exclusive,
       budgetGb,
       usedGb,
       vramTotalGb: vram,
@@ -182,14 +231,6 @@ export function planArenaResidents({
     }
   }
 
-  if (residents.length === 0) {
-    const firstFit = sized.find((m) => m.gb <= budgetGb);
-    if (firstFit) {
-      residents.push(firstFit.id);
-      used = firstFit.gb;
-    }
-  }
-
   const swap = sized.map((m) => m.id).filter((id) => !residents.some((r) => sameLocalModel(r, id)));
   const usedGb = Math.round(used * 10) / 10;
   const largestNames = residents.map((id) => localModelKey(id) || id);
@@ -197,6 +238,7 @@ export function planArenaResidents({
     residents,
     swap,
     cloud,
+    exclusive,
     budgetGb,
     usedGb,
     vramTotalGb: vram,
@@ -207,6 +249,21 @@ export function planArenaResidents({
         ? `No local model fits in ${budgetGb} GB. Loading one at a time.`
         : `Keeping ${residents.length} loaded (${largestNames.join(', ')}; ~${usedGb} GB). Swapping ${swap.length} smaller model${swap.length === 1 ? '' : 's'} into leftover VRAM.`,
   };
+}
+
+/**
+ * Run whichever swap model is already in VRAM first, so a lineup of two big
+ * models costs one swap per round instead of two.
+ * @template {{ modelId: string }} T
+ * @param {T[]} rows
+ * @param {string[]} loadedIds
+ * @returns {T[]}
+ */
+export function orderSwapRows(rows, loadedIds) {
+  const isLoaded = (id) => (loadedIds || []).some((l) => sameLocalModel(l, id));
+  const loaded = (rows || []).filter((r) => isLoaded(r.modelId));
+  const rest = (rows || []).filter((r) => !isLoaded(r.modelId));
+  return [...loaded, ...rest];
 }
 
 export function isResidentModel(plan, modelId) {

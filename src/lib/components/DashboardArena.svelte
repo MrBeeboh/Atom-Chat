@@ -63,11 +63,14 @@
     modelDisplayName,
     flashNextHasVision,
     fetchHardwareMetrics,
+    freeVramForLoad,
+    isFlashNextUp,
   } from "$lib/api.js";
   import {
     planArenaResidents,
     modelsToUnload,
     isResidentModel,
+    orderSwapRows,
   } from "$lib/arenaResidentModels.js";
   import { assistantStatsFromUsage, modelPricingCatalog } from "$lib/modelPricing.js";
   import { arenaContextGuard } from "$lib/arenaContextGuard.js";
@@ -310,6 +313,7 @@
       if (!isCloudModel(judgeId)) {
         try {
           if (!(await isLocalModelChatReady(judgeId))) {
+            await freeVramForLoad(judgeId);
             await loadModel(judgeId);
             const ready = await waitUntilLoaded(judgeId, {
               pollIntervalMs: 400,
@@ -557,6 +561,43 @@
   let judgeLoadingMessageIndex = $state(0);
   /** Index of the current witty "loading next model" message (rotated each time we load a contestant). */
   let loadingModelMessageIndex = $state(0);
+  /** Which local model the banner is waiting on, and since when, so slow and stuck look different. */
+  let loadingModelId = $state("");
+  let loadingStartedAt = $state(0);
+  let loadingNow = $state(Date.now());
+  $effect(() => {
+    if (!loadingStartedAt) return;
+    loadingNow = Date.now();
+    const t = setInterval(() => (loadingNow = Date.now()), 1000);
+    return () => clearInterval(t);
+  });
+  const loadingElapsedS = $derived(
+    loadingStartedAt ? Math.max(0, Math.round((loadingNow - loadingStartedAt) / 1000)) : 0,
+  );
+  const loadingModelLabel = $derived.by(() => {
+    if (!loadingModelId) return "";
+    const seat = [
+      ["A", $dashboardModelA],
+      ["B", $dashboardModelB],
+      ["C", $dashboardModelC],
+      ["D", $dashboardModelD],
+    ].find(([, id]) => id === loadingModelId)?.[0];
+    const hidden = arenaPickMode === "anonymous" && !identityRevealed;
+    if (hidden) return seat ? `Loading contestant ${seat}` : "Loading judge";
+    const name = modelSelectorPrimaryLine(loadingModelId);
+    return seat ? `Loading ${seat}: ${name}` : `Loading ${name}`;
+  });
+  function beginModelLoadBanner(modelId) {
+    loadingModelMessageIndex = getNextWittyLoadingModel();
+    loadingModelId = modelId || "";
+    loadingStartedAt = Date.now();
+    arenaTransitionPhase = "loading";
+  }
+  function endModelLoadBanner() {
+    loadingModelId = "";
+    loadingStartedAt = 0;
+    if (arenaTransitionPhase === "loading") arenaTransitionPhase = null;
+  }
   /** Index of the current witty "Build Arena" loading message (one per build). */
   let buildLoadingMessageIndex = $state(0);
   /** Shuffled orders for witty messages, cycled through each run so we see all of them. */
@@ -1162,8 +1203,13 @@
     return plan;
   }
 
-  async function syncResidentModels(plan, extraKeepIds = []) {
-    const keep = [...(plan?.residents || []), ...(extraKeepIds || [])].filter(Boolean);
+  /**
+   * Round start: drop locals outside this lineup, keep lineup models that are
+   * already loaded (a swap model left from last round runs first), and load
+   * residents that are missing.
+   */
+  async function syncResidentModels(plan, lineupIds = []) {
+    const keep = [...(plan?.residents || []), ...(lineupIds || [])].filter(Boolean);
     try {
       const loaded = await getLoadedModelKeys();
       const drop = modelsToUnload(loaded, keep);
@@ -1179,8 +1225,9 @@
     }
     for (const id of plan?.residents || []) {
       try {
-        await ensureLocalModelReadyForChat(id);
+        await loadContestantReady(id, { keep: plan.residents });
       } catch (e) {
+        if (e?.name === "AbortError") throw e;
         if (typeof console !== "undefined" && console.warn) {
           console.warn("[Arena] resident load failed:", id, e?.message || e);
         }
@@ -1188,42 +1235,51 @@
     }
   }
 
-  async function loadContestantReady(modelId) {
+  /** Locals currently in VRAM, counting the Flash-Next sidecar. */
+  async function loadedLocalIds() {
+    const ids = await getLoadedModelKeys().catch(() => []);
+    if (await isFlashNextUp()) ids.push("Qwen3.8-Flash-Next");
+    return ids;
+  }
+
+  /**
+   * @param {string} modelId
+   * @param {{ keep?: string[] }} [opts] - locals that may stay loaded beside this one
+   */
+  async function loadContestantReady(modelId, { keep = [] } = {}) {
     if (!modelId) return false;
     const signal = arenaLoadSignal();
-    if (isCloudModel(modelId)) {
-      arenaTransitionPhase = null;
-      return true;
-    }
+    if (isCloudModel(modelId)) return true;
     if (await isLocalModelChatReady(modelId)) {
       if (isQwen38FlashNextSelection(modelId)) await assertFlashNextCanChat();
-      arenaTransitionPhase = null;
       return true;
     }
-    loadingModelMessageIndex = getNextWittyLoadingModel();
-    arenaTransitionPhase = "loading";
+    beginModelLoadBanner(modelId);
     try {
-      await loadModel(modelId);
-    } catch (loadErr) {
-      if (loadErr?.name === "AbortError") throw loadErr;
-      const msg = String(loadErr?.message || loadErr || "");
-      if (typeof console !== "undefined" && console.warn) {
-        console.warn("[Arena] loadModel:", modelId, msg);
+      await freeVramForLoad(modelId, { keep, signal });
+      try {
+        await loadModel(modelId);
+      } catch (loadErr) {
+        if (loadErr?.name === "AbortError") throw loadErr;
+        if (typeof console !== "undefined" && console.warn) {
+          console.warn("[Arena] loadModel:", modelId, String(loadErr?.message || loadErr || ""));
+        }
       }
+      const ready = await waitUntilLoaded(modelId, {
+        pollIntervalMs: 250,
+        timeoutMs: 600000,
+        signal,
+      });
+      if (isQwen38FlashNextSelection(modelId)) await assertFlashNextCanChat();
+      if (!ready) {
+        throw new Error(
+          `Model "${modelId}" did not become ready (still loading or failed). Check llama-server.log.`,
+        );
+      }
+      return true;
+    } finally {
+      endModelLoadBanner();
     }
-    const ready = await waitUntilLoaded(modelId, {
-      pollIntervalMs: 250,
-      timeoutMs: 600000,
-      signal,
-    });
-    if (isQwen38FlashNextSelection(modelId)) await assertFlashNextCanChat();
-    arenaTransitionPhase = null;
-    if (!ready) {
-      throw new Error(
-        `Model "${modelId}" did not become ready (still loading or failed). Check llama-server.log.`,
-      );
-    }
-    return true;
   }
 
   function applySnapshotMessages(snapshotsBySlot) {
@@ -1622,13 +1678,10 @@
       /* Pin locals that fit in VRAM; avoid unloading/reloading every seat (models-max 1 feel). */
       let plan = arenaResidentPlan;
       if (!assumeModelLoaded && !onlySlot) {
-        arenaTransitionPhase = "loading";
-        loadingModelMessageIndex = getNextWittyLoadingModel();
         let judgeHint = get(arenaScoringModelId)?.trim() || "";
         if (slotAIsJudge && $dashboardModelA) judgeHint = $dashboardModelA;
         plan = await prepareArenaResidentPlan(selected, judgeHint);
-        await syncResidentModels(plan);
-        arenaTransitionPhase = null;
+        await syncResidentModels(plan, [...selected.map((s) => s.modelId), judgeHint]);
         if (runId !== currentRun) return;
       } else if (!plan) {
         let judgeHint = get(arenaScoringModelId)?.trim() || "";
@@ -1640,17 +1693,26 @@
       let failedSlots = [];
       const maxAttempts = 2;
 
-      async function runOneContestant(row, { loadIfNeeded = false } = {}) {
+      async function runOneContestant(row) {
         if (runId !== currentRun) return;
+        if (!assumeModelLoaded && !isCloudModel(row.modelId)) {
+          setSlotError(row.slot, "");
+          try {
+            await loadContestantReady(row.modelId, { keep: plan?.residents || [] });
+          } catch (loadErr) {
+            if (loadErr?.name === "AbortError") throw loadErr;
+            /* A load that failed once (VRAM held, bad GGUF) fails the same way on retry. */
+            failedSlots.push(row.slot);
+            setSlotError(row.slot, loadErr?.message || "Model did not load.");
+            return;
+          }
+        }
         let slotOk = false;
         for (let attempt = 1; attempt <= maxAttempts; attempt++) {
           if (runId !== currentRun) break;
           setMessages(row.slot, []);
           setSlotError(row.slot, "");
           try {
-            if (!assumeModelLoaded && (loadIfNeeded || !isResidentModel(plan, row.modelId))) {
-              await loadContestantReady(row.modelId);
-            }
             if (runId !== currentRun) break;
             const metrics = await sendToSlot(
               row.slot,
@@ -1706,7 +1768,12 @@
       const cloudSlots = selected.filter((row) => isCloudModel(row.modelId));
       const localSlots = selected.filter((row) => !isCloudModel(row.modelId));
       const residentSlots = localSlots.filter((row) => isResidentModel(plan, row.modelId));
-      const swapSlots = localSlots.filter((row) => !isResidentModel(plan, row.modelId));
+      const swapSlots = assumeModelLoaded
+        ? localSlots.filter((row) => !isResidentModel(plan, row.modelId))
+        : orderSwapRows(
+            localSlots.filter((row) => !isResidentModel(plan, row.modelId)),
+            await loadedLocalIds(),
+          );
 
       const cloudWork = Promise.all(cloudSlots.map((row) => runOneContestant(row)));
 
@@ -1719,22 +1786,11 @@
         }
       }
 
-      let lastSwapId = null;
+      /* Each load frees the previous swap model itself; the last one stays loaded for next round. */
       for (const row of swapSlots) {
         if (runId !== currentRun) break;
-        if (lastSwapId && !isResidentModel(plan, lastSwapId)) {
-          arenaTransitionPhase = "ejecting";
-          try {
-            await unloadModel(lastSwapId);
-            await waitUntilUnloaded([lastSwapId], { pollIntervalMs: 400, timeoutMs: 15000 });
-          } catch (_) {
-            /* continue */
-          }
-          arenaTransitionPhase = null;
-        }
-        await runOneContestant(row, { loadIfNeeded: true });
-        lastSwapId = row.modelId;
-        if (!isCloudModel(row.modelId)) lastLoadedLocalContestant = row.modelId;
+        await runOneContestant(row);
+        lastLoadedLocalContestant = row.modelId;
       }
 
       await cloudWork;
@@ -2213,25 +2269,26 @@
     try {
       judgeLoadingMessageIndex = getNextWittyJudgeLoading();
       arenaTransitionPhase = "loading_judge";
-      if (!isCloudModel(judgeId)) {
+      if (!isCloudModel(judgeId) && !(await isLocalModelChatReady(judgeId))) {
         arenaTransitionPhase = "ejecting";
-        for (const id of contestantIds) {
-          if (!id || id === judgeId || isCloudModel(id)) continue;
-          try {
-            await unloadModel(id);
-          } catch (_) {}
+        try {
+          await freeVramForLoad(judgeId, {
+            keep: arenaResidentPlan?.residents || [],
+            signal: arenaLoadSignal(),
+          });
+        } catch (freeErr) {
+          if (freeErr?.name === "AbortError") throw freeErr;
+          chatError.set(freeErr?.message || "Could not free VRAM for the judge.");
         }
         lastLoadedLocalContestant = null;
         arenaTransitionPhase = "loading_judge";
         try {
-          if (!(await isLocalModelChatReady(judgeId))) {
-            await loadModel(judgeId);
-            await waitUntilLoaded(judgeId, {
-              pollIntervalMs: 500,
-              timeoutMs: 600000,
-              signal: arenaLoadSignal(),
-            });
-          }
+          await loadModel(judgeId);
+          await waitUntilLoaded(judgeId, {
+            pollIntervalMs: 500,
+            timeoutMs: 600000,
+            signal: arenaLoadSignal(),
+          });
         } catch (loadErr) {
           if (loadErr?.name === "AbortError") throw loadErr;
         }
@@ -2949,10 +3006,17 @@
           >{JUDGE_WEB_LINES[judgeWebMessageIndex].sub}</span
         >
       {:else if arenaTransitionPhase === "loading"}
+        {#if loadingModelId}
+          <span class="text-xs font-medium tabular-nums" style="color: var(--ui-text-primary);">
+            {loadingModelLabel} · {loadingElapsedS}s
+          </span>
+        {/if}
         <span
           class="text-xs opacity-80"
           style="color: var(--ui-text-secondary);"
-          >{ARENA_LOADING_MODEL_LINES[loadingModelMessageIndex].sub}</span
+          >{loadingElapsedS >= 90
+            ? "Big models take a while from disk. If this keeps climbing, check llama-server.log."
+            : ARENA_LOADING_MODEL_LINES[loadingModelMessageIndex].sub}</span
         >
       {/if}
     </div>
