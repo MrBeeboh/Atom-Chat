@@ -50,16 +50,25 @@
     requestChatCompletion,
     loadModel,
     waitUntilLoaded,
+    waitUntilUnloaded,
     unloadModel,
     unloadAllModelsNative,
+    getLoadedModelKeys,
     isLocalModelChatReady,
+    ensureLocalModelReadyForChat,
     assertFlashNextCanChat,
     modelSelectorPrimaryLine,
     decodeTokPerSec,
     isQwen38FlashNextSelection,
     modelDisplayName,
     flashNextHasVision,
+    fetchHardwareMetrics,
   } from "$lib/api.js";
+  import {
+    planArenaResidents,
+    modelsToUnload,
+    isResidentModel,
+  } from "$lib/arenaResidentModels.js";
   import { assistantStatsFromUsage, modelPricingCatalog } from "$lib/modelPricing.js";
   import { arenaContextGuard } from "$lib/arenaContextGuard.js";
   import { prepareArenaModelList } from "$lib/arenaModelList.js";
@@ -608,6 +617,8 @@
   let loadAbortController = /** @type {AbortController | null} */ (null);
   let judgeAborter = /** @type {AbortController | null} */ (null);
   let lastLoadedLocalContestant = /** @type {string | null} */ (null);
+  /** @type {null | ReturnType<typeof planArenaResidents>} */
+  let arenaResidentPlan = $state(null);
 
   // ---------- Judge instructions (custom rubric) ----------
   let judgeInstructions = $state(
@@ -1128,6 +1139,55 @@
     return picked.filter((s) => isArenaModelEligible(s.modelId));
   }
 
+  async function prepareArenaResidentPlan(selected, judgeId) {
+    const modelIds = [...(selected || []).map((row) => row.modelId), judgeId].filter(Boolean);
+    let vramTotalGb = 0;
+    // Dual Arc Pro B70 default when the metrics bridge is down or NVIDIA-only.
+    let gpuCount = 2;
+    try {
+      const metrics = await fetchHardwareMetrics();
+      if (metrics) {
+        vramTotalGb = Number(metrics.vram_total_gb) || 0;
+        const reported = Number(metrics.gpu_count);
+        if (Number.isFinite(reported) && reported > 0) gpuCount = Math.max(1, reported);
+        else if (vramTotalGb >= 48) gpuCount = 2;
+        else if (vramTotalGb > 0) gpuCount = 1;
+      }
+    } catch (_) {
+      /* use dual-GPU defaults */
+    }
+    if (!vramTotalGb) vramTotalGb = 32 * Math.max(1, gpuCount);
+    const plan = planArenaResidents({ modelIds, vramTotalGb, gpuCount });
+    arenaResidentPlan = plan;
+    return plan;
+  }
+
+  async function syncResidentModels(plan, extraKeepIds = []) {
+    const keep = [...(plan?.residents || []), ...(extraKeepIds || [])].filter(Boolean);
+    try {
+      const loaded = await getLoadedModelKeys();
+      const drop = modelsToUnload(loaded, keep);
+      for (const id of drop) {
+        try {
+          await unloadModel(id);
+        } catch (_) {
+          /* continue */
+        }
+      }
+    } catch (_) {
+      /* listing loaded can fail on legacy servers */
+    }
+    for (const id of plan?.residents || []) {
+      try {
+        await ensureLocalModelReadyForChat(id);
+      } catch (e) {
+        if (typeof console !== "undefined" && console.warn) {
+          console.warn("[Arena] resident load failed:", id, e?.message || e);
+        }
+      }
+    }
+  }
+
   async function loadContestantReady(modelId) {
     if (!modelId) return false;
     const signal = arenaLoadSignal();
@@ -1559,39 +1619,56 @@
         messagesD = [];
       }
 
+      /* Pin locals that fit in VRAM; avoid unloading/reloading every seat (models-max 1 feel). */
+      let plan = arenaResidentPlan;
+      if (!assumeModelLoaded && !onlySlot) {
+        arenaTransitionPhase = "loading";
+        loadingModelMessageIndex = getNextWittyLoadingModel();
+        let judgeHint = get(arenaScoringModelId)?.trim() || "";
+        if (slotAIsJudge && $dashboardModelA) judgeHint = $dashboardModelA;
+        plan = await prepareArenaResidentPlan(selected, judgeHint);
+        await syncResidentModels(plan);
+        arenaTransitionPhase = null;
+        if (runId !== currentRun) return;
+      } else if (!plan) {
+        let judgeHint = get(arenaScoringModelId)?.trim() || "";
+        if (slotAIsJudge && $dashboardModelA) judgeHint = $dashboardModelA;
+        plan = await prepareArenaResidentPlan(selected, judgeHint);
+      }
+
       let completedCount = 0;
       let failedSlots = [];
       const maxAttempts = 2;
-      for (let i = 0; i < selected.length; i++) {
-        if (runId !== currentRun) break;
-        const s = selected[i];
+
+      async function runOneContestant(row, { loadIfNeeded = false } = {}) {
+        if (runId !== currentRun) return;
         let slotOk = false;
         for (let attempt = 1; attempt <= maxAttempts; attempt++) {
           if (runId !== currentRun) break;
-          setMessages(s.slot, []);
-          setSlotError(s.slot, "");
+          setMessages(row.slot, []);
+          setSlotError(row.slot, "");
           try {
-            if (!assumeModelLoaded) {
-              await loadContestantReady(s.modelId);
+            if (!assumeModelLoaded && (loadIfNeeded || !isResidentModel(plan, row.modelId))) {
+              await loadContestantReady(row.modelId);
             }
             if (runId !== currentRun) break;
             const metrics = await sendToSlot(
-              s.slot,
-              s.modelId,
+              row.slot,
+              row.modelId,
               applySvgAsk(content),
               displayContent,
               questionId,
             );
             if (!metrics) {
               if (attempt === maxAttempts) {
-                failedSlots.push(s.slot);
-                const hasText = getMessages(s.slot).some(
+                failedSlots.push(row.slot);
+                const hasText = getMessages(row.slot).some(
                   (m) =>
                     m.role === "assistant" &&
                     contentToText(m.content || "").trim(),
                 );
                 if (!hasText) {
-                  setSlotError(s.slot, "No response after retries.");
+                  setSlotError(row.slot, "No response after retries.");
                 }
               }
               continue;
@@ -1599,12 +1676,12 @@
             slotOk = true;
             completedCount++;
             if (arenaCurrentRunMeta) {
-              const msgs = getMessages(s.slot);
+              const msgs = getMessages(row.slot);
               const lastAsst = [...msgs]
                 .reverse()
                 .find((m) => m.role === "assistant");
-              arenaCurrentRunMeta.responses[s.slot] = {
-                model_id: s.modelId,
+              arenaCurrentRunMeta.responses[row.slot] = {
+                model_id: row.modelId,
                 prompt: effectiveText,
                 raw_response: lastAsst ? contentToText(lastAsst.content) : "",
                 latency_ms: metrics.latency_ms,
@@ -1615,22 +1692,60 @@
             break;
           } catch (slotErr) {
             if (attempt === maxAttempts) {
-              failedSlots.push(s.slot);
+              failedSlots.push(row.slot);
               setSlotError(
-                s.slot,
+                row.slot,
                 slotErr?.message || "Failed to get response.",
               );
             }
           }
         }
-        if (!slotOk && !failedSlots.includes(s.slot)) failedSlots.push(s.slot);
+        if (!slotOk && !failedSlots.includes(row.slot)) failedSlots.push(row.slot);
       }
+
+      const cloudSlots = selected.filter((row) => isCloudModel(row.modelId));
+      const localSlots = selected.filter((row) => !isCloudModel(row.modelId));
+      const residentSlots = localSlots.filter((row) => isResidentModel(plan, row.modelId));
+      const swapSlots = localSlots.filter((row) => !isResidentModel(plan, row.modelId));
+
+      const cloudWork = Promise.all(cloudSlots.map((row) => runOneContestant(row)));
+
+      if (plan?.parallelLocals && residentSlots.length > 1) {
+        await Promise.all(residentSlots.map((row) => runOneContestant(row)));
+      } else {
+        for (const row of residentSlots) {
+          if (runId !== currentRun) break;
+          await runOneContestant(row);
+        }
+      }
+
+      let lastSwapId = null;
+      for (const row of swapSlots) {
+        if (runId !== currentRun) break;
+        if (lastSwapId && !isResidentModel(plan, lastSwapId)) {
+          arenaTransitionPhase = "ejecting";
+          try {
+            await unloadModel(lastSwapId);
+            await waitUntilUnloaded([lastSwapId], { pollIntervalMs: 400, timeoutMs: 15000 });
+          } catch (_) {
+            /* continue */
+          }
+          arenaTransitionPhase = null;
+        }
+        await runOneContestant(row, { loadIfNeeded: true });
+        lastSwapId = row.modelId;
+        if (!isCloudModel(row.modelId)) lastLoadedLocalContestant = row.modelId;
+      }
+
+      await cloudWork;
+      /* Contestants finished. Residents stay loaded. */
       /* Keep isStreaming true through scoring so Ask/Next cannot start a second run. */
       if (!skipJudgment && runId === currentRun) {
         judgeLoadingMessageIndex = getNextWittyJudgeLoading();
         arenaTransitionPhase = "loading_judge";
         await runJudgment();
       }
+
       if (failedSlots.length > 0 && completedCount > 0) {
         chatError.set(
           `${completedCount}/${selected.length} models completed. Failed: ${failedSlots.join(", ")}.`,

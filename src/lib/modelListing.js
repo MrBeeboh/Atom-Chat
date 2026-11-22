@@ -11,7 +11,7 @@ import {
 } from '$lib/llamaRouter.js';
 import { mergeUniqueModelItems, mergeServerAndDiskModels, ggufBasenameLower, QWEN38_FLASH_NEXT_MODEL_ID, isQwen38FlashNextSelection } from '$lib/modelIdUtils.js';
 import { attachFlashNextLiveCaps } from '$lib/flashNext.js';
-import { fetchCloudModels } from '$lib/cloudCatalog.js';
+import { fetchCloudModels, getCloudModelsFallback } from '$lib/cloudCatalog.js';
 
 function extraLocalModelDirsFromStorage() {
   if (typeof localStorage === 'undefined') return [];
@@ -194,9 +194,21 @@ export async function resolveEffectiveLocalChatModelId(modelId) {
  * @returns {Promise<{ id: string }[]>}
  */
 export async function getModels() {
-  const [local, cloud] = await Promise.all([
-    getLocalModels().catch(() => []),
-    getCloudModels(),
-  ]);
+  // Local list first. Cloud funding probes can take several seconds when keys
+  // are missing or vendors hang — that made the Arena model dropdown feel broken.
+  const local = await getLocalModels().catch(() => []);
+  let cloud = [];
+  try {
+    cloud = await Promise.race([
+      getCloudModels(),
+      new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('cloud-list-timeout')), 2500);
+      }),
+    ]);
+  } catch {
+    // Keep probing in the background; next open gets the cache.
+    getCloudModels().catch(() => {});
+    cloud = getCloudModelsFallback();
+  }
   return [...local, ...cloud];
 }

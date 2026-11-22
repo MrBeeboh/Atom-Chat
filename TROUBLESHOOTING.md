@@ -36,6 +36,9 @@ If the model dropdown is empty or says "Cannot connect":
 
 On launch, `start-atom.sh` **unloads other apps’ local models** so both cards are free. The systemd router on **:8080** keeps **both** B70s visible, then places models like this:
 
+The router defaults to **`--models-max 4`** (`ATOM_MODELS_MAX`) so Arena can keep several local contestants loaded. If you still see a full GGUF reload on every seat, the process on :8080 was started with `--models-max 1` — stop it and relaunch `start-atom.sh`.
+
+
 - **Single-card models** (everything that fits one 32 GB card, including Muse Glimmer) load on the **second GPU** (`SYCL1`). The desktop card stays free for Cinnamon / ComfyUI.
 - **Large models** (Qwen 80B, ~45 GB) **layer-split** across `SYCL0,SYCL1` via `~/.config/llama/models-preset.ini`.
 
