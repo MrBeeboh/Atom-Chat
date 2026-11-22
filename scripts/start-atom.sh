@@ -582,7 +582,8 @@ fi
 
 if llama_ready; then
     echo "[ATOM] llama-server already running on port 8080 (models-dir=${ATOM_MODELS_DIR})"
-    echo "[ATOM] (B70 flags above apply only after you stop that process and relaunch)"
+    echo "[ATOM] (B70 flags / --models-max apply only after you stop that process and relaunch)"
+    echo "[ATOM] If Arena reloads every contestant slowly, that process was likely started with --models-max 1. Stop it and re-run this script (default ATOM_MODELS_MAX=4)."
 else
     echo "[ATOM] Starting llama-server..."
 
@@ -615,12 +616,18 @@ else
             ROUTER_PRESET_FLAGS+=(--models-preset "$ATOM_MODELS_PRESET")
             echo "[ATOM] Router preset: $ATOM_MODELS_PRESET"
         fi
-        echo "[ATOM] Router: --models-dir $ATOM_MODELS_DIR --models-max 1 (autoload on; nothing preloaded into VRAM)"
+        # Arena keeps multiple locals resident across seats. --models-max 1 forces a full
+        # GGUF unload/reload on every contestant and feels "broken / very slow" on dual B70.
+        ATOM_MODELS_MAX="${ATOM_MODELS_MAX:-4}"
+        echo "[ATOM] Router: --models-dir $ATOM_MODELS_DIR --models-max ${ATOM_MODELS_MAX} (autoload on; set ATOM_MODELS_MAX to change)"
+        if [ "$ATOM_MODELS_MAX" -le 1 ] 2>/dev/null; then
+          echo "[ATOM] WARNING: ATOM_MODELS_MAX=${ATOM_MODELS_MAX} will swap every local model. Use >=2 for Arena."
+        fi
         : >>"$ROOT/llama-server.log"
         {
-          echo "[ATOM] $(date -Iseconds) start router models-dir=$ATOM_MODELS_DIR ${ROUTER_PRESET_FLAGS[*]} ${LLAMA_GPU_FLAGS[*]}"
+          echo "[ATOM] $(date -Iseconds) start router models-dir=$ATOM_MODELS_DIR models-max=$ATOM_MODELS_MAX ${ROUTER_PRESET_FLAGS[*]} ${LLAMA_GPU_FLAGS[*]}"
         } >>"$ROOT/llama-server.log"
-        nohup "$LLAMA_BIN" --models-dir "$ATOM_MODELS_DIR" --models-max 1 "${ROUTER_PRESET_FLAGS[@]}" "${LLAMA_GPU_FLAGS[@]}" --port 8080 --host 0.0.0.0 >>"$ROOT/llama-server.log" 2>&1 &
+        nohup "$LLAMA_BIN" --models-dir "$ATOM_MODELS_DIR" --models-max "$ATOM_MODELS_MAX" "${ROUTER_PRESET_FLAGS[@]}" "${LLAMA_GPU_FLAGS[@]}" --port 8080 --host 0.0.0.0 >>"$ROOT/llama-server.log" 2>&1 &
         LLAMA_PID=$!
         disown || true
     elif [ -n "$MODEL" ] && [ -f "$MODEL" ]; then
